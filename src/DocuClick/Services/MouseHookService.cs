@@ -53,18 +53,6 @@ public sealed class MouseHookService : IDisposable
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     private static extern nint GetModuleHandle(string? lpModuleName);
 
-    [DllImport("user32.dll")]
-    private static extern short GetKeyState(int nVirtKey);
-
-    private const int VK_SHIFT = 0x10;
-    private const int VK_CONTROL = 0x11;
-    private const int VK_MENU = 0x12; // Alt
-
-    // High bit set = key currently down. GetKeyState (not GetAsyncKeyState)
-    // reflects the state as of the last message retrieved by the calling
-    // thread's queue, which matches what the hook callback should see.
-    private static bool IsKeyDown(int virtualKey) => (GetKeyState(virtualKey) & 0x8000) != 0;
-
     // Kept alive for the hook's lifetime: if the GC collects the delegate
     // while native code still holds a function pointer to it, the process
     // crashes on the next click.
@@ -125,9 +113,9 @@ public sealed class MouseHookService : IDisposable
             {
                 Point = new System.Drawing.Point(hookStruct.pt.X, hookStruct.pt.Y),
                 Timestamp = DateTime.Now,
-                ShiftDown = IsKeyDown(VK_SHIFT),
-                ControlDown = IsKeyDown(VK_CONTROL),
-                AltDown = IsKeyDown(VK_MENU)
+                ShiftDown = ModifierKeyState.ShiftDown,
+                ControlDown = ModifierKeyState.ControlDown,
+                AltDown = ModifierKeyState.AltDown
             });
         }
 

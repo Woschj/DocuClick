@@ -41,4 +41,11 @@ public sealed class AppConfig
 
     /// <summary>Short system sound on every successfully captured click.</summary>
     public bool EnableClickSound { get; set; } = true;
+
+    /// <summary>
+    /// Also capture on Enter key presses (active window + focused element),
+    /// not just left clicks. The underlying hook only ever recognizes the
+    /// Enter key itself — it never inspects or records any other keystroke.
+    /// </summary>
+    public bool CaptureOnEnter { get; set; } = true;
 }

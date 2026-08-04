@@ -11,6 +11,8 @@ internal static partial class ForegroundWindowService
     [LibraryImport("user32.dll", EntryPoint = "GetWindowTextW", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int GetWindowTextW(nint hWnd, [Out] char[] lpString, int nMaxCount);
 
+    internal static nint GetHandle() => GetForegroundWindow();
+
     public static string? GetTitle()
     {
         var hWnd = GetForegroundWindow();

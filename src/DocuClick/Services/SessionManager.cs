@@ -4,14 +4,16 @@ using System.IO;
 namespace DocuClick.Services;
 
 /// <summary>
-/// Glues the mouse hook to the capture pipeline (UI Automation lookup ->
-/// screenshot -> highlight -> Obsidian write) and owns the current
-/// session's target file. Writes either a linear note or a branching
-/// .canvas flow diagram, depending on <see cref="AppConfig.UseCanvas"/>.
+/// Glues the mouse/keyboard hooks to the capture pipeline (UI Automation
+/// lookup -> screenshot -> highlight -> Obsidian write) and owns the
+/// current session's target file. Writes either a linear note or a
+/// branching .canvas flow diagram, depending on
+/// <see cref="AppConfig.UseCanvas"/>.
 /// </summary>
 public sealed class SessionManager : IDisposable
 {
     private readonly MouseHookService _mouseHook = new();
+    private readonly KeyboardHookService _keyboardHook = new();
     private readonly AppConfig _config;
     private readonly ObsidianWriter _noteWriter;
     private readonly CanvasFlowWriter _canvasWriter;
@@ -31,6 +33,7 @@ public sealed class SessionManager : IDisposable
         _noteWriter = new ObsidianWriter(config);
         _canvasWriter = new CanvasFlowWriter(config);
         _mouseHook.LeftButtonDown += OnLeftButtonDown;
+        _keyboardHook.EnterPressed += OnEnterPressed;
     }
 
     public void Start()
@@ -43,6 +46,11 @@ public sealed class SessionManager : IDisposable
         }
 
         _mouseHook.Start();
+        if (_config.CaptureOnEnter)
+        {
+            _keyboardHook.Start();
+        }
+
         _isRunning = true;
         if (_config.UseCanvas)
         {
@@ -54,6 +62,7 @@ public sealed class SessionManager : IDisposable
     public void Stop()
     {
         _mouseHook.Stop();
+        _keyboardHook.Stop();
         _canvasWriter.Stop();
         _isRunning = false;
         BranchDepthChanged?.Invoke(0);
@@ -134,7 +143,7 @@ public sealed class SessionManager : IDisposable
 
     private void OnLeftButtonDown(object? sender, MouseClickEventArgs e)
     {
-        if (IsSkipModifierDown(e))
+        if (IsSkipModifierDown(e.ShiftDown, e.ControlDown, e.AltDown))
         {
             LogService.Log($"Klick bei ({e.Point.X}, {e.Point.Y}) übersprungen ({_config.SkipRecordingModifier}-Taste gedrückt).");
             if (_config.EnableClickSound)
@@ -155,23 +164,64 @@ public sealed class SessionManager : IDisposable
         Task.Run(() => ProcessClick(point, timestamp, targetFileName));
     }
 
-    private bool IsSkipModifierDown(MouseClickEventArgs e) => _config.SkipRecordingModifier switch
+    private void OnEnterPressed(object? sender, EnterKeyEventArgs e)
     {
-        "Shift" => e.ShiftDown,
-        "Control" => e.ControlDown,
-        "Alt" => e.AltDown,
+        if (IsSkipModifierDown(e.ShiftDown, e.ControlDown, e.AltDown))
+        {
+            LogService.Log($"Enter-Erfassung übersprungen ({_config.SkipRecordingModifier}-Taste gedrückt).");
+            if (_config.EnableClickSound)
+            {
+                ClickFeedbackService.PlaySkipped();
+            }
+            return;
+        }
+
+        var timestamp = e.Timestamp;
+        var targetFileName = _currentTargetFileName;
+
+        LogService.Log("Enter-Taste erkannt.");
+        Task.Run(() => ProcessEnterPress(timestamp, targetFileName));
+    }
+
+    private bool IsSkipModifierDown(bool shiftDown, bool controlDown, bool altDown) => _config.SkipRecordingModifier switch
+    {
+        "Shift" => shiftDown,
+        "Control" => controlDown,
+        "Alt" => altDown,
         _ => false
     };
 
     private void ProcessClick(Point point, DateTime timestamp, string targetFileName)
     {
+        var element = _config.UseUiAutomation ? UiAutomationService.GetElementAt(point) : null;
+        var fallbackWindowTitle = element?.WindowTitle ?? ForegroundWindowService.GetTitle();
+        var description = DescriptionGenerator.Describe(element, fallbackWindowTitle, timestamp, InputAction.Click);
+
+        FinalizeCapture(description, timestamp, () => ScreenshotService.CaptureWindowAt(point), element, point, targetFileName);
+    }
+
+    private void ProcessEnterPress(DateTime timestamp, string targetFileName)
+    {
+        var element = _config.UseUiAutomation ? UiAutomationService.GetFocusedElement() : null;
+        var fallbackWindowTitle = element?.WindowTitle ?? ForegroundWindowService.GetTitle();
+        var description = DescriptionGenerator.Describe(element, fallbackWindowTitle, timestamp, InputAction.EnterKey);
+
+        // No click point exists for a key press; the highlight (if any)
+        // comes purely from the focused element's bounding rect.
+        FinalizeCapture(description, timestamp, ScreenshotService.CaptureForegroundWindow, element, null, targetFileName);
+    }
+
+    private void FinalizeCapture(
+        string description,
+        DateTime timestamp,
+        Func<CapturedWindow> captureFunc,
+        ElementInfo? element,
+        Point? clickPoint,
+        string targetFileName)
+    {
         try
         {
-            var element = _config.UseUiAutomation ? UiAutomationService.GetElementAt(point) : null;
-            var fallbackWindowTitle = element?.WindowTitle ?? ForegroundWindowService.GetTitle();
-            var description = DescriptionGenerator.Describe(element, fallbackWindowTitle, timestamp);
-
-            var captured = ScreenshotService.CaptureWindowAt(point);
+            var captured = captureFunc();
             using var screenshot = captured.Bitmap;
             var highlightColor = ColorTranslator.FromHtml(_config.HighlightColorHex);
 
@@ -180,7 +230,8 @@ public sealed class SessionManager : IDisposable
             // chrome, ...). Drawing that as a "highlight" would paint most
             // of the screenshot red, so only trust boxes that are clearly
             // smaller than the captured window itself; anything bigger
-            // falls back to a plain click-circle.
+            // falls back to a plain click-circle (or no mark at all for the
+            // Enter trigger, which has no click point).
             var rect = element?.BoundingRectangle;
             var useBoundingBox = rect is { Width: > 0, Height: > 0 } r
                 && r.Width <= captured.Bounds.Width * 0.9
@@ -191,7 +242,7 @@ public sealed class SessionManager : IDisposable
                 var localRect = ScreenshotService.ToLocal(rect!.Value, captured.Bounds);
                 HighlightRenderer.DrawBoundingBox(screenshot, localRect, highlightColor, _config.HighlightThickness);
             }
-            else
+            else if (clickPoint is { } point)
             {
                 var localPoint = ScreenshotService.ToLocal(point, captured.Bounds);
                 HighlightRenderer.DrawClickCircle(screenshot, localPoint, highlightColor, _config.HighlightRadius, _config.HighlightThickness);
@@ -217,7 +268,7 @@ public sealed class SessionManager : IDisposable
         {
             // One failed capture (missing vault path, UIA hiccup, locked
             // file, ...) must not tear down the running session.
-            LogService.Log($"Klick-Verarbeitung fehlgeschlagen: {ex}");
+            LogService.Log($"Erfassung fehlgeschlagen: {ex}");
             if (_config.EnableClickSound)
             {
                 ClickFeedbackService.PlayError();
@@ -226,5 +277,9 @@ public sealed class SessionManager : IDisposable
         }
     }
 
-    public void Dispose() => _mouseHook.Dispose();
+    public void Dispose()
+    {
+        _mouseHook.Dispose();
+        _keyboardHook.Dispose();
+    }
 }

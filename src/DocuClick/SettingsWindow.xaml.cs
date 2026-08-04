@@ -38,6 +38,7 @@ public partial class SettingsWindow : Window
         AttachmentsFolderBox.Text = _config.AttachmentsFolder;
         UseUiAutomationBox.IsChecked = _config.UseUiAutomation;
         EnableClickSoundBox.IsChecked = _config.EnableClickSound;
+        CaptureOnEnterBox.IsChecked = _config.CaptureOnEnter;
         SelectSkipModifier(_config.SkipRecordingModifier);
         NewNotePerSessionBox.IsChecked = _config.NewNotePerSession;
         FixedNoteNameBox.Text = _config.FixedNoteName;
@@ -220,6 +221,7 @@ public partial class SettingsWindow : Window
             : AttachmentsFolderBox.Text.Trim();
         _config.UseUiAutomation = UseUiAutomationBox.IsChecked == true;
         _config.EnableClickSound = EnableClickSoundBox.IsChecked == true;
+        _config.CaptureOnEnter = CaptureOnEnterBox.IsChecked == true;
 
         _config.SkipRecordingModifier = SkipModifierBox.SelectedItem is ComboBoxItem selected
             ? (string)selected.Tag

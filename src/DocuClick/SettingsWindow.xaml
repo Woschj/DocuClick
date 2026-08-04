@@ -115,7 +115,8 @@
                         <TextBlock Text="Aufnahme-Verhalten" Style="{StaticResource SectionHeader}"/>
 
                         <CheckBox x:Name="UseUiAutomationBox" Content="UI-Automation-Beschreibungstexte verwenden" Margin="0,0,0,10"/>
-                        <CheckBox x:Name="EnableClickSoundBox" Content="Signalton bei jedem aufgezeichneten Klick" Margin="0,0,0,12"/>
+                        <CheckBox x:Name="EnableClickSoundBox" Content="Signalton bei jedem aufgezeichneten Klick" Margin="0,0,0,10"/>
+                        <CheckBox x:Name="CaptureOnEnterBox" Content="Auch bei Enter-Taste aufzeichnen (aktives Fenster + fokussiertes Element)" Margin="0,0,0,12"/>
 
                         <TextBlock Text="Klicks überspringen bei gedrückter Taste" Style="{StaticResource FieldLabel}"/>
                         <ComboBox x:Name="SkipModifierBox" Style="{StaticResource ModernComboBox}" Margin="0,0,0,12">

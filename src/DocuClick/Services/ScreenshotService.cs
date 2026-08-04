@@ -25,6 +25,37 @@ public static class ScreenshotService
         return new CapturedWindow(bitmap, bounds);
     }
 
+    /// <summary>
+    /// Captures the currently active window — used by the Enter-key trigger,
+    /// which has no click point to resolve a window from.
+    /// </summary>
+    public static CapturedWindow CaptureForegroundWindow()
+    {
+        var bounds = GetForegroundWindowBounds() ?? Screen.PrimaryScreen!.Bounds;
+
+        var bitmap = new Bitmap(bounds.Width, bounds.Height);
+        using var g = Graphics.FromImage(bitmap);
+        g.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size);
+        return new CapturedWindow(bitmap, bounds);
+    }
+
+    private static Rectangle? GetForegroundWindowBounds()
+    {
+        var hwnd = ForegroundWindowService.GetHandle();
+        if (hwnd == 0)
+        {
+            return null;
+        }
+
+        if (!NativeMethods.GetWindowRect(hwnd, out var rect))
+        {
+            return null;
+        }
+
+        var bounds = new Rectangle(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top);
+        return bounds.Width >= MinimumWindowDimension && bounds.Height >= MinimumWindowDimension ? bounds : null;
+    }
+
     public static Point ToLocal(Point screenPoint, Rectangle referenceBounds) =>
         new(screenPoint.X - referenceBounds.X, screenPoint.Y - referenceBounds.Y);
 
