@@ -44,11 +44,18 @@ Es wird keine kompilierte `.exe` im Repo mitversioniert. Stattdessen baut
 [.github/workflows/build.yml](.github/workflows/build.yml) bei jedem Push
 automatisch auf einem Windows-Runner:
 
-- Bei jedem Push nach `main`: Artefakt "DocuClick-win-x64" im jeweiligen
+- Bei jedem Push nach `main`: Artefakt "DocuClick-win-x64" (ein Zip mit
+  `DocuClick.exe` + den benötigten DLLs) im jeweiligen
   [Actions-Lauf](../../actions) herunterladbar (self-contained, läuft ohne
   separat installiertes .NET).
 - Bei einem Tag wie `v1.0.0`: zusätzlich ein
-  [GitHub Release](../../releases) mit `DocuClick.exe` als Anhang.
+  [GitHub Release](../../releases) mit `DocuClick-win-x64.zip` als Anhang.
+
+Bewusst kein Single-File-Publish: Der Self-Extract-Mechanismus (Entpacken
+in einen Temp-Ordner beim Start) ist bei unsignierten Binaries ein
+häufiger Auslöser für Windows-Defender-ML-Fehlalarme (z. B.
+`Wacatac.B!ml`). Nach dem Download muss das Zip entpackt werden;
+`DocuClick.exe` startet dann direkt aus dem entpackten Ordner.
 
 Neues Release erstellen:
 

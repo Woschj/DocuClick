@@ -23,21 +23,27 @@ jobs:
       - name: Build
         run: dotnet build DocuClick.sln --configuration Release --no-restore
 
-      # Self-contained single-file exe: runs on a bare Windows machine
-      # without a separate .NET runtime install.
+      # Self-contained (non-single-file) build: runs on a bare Windows
+      # machine without a separate .NET runtime install. Single-file
+      # publish is deliberately avoided here — its self-extracting temp
+      # unpacking at startup is a common false-positive trigger for
+      # Windows Defender's ML heuristics (e.g. Wacatac.B!ml) on unsigned
+      # binaries.
       - name: Publish
         run: >
           dotnet publish src/DocuClick/DocuClick.csproj
           -c Release -r win-x64 --self-contained true
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
           -o publish
+
+      - name: Zip publish output
+        run: Compress-Archive -Path publish/* -DestinationPath DocuClick-win-x64.zip
+        shell: pwsh
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: DocuClick-win-x64
-          path: publish/DocuClick.exe
+          path: DocuClick-win-x64.zip
 
   release:
     needs: build
@@ -54,5 +60,5 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: publish/DocuClick.exe
+          files: publish/DocuClick-win-x64.zip
           generate_release_notes: true
