@@ -113,9 +113,9 @@ public partial class App : Application
             return;
         }
 
-        if (!_config!.UseCanvas)
+        if (!_sessionManager.SupportsBranching)
         {
-            _trayApp!.ShowInfo("Nur im Canvas-Modus verfügbar (siehe Einstellungen).");
+            _trayApp!.ShowInfo("Nur im Canvas- oder draw.io-Modus verfügbar (siehe Einstellungen).");
             return;
         }
 

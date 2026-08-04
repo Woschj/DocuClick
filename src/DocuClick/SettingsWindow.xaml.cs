@@ -54,7 +54,18 @@ public partial class SettingsWindow : Window
         FixedNoteNameBox.Text = _config.FixedNoteName;
         FixedNoteNameBox.IsEnabled = !_config.NewNotePerSession;
 
-        UseCanvasBox.IsChecked = _config.UseCanvas;
+        switch (_config.OutputMode)
+        {
+            case "Canvas":
+                OutputModeCanvasRadio.IsChecked = true;
+                break;
+            case "DrawIo":
+                OutputModeDrawIoRadio.IsChecked = true;
+                break;
+            default:
+                OutputModeNoteRadio.IsChecked = true;
+                break;
+        }
 
         _startStopModifiers = _config.StartStopModifiers;
         _startStopKey = _config.StartStopKey;
@@ -239,7 +250,11 @@ public partial class SettingsWindow : Window
         _config.NewNotePerSession = NewNotePerSessionBox.IsChecked == true;
         _config.FixedNoteName = FixedNoteNameBox.Text.Trim();
 
-        _config.UseCanvas = UseCanvasBox.IsChecked == true;
+        _config.OutputMode = OutputModeCanvasRadio.IsChecked == true
+            ? "Canvas"
+            : OutputModeDrawIoRadio.IsChecked == true
+                ? "DrawIo"
+                : "Note";
 
         _config.StartStopModifiers = _startStopModifiers;
         _config.StartStopKey = _startStopKey;

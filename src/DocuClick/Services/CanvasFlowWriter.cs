@@ -23,7 +23,7 @@ public sealed record ResumableNode(string Id, string Label, double X, double Y);
 /// more than once) and starts a new column to the right so the new branch
 /// doesn't overlap the existing flow.
 /// </summary>
-public sealed class CanvasFlowWriter
+public sealed class CanvasFlowWriter : IFlowWriter
 {
     private const double NodeWidth = 380;
     private const double NodeHeight = 340;

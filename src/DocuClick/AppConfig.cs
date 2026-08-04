@@ -22,10 +22,12 @@ public sealed class AppConfig
     public int HighlightThickness { get; set; } = 4;
 
     /// <summary>
-    /// When true, clicks are written as connected nodes into an Obsidian
-    /// .canvas flow diagram instead of appended to a linear Markdown note.
+    /// Where clicks get written to: "Note" (linear Markdown), "Canvas"
+    /// (Obsidian .canvas flow diagram), or "DrawIo" (.drawio flow diagram,
+    /// screenshots embedded as base64). Canvas and DrawIo both support
+    /// branching via the hotkeys below.
     /// </summary>
-    public bool UseCanvas { get; set; } = false;
+    public string OutputMode { get; set; } = "Note";
 
     /// <summary>Global hotkey: bookmark the current node as a branch point.</summary>
     public string BranchMarkModifiers { get; set; } = "";

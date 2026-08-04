@@ -93,14 +93,25 @@ Beide Overlays sind klick-durchlässig (stören keine Bedienung) und werden
 aktiv aus Screenshots ausgeschlossen (`SetWindowDisplayAffinity`), tauchen
 also nie selbst im aufgenommenen Bild auf.
 
-## Canvas-Flow-Modus
+## Ausgabeformat: Notiz, Canvas oder draw.io
 
-Statt an eine lineare Notiz anzuhängen, kann DocuClick jeden Klick als
-verbundenen Knoten in eine Obsidian-`.canvas`-Datei schreiben (Einstellungen
-→ "Canvas-Modus"). Eine `.canvas`-Datei ist reines JSON, es braucht dafür
-kein Obsidian-Plugin. Der Hauptablauf läuft **vertikal** (von oben nach
-unten in einer Spalte); Abzweigungen öffnen jeweils eine neue Spalte rechts
-daneben.
+In den Einstellungen lässt sich eines von drei Formaten wählen:
+
+- **Notiz**: linearer Markdown-Text + Bild-Link, an eine `.md`-Datei angehängt (Standard).
+- **Obsidian-Canvas**: jeder Klick wird ein verbundener Knoten in einer
+  `.canvas`-Datei (reines JSON, kein Obsidian-Plugin nötig).
+- **draw.io / diagrams.net**: jeder Klick wird ein verbundener Knoten in
+  einer `.drawio`-Datei (reines XML). Screenshots werden direkt als
+  Base64-PNG in die Datei eingebettet — kein separater Attachments-Ordner
+  nötig für dieses Format. Öffnen/Bearbeiten in der kostenlosen
+  draw.io-App/Website oder Desktop-App. Wird eine echte Visio-Datei
+  benötigt: in draw.io über "Datei → Exportieren als → VSDX" — DocuClick
+  erzeugt selbst kein VSDX, da das Format ohne offizielles .NET-SDK deutlich
+  fehleranfälliger wäre.
+
+Canvas und draw.io teilen sich dieselbe Fluss-Logik: Der Hauptablauf läuft
+**vertikal** (von oben nach unten in einer Spalte); Abzweigungen öffnen
+jeweils eine neue Spalte rechts daneben.
 
 Abzweigungen werden über zwei globale Hotkeys gesteuert (Standard: `F9` /
 `F10`, änderbar in den Einstellungen):
@@ -125,14 +136,14 @@ Einstellungen (keine Neustart nötig).
 ### Ablauf nachträglich fortsetzen
 
 Über das Tray-Menü "Ablauf fortsetzen ab Punkt..." (nur verfügbar im
-Canvas-Modus, bei gestoppter Aufnahme) öffnet sich eine Liste aller bereits
-vorhandenen Knoten in der aktuellen Canvas-Datei. Die Auswahl legt fest, an
-welchem Knoten die *nächste* Aufnahme-Session ansetzt — neue Klicks bilden
-dann eine neue Spalte ab genau diesem Punkt, unabhängig davon, wie lange die
-ursprüngliche Aufzeichnung schon zurückliegt. Das funktioniert nur
-zuverlässig, solange "Neue Notiz/Canvas pro Aufnahme-Session" deaktiviert
-ist (eine feste Zieldatei), da sich die Auswahl auf die Knoten in exakt
-dieser einen Datei bezieht.
+Canvas- oder draw.io-Modus, bei gestoppter Aufnahme) öffnet sich eine Liste
+aller bereits vorhandenen Knoten in der aktuellen Datei. Die Auswahl legt
+fest, an welchem Knoten die *nächste* Aufnahme-Session ansetzt — neue
+Klicks bilden dann eine neue Spalte ab genau diesem Punkt, unabhängig
+davon, wie lange die ursprüngliche Aufzeichnung schon zurückliegt. Das
+funktioniert nur zuverlässig, solange "Neue Notiz/Canvas pro
+Aufnahme-Session" deaktiviert ist (eine feste Zieldatei), da sich die
+Auswahl auf die Knoten in exakt dieser einen Datei bezieht.
 
 ## Start/Stopp per Hotkey
 

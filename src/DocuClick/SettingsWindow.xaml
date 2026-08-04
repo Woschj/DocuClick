@@ -135,10 +135,17 @@
 
                 <Border Style="{StaticResource CardBorder}">
                     <StackPanel>
-                        <TextBlock Text="Canvas-Modus" Style="{StaticResource SectionHeader}"/>
-                        <CheckBox x:Name="UseCanvasBox" Content="Als Ablaufdiagramm (.canvas) statt als Notiz schreiben"/>
+                        <TextBlock Text="Ausgabeformat" Style="{StaticResource SectionHeader}"/>
+
+                        <RadioButton x:Name="OutputModeNoteRadio" GroupName="OutputMode" Margin="0,0,0,8"
+                                     Content="Notiz (Markdown, an eine .md-Datei anhängen)"/>
+                        <RadioButton x:Name="OutputModeCanvasRadio" GroupName="OutputMode" Margin="0,0,0,8"
+                                     Content="Obsidian-Canvas (.canvas, Ablaufdiagramm mit Abzweigungen)"/>
+                        <RadioButton x:Name="OutputModeDrawIoRadio" GroupName="OutputMode" Margin="0,0,0,4"
+                                     Content="draw.io / diagrams.net (.drawio, Ablaufdiagramm mit Abzweigungen)"/>
+
                         <TextBlock Style="{StaticResource HintText}"
-                                   Text="Jeder Klick wird als verbundener Knoten in eine .canvas-Datei im Vault geschrieben (vertikaler Hauptfluss, Abzweigungen als neue Spalten). Steuerung über die Hotkeys unten."/>
+                                   Text="Canvas und draw.io schreiben jeden Klick als verbundenen Knoten (vertikaler Hauptfluss, Abzweigungen als neue Spalten über die Hotkeys unten). Bei draw.io werden Screenshots direkt als Base64 in die Datei eingebettet — kein separater Attachments-Ordner nötig. Eine .drawio-Datei lässt sich in draw.io per „Datei → Exportieren als → VSDX” auch in eine echte Visio-Datei umwandeln."/>
                     </StackPanel>
                 </Border>
 

@@ -5,10 +5,10 @@ namespace DocuClick.Services;
 
 /// <summary>
 /// Glues the mouse/keyboard hooks to the capture pipeline (UI Automation
-/// lookup -> screenshot -> highlight -> Obsidian write) and owns the
-/// current session's target file. Writes either a linear note or a
-/// branching .canvas flow diagram, depending on
-/// <see cref="AppConfig.UseCanvas"/>.
+/// lookup -> screenshot -> highlight -> write) and owns the current
+/// session's target file. Writes either a linear note (ObsidianWriter) or
+/// a branching flow diagram (<see cref="IFlowWriter"/>: Obsidian Canvas or
+/// draw.io), depending on <see cref="AppConfig.OutputMode"/>.
 /// </summary>
 public sealed class SessionManager : IDisposable
 {
@@ -17,6 +17,7 @@ public sealed class SessionManager : IDisposable
     private readonly AppConfig _config;
     private readonly ObsidianWriter _noteWriter;
     private readonly CanvasFlowWriter _canvasWriter;
+    private readonly DrawIoFlowWriter _drawIoWriter;
     private string _currentTargetFileName = string.Empty;
     private bool _isRunning;
 
@@ -27,11 +28,22 @@ public sealed class SessionManager : IDisposable
 
     public bool IsRunning => _isRunning;
 
+    /// <summary>Whether the active output mode supports branching (Canvas/DrawIo vs. plain Note).</summary>
+    public bool SupportsBranching => ActiveFlowWriter is not null;
+
+    private IFlowWriter? ActiveFlowWriter => _config.OutputMode switch
+    {
+        "Canvas" => _canvasWriter,
+        "DrawIo" => _drawIoWriter,
+        _ => null
+    };
+
     public SessionManager(AppConfig config)
     {
         _config = config;
         _noteWriter = new ObsidianWriter(config);
         _canvasWriter = new CanvasFlowWriter(config);
+        _drawIoWriter = new DrawIoFlowWriter(config);
         _mouseHook.LeftButtonDown += OnLeftButtonDown;
         _keyboardHook.EnterPressed += OnEnterPressed;
     }
@@ -40,10 +52,7 @@ public sealed class SessionManager : IDisposable
     {
         _currentTargetFileName = ResolveTargetFileName();
 
-        if (_config.UseCanvas)
-        {
-            _canvasWriter.StartSession(_currentTargetFileName);
-        }
+        ActiveFlowWriter?.StartSession(_currentTargetFileName);
 
         _mouseHook.Start();
         if (_config.CaptureOnEnter)
@@ -52,46 +61,47 @@ public sealed class SessionManager : IDisposable
         }
 
         _isRunning = true;
-        if (_config.UseCanvas)
+        if (ActiveFlowWriter is not null)
         {
-            CanvasStatusChanged?.Invoke(BuildCanvasStatusText());
+            CanvasStatusChanged?.Invoke(BuildStatusText());
         }
-        LogService.Log($"Session gestartet. Ziel: {_currentTargetFileName} (Canvas: {_config.UseCanvas}), Vault: '{_config.VaultPath}'");
+        LogService.Log($"Session gestartet. Ziel: {_currentTargetFileName} (Modus: {_config.OutputMode}), Vault: '{_config.VaultPath}'");
     }
 
     public void Stop()
     {
         _mouseHook.Stop();
         _keyboardHook.Stop();
-        _canvasWriter.Stop();
+        ActiveFlowWriter?.Stop();
         _isRunning = false;
         BranchDepthChanged?.Invoke(0);
         CanvasStatusChanged?.Invoke(null);
         LogService.Log("Session gestoppt.");
     }
 
-    private string BuildCanvasStatusText()
+    private string BuildStatusText()
     {
-        var depth = _canvasWriter.BranchDepth;
+        var writer = ActiveFlowWriter!;
+        var depth = writer.BranchDepth;
         var branchText = depth > 0 ? $"Branch-Tiefe {depth}" : "Hauptablauf";
-        var label = _canvasWriter.CurrentNodeLabel ?? "(noch kein Klick)";
-        return $"Canvas: {branchText}\nZuletzt: {label}";
+        var label = writer.CurrentNodeLabel ?? "(noch kein Klick)";
+        return $"{_config.OutputMode}: {branchText}\nZuletzt: {label}";
     }
 
     /// <summary>Hotkey action: bookmark the current node as a branch point.</summary>
     public void MarkBranchAnchor()
     {
-        if (!_isRunning || !_config.UseCanvas)
+        if (!_isRunning || ActiveFlowWriter is not { } writer)
         {
-            InfoOccurred?.Invoke("Hotkey ignoriert: keine laufende Canvas-Session.");
+            InfoOccurred?.Invoke("Hotkey ignoriert: aktueller Ausgabemodus unterstützt keine Abzweigungen.");
             return;
         }
 
-        var result = _canvasWriter.MarkBranchAnchor();
+        var result = writer.MarkBranchAnchor();
         if (result.Success)
         {
             BranchDepthChanged?.Invoke(result.Depth);
-            CanvasStatusChanged?.Invoke(BuildCanvasStatusText());
+            CanvasStatusChanged?.Invoke(BuildStatusText());
             InfoOccurred?.Invoke($"Abzweigungspunkt #{result.Depth} gesetzt bei: {result.AnchorLabel}");
         }
         else
@@ -103,17 +113,17 @@ public sealed class SessionManager : IDisposable
     /// <summary>Hotkey action: rewind the cursor to the last bookmarked branch point.</summary>
     public void JumpToLastAnchor()
     {
-        if (!_isRunning || !_config.UseCanvas)
+        if (!_isRunning || ActiveFlowWriter is not { } writer)
         {
-            InfoOccurred?.Invoke("Hotkey ignoriert: keine laufende Canvas-Session.");
+            InfoOccurred?.Invoke("Hotkey ignoriert: aktueller Ausgabemodus unterstützt keine Abzweigungen.");
             return;
         }
 
-        var result = _canvasWriter.JumpToLastAnchor();
+        var result = writer.JumpToLastAnchor();
         if (result.Success)
         {
             BranchDepthChanged?.Invoke(result.Depth);
-            CanvasStatusChanged?.Invoke(BuildCanvasStatusText());
+            CanvasStatusChanged?.Invoke(BuildStatusText());
             InfoOccurred?.Invoke($"Neue Abzweigung von Punkt #{result.Depth} ({result.AnchorLabel}) — nächster Klick startet die neue Spalte.");
         }
         else
@@ -122,16 +132,21 @@ public sealed class SessionManager : IDisposable
         }
     }
 
-    /// <summary>For the "Ablauf fortsetzen ab Punkt..." picker: nodes already in the target canvas file.</summary>
+    /// <summary>For the "Ablauf fortsetzen ab Punkt..." picker: nodes already in the target flow file.</summary>
     public List<ResumableNode> ListResumableCanvasNodes() =>
-        _canvasWriter.ListNodesForResume(ResolveTargetFileName());
+        ActiveFlowWriter?.ListNodesForResume(ResolveTargetFileName()) ?? new List<ResumableNode>();
 
     /// <summary>Queues a chosen node as the starting point of the next Start() call.</summary>
-    public void SetResumeAnchor(ResumableNode node) => _canvasWriter.SetResumeAnchor(node);
+    public void SetResumeAnchor(ResumableNode node) => ActiveFlowWriter?.SetResumeAnchor(node);
 
     private string ResolveTargetFileName()
     {
-        var extension = _config.UseCanvas ? ".canvas" : ".md";
+        var extension = _config.OutputMode switch
+        {
+            "Canvas" => ".canvas",
+            "DrawIo" => ".drawio",
+            _ => ".md"
+        };
 
         if (!_config.NewNotePerSession && !string.IsNullOrWhiteSpace(_config.FixedNoteName))
         {
@@ -248,9 +263,9 @@ public sealed class SessionManager : IDisposable
                 HighlightRenderer.DrawClickCircle(screenshot, localPoint, highlightColor, _config.HighlightRadius, _config.HighlightThickness);
             }
 
-            if (_config.UseCanvas)
+            if (ActiveFlowWriter is { } writer)
             {
-                _canvasWriter.AddClickNode(description, screenshot, timestamp);
+                writer.AddClickNode(description, screenshot, timestamp);
             }
             else
             {
