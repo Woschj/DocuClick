@@ -14,15 +14,16 @@ using Button = System.Windows.Controls.Button;
 namespace DocuClick;
 
 /// <summary>
-/// Slim bar pinned to the top edge of the primary screen, visible for the
-/// entire lifetime of the app (not just while recording) so there is
-/// always an at-a-glance answer to "is it running right now". Unlike the
-/// recording dot / canvas-status HUD it hosts a real button ("Neue
-/// Session"), so — deliberately, unlike those — it is NOT click-through.
+/// Small floating pill centered at the top of the primary screen — like a
+/// TeamViewer session toolbar, NOT a full-width bar. It hosts a real button
+/// ("Neue Session") so it can't be click-through like the other overlays,
+/// which means it must stay content-sized: a full-width bar would block
+/// window dragging, menu bars, and Snap zones along the entire top edge.
+/// Visible for the app's whole lifetime (not just while recording), so
+/// there is always an at-a-glance answer to "is it running right now".
 /// </summary>
 public sealed class TopBarWindow : Window
 {
-    // Slim like a TeamViewer session toolbar, not a full-height title bar.
     internal const double BarHeight = 22;
 
     private readonly TextBlock _statusText;
@@ -41,24 +42,22 @@ public sealed class TopBarWindow : Window
         Topmost = true;
         ResizeMode = ResizeMode.NoResize;
         ShowActivated = false;
-        Left = bounds.Left;
+        SizeToContent = SizeToContent.WidthAndHeight;
         Top = bounds.Top;
-        Width = bounds.Width;
-        Height = BarHeight;
 
         _statusText = new TextBlock
         {
             Foreground = Brushes.White,
             FontSize = 11,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(10, 0, 0, 0)
+            Margin = new Thickness(10, 0, 10, 0)
         };
 
         _newSessionButton = new Button
         {
             Content = "Neue Session",
             FontSize = 11,
-            Margin = new Thickness(0, 0, 8, 0),
+            Margin = new Thickness(0, 0, 6, 0),
             Padding = new Thickness(8, 0, 8, 0),
             IsEnabled = false,
             VerticalAlignment = VerticalAlignment.Center,
@@ -66,13 +65,9 @@ public sealed class TopBarWindow : Window
         };
         _newSessionButton.Click += (_, _) => NewSessionRequested?.Invoke();
 
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        Grid.SetColumn(_statusText, 0);
-        Grid.SetColumn(_newSessionButton, 1);
-        grid.Children.Add(_statusText);
-        grid.Children.Add(_newSessionButton);
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        panel.Children.Add(_statusText);
+        panel.Children.Add(_newSessionButton);
 
         // Solid, saturated blue (TeamViewer-toolbar style) instead of the
         // previous near-black bar, which blended into dark taskbars/title
@@ -80,10 +75,18 @@ public sealed class TopBarWindow : Window
         Content = new Border
         {
             Background = new SolidColorBrush(Color.FromRgb(0x1C, 0x5D, 0xB3)),
-            Child = grid
+            CornerRadius = new CornerRadius(0, 0, 6, 6),
+            Height = BarHeight,
+            Child = panel
         };
 
         UpdateStatus(isRecording: false, detail: null);
+
+        // Content-sized (not screen-wide), so it only ever occupies a small
+        // pill at the top-center — everything outside it (window title
+        // bars, menus, Snap zones) stays fully clickable, unlike the
+        // previous full-width version.
+        SizeChanged += (_, _) => Left = bounds.Left + (bounds.Width - ActualWidth) / 2;
 
         SourceInitialized += (_, _) =>
         {
