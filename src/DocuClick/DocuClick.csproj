@@ -18,6 +18,7 @@
     <!-- Set once here instead of also in app.manifest (WFAC010: the two must
          not both configure DPI awareness). -->
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

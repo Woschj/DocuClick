@@ -5,6 +5,20 @@ mit Klick-Markierung erstellt und samt Beschreibungstext in eine
 Obsidian-Notiz einfügt. Siehe Projektspezifikation für den vollständigen
 Funktionsumfang.
 
+App-Icon: [Assets/app.ico](src/DocuClick/Assets/app.ico) (im selben
+Rot-auf-Dunkel-Stil wie das Tray-Icon).
+
+## Windows-Sicherheitswarnung beim Download
+
+Die `.exe` ist aktuell **nicht code-signiert**, daher zeigt Windows
+SmartScreen beim ersten Ausführen eine Warnung ("Windows hat den Start
+dieser App verhindert" o. Ä.) — das ist normal für unsignierte, neue
+Software und keine Fehlfunktion. Ein Code-Signing-Zertifikat kostet
+laufend Geld und erfordert in der Regel eine verifizierte Firma (siehe
+CA/Browser-Forum-Anforderungen); solange keines eingerichtet ist, bleibt
+die Warnung bestehen. Wer die Warnung wegklicken will: "Weitere
+Informationen" → "Trotzdem ausführen".
+
 ## Build (nur unter Windows)
 
 Voraussetzung: .NET 8 SDK.
