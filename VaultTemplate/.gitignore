@@ -1,0 +1,12 @@
+# This template ships intentionally empty. Real DocuClick sessions write
+# notes/canvases/docs and screenshots into Prozesse/ — keep those out of
+# git so a live-in-place vault never leaks captured content into this
+# public repo (see VaultTemplate/README.md: copy this folder out first).
+/Prozesse/*
+!/Prozesse/.gitkeep
+!/Prozesse/Attachments
+/Prozesse/Attachments/*
+!/Prozesse/Attachments/.gitkeep
+
+# Obsidian's local workspace/cache state, not template content.
+.obsidian/

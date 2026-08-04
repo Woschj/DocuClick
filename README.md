@@ -127,6 +127,15 @@ Wird der Dialog abgebrochen, bleibt die Aufnahme aus (bzw. bei "Neue
 Session" während einer laufenden Aufnahme: die laufende Session bleibt
 unverändert bestehen).
 
+### Vault-Template für Prozessdokumentation
+
+[VaultTemplate/](VaultTemplate/) enthält eine leere, für DocuClick
+vorbereitete Obsidian-Vault-Struktur (Zielordner, Attachments-Unterordner,
+Blanko-Vorlagen für Prozessnotizen/-canvases) als Startpunkt für eine
+Knowledge Base. **Vor echter Nutzung außerhalb dieses Repos kopieren** —
+siehe [VaultTemplate/README.md](VaultTemplate/README.md) für Details und
+den Grund dafür (Screenshots landen sonst im öffentlichen Git-Verlauf).
+
 ### Top-Leiste, Overlays und "Neue Session"
 
 Eine kleine, mittig oben schwebende Pille (wie die TeamViewer-Session-Leiste
