@@ -1,0 +1,97 @@
+<Window x:Class="DocuClick.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="DocuClick - Einstellungen" Height="680" Width="480"
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
+    <DockPanel Margin="16">
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0" DockPanel.Dock="Bottom">
+            <Button Content="Abbrechen" Width="90" Margin="0,0,8,0" Click="OnCancelClicked"/>
+            <Button Content="Speichern" Width="90" Click="OnSaveClicked"/>
+        </StackPanel>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock Text="Obsidian-Vault-Pfad" FontWeight="Bold"/>
+                <DockPanel Margin="0,4,0,12">
+                    <Button Content="Durchsuchen..." DockPanel.Dock="Right" Margin="8,0,0,0" Click="OnBrowseVaultClicked"/>
+                    <TextBox x:Name="VaultPathBox"/>
+                </DockPanel>
+
+                <TextBlock Text="Attachments-Unterordner" FontWeight="Bold"/>
+                <TextBox x:Name="AttachmentsFolderBox" Margin="0,4,0,12"/>
+
+                <CheckBox x:Name="UseUiAutomationBox" Content="UI-Automation-Beschreibungstexte verwenden" Margin="0,0,0,12"/>
+
+                <CheckBox x:Name="EnableClickSoundBox" Content="Signalton bei jedem aufgezeichneten Klick" Margin="0,0,0,12"/>
+
+                <TextBlock Text="Hotkey: Aufnahme starten/stoppen" FontWeight="Bold"/>
+                <Grid Margin="0,4,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="80"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="StartStopModifiersBox" Grid.Column="0" Margin="0,0,8,0"/>
+                    <TextBox x:Name="StartStopKeyBox" Grid.Column="1"/>
+                </Grid>
+
+                <TextBlock Text="Klicks überspringen bei gedrückter Taste" FontWeight="Bold"/>
+                <ComboBox x:Name="SkipModifierBox" Margin="0,4,0,12">
+                    <ComboBoxItem Content="Keine (immer aufzeichnen)" Tag="None"/>
+                    <ComboBoxItem Content="Umschalt (Shift)" Tag="Shift"/>
+                    <ComboBoxItem Content="Strg (Control)" Tag="Control"/>
+                    <ComboBoxItem Content="Alt" Tag="Alt"/>
+                </ComboBox>
+
+                <CheckBox x:Name="NewNotePerSessionBox" Content="Neue Notiz/Canvas pro Aufnahme-Session"
+                          Margin="0,0,0,4" Checked="OnNewNotePerSessionChanged" Unchecked="OnNewNotePerSessionChanged"/>
+                <TextBlock Text="Feste Zieldatei (Name im Vault-Root, ohne Pfad/Endung)"/>
+                <TextBox x:Name="FixedNoteNameBox" Margin="0,4,0,12"/>
+
+                <CheckBox x:Name="UseCanvasBox" Content="Canvas-Modus: als Ablaufdiagramm (.canvas) statt als Notiz schreiben"
+                          Margin="0,0,0,4" Checked="OnUseCanvasChanged" Unchecked="OnUseCanvasChanged"/>
+                <TextBlock x:Name="CanvasHintText" TextWrapping="Wrap" Foreground="Gray" Margin="0,0,0,12"
+                           Text="Jeder Klick wird als verbundener Knoten in eine .canvas-Datei im Vault geschrieben. Mit den beiden Hotkeys unten lassen sich Abzweigungen setzen."/>
+
+                <TextBlock Text="Hotkey: Abzweigungspunkt setzen" FontWeight="Bold"/>
+                <Grid Margin="0,4,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="80"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="BranchMarkModifiersBox" Grid.Column="0" Margin="0,0,8,0"/>
+                    <TextBox x:Name="BranchMarkKeyBox" Grid.Column="1"/>
+                </Grid>
+
+                <TextBlock Text="Hotkey: zu letztem Abzweigungspunkt springen" FontWeight="Bold"/>
+                <Grid Margin="0,4,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="80"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="BranchJumpModifiersBox" Grid.Column="0" Margin="0,0,8,0"/>
+                    <TextBox x:Name="BranchJumpKeyBox" Grid.Column="1"/>
+                </Grid>
+                <TextBlock TextWrapping="Wrap" Foreground="Gray" Margin="0,0,0,12"
+                           Text="Modifier z.B. 'Control+Alt', Taste ein einzelner Buchstabe/eine Zifferntaste, z.B. 'B'. Änderungen gelten sofort nach dem Speichern."/>
+
+                <TextBlock Text="Highlighter-Farbe (Hex)" FontWeight="Bold"/>
+                <TextBox x:Name="HighlightColorBox" Margin="0,4,0,12"/>
+
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                        <TextBlock Text="Radius (px)" FontWeight="Bold"/>
+                        <TextBox x:Name="HighlightRadiusBox" Margin="0,4,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                        <TextBlock Text="Strichstärke (px)" FontWeight="Bold"/>
+                        <TextBox x:Name="HighlightThicknessBox" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

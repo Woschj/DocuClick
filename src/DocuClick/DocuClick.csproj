@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>DocuClick</RootNamespace>
+    <AssemblyName>DocuClick</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <LangVersion>latest</LangVersion>
+    <!-- The [LibraryImport] source generator (NativeMethods/ForegroundWindowService)
+         can emit unsafe pointer-based marshalling stubs; without this the build
+         fails with CS0227/SYSLIB1062. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Set once here instead of also in app.manifest (WFAC010: the two must
+         not both configure DPI awareness). -->
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- macOS Finder/sync leftovers (AppleDouble ._* files) must not be
+         picked up as project items if this folder is ever synced from a Mac. -->
+    <Compile Remove="**/._*" />
+    <Page Remove="**/._*" />
+    <None Remove="**/._*" />
+    <ApplicationDefinition Remove="**/._*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- UseWPF + UseWindowsForms together implicitly bring both
+         System.Windows and System.Windows.Forms into every file, and both
+         namespaces define Application/MessageBox/Clipboard/... Alias the
+         ones this project actually uses to the WPF versions here, once,
+         instead of qualifying every call site. -->
+    <Using Include="System.Windows.Application" Alias="Application" />
+    <Using Include="System.Windows.MessageBox" Alias="MessageBox" />
+  </ItemGroup>
+
+</Project>

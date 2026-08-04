@@ -1,0 +1,17 @@
+<Window x:Class="DocuClick.ResumePickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="DocuClick - Ablauf fortsetzen" Height="420" Width="480"
+        WindowStartupLocation="CenterScreen">
+    <DockPanel Margin="16">
+        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,8"
+                   Text="Knoten wählen, an den die nächste Aufnahme angehängt werden soll. Neue Klicks starten dann als eigene Spalte ab diesem Punkt."/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0" DockPanel.Dock="Bottom">
+            <Button Content="Abbrechen" Width="90" Margin="0,0,8,0" Click="OnCancelClicked"/>
+            <Button Content="Auswählen" Width="90" Click="OnSelectClicked"/>
+        </StackPanel>
+
+        <ListBox x:Name="NodeListBox" DisplayMemberPath="Label"/>
+    </DockPanel>
+</Window>
