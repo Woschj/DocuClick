@@ -109,6 +109,12 @@ In den Einstellungen lässt sich eines von drei Formaten wählen:
   erzeugt selbst kein VSDX, da das Format ohne offizielles .NET-SDK deutlich
   fehleranfälliger wäre.
 
+Das Pfad-Feld in den Einstellungen passt sich dem gewählten Format an: bei
+Notiz/Canvas heißt es "Obsidian-Vault" (inkl. Attachments-Unterordner); bei
+draw.io heißt es "Zielordner" und der Attachments-Unterordner wird
+ausgeblendet, da draw.io Bilder direkt einbettet und keinen Obsidian-Vault
+braucht — es kann jeder beliebige Ordner sein (z. B. ein SharePoint-Sync-Ordner).
+
 Canvas und draw.io teilen sich dieselbe Fluss-Logik: Der Hauptablauf läuft
 **vertikal** (von oben nach unten in einer Spalte); Abzweigungen öffnen
 jeweils eine neue Spalte rechts daneben.

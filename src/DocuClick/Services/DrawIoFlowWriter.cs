@@ -2,7 +2,6 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
-using System.Net;
 using System.Xml.Linq;
 
 namespace DocuClick.Services;
@@ -76,7 +75,7 @@ public sealed class DrawIoFlowWriter : IFlowWriter
 
             var labelCell = root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == id + "_label");
             var label = labelCell is not null
-                ? WebUtility.HtmlDecode((string?)labelCell.Attribute("value") ?? "")
+                ? (string?)labelCell.Attribute("value") ?? "(ohne Beschreibung)"
                 : "(ohne Beschreibung)";
 
             var geometry = cell.Element("mxGeometry");
@@ -95,20 +94,31 @@ public sealed class DrawIoFlowWriter : IFlowWriter
     {
         if (string.IsNullOrWhiteSpace(_config.VaultPath))
         {
-            throw new InvalidOperationException("Kein Obsidian-Vault-Pfad konfiguriert.");
+            throw new InvalidOperationException("Kein Zielordner konfiguriert.");
         }
 
         _filePath = Path.Combine(_config.VaultPath, fileName);
         (_doc, _root) = LoadOrCreate(_filePath);
 
+        // Rebuild the id -> label lookup from the file's *image* cells (the
+        // ones tracked as node identity elsewhere) by reading each one's
+        // sibling "<id>_label" cell — the image cell's own "value" is
+        // always empty.
         _labels.Clear();
         foreach (var cell in _root.Elements("mxCell"))
         {
             var id = (string?)cell.Attribute("id");
-            var value = (string?)cell.Attribute("value");
-            if (id is not null && !string.IsNullOrEmpty(value))
+            var style = (string?)cell.Attribute("style") ?? "";
+            if (id is null || !style.StartsWith("shape=image", StringComparison.Ordinal))
             {
-                _labels[id] = WebUtility.HtmlDecode(value);
+                continue;
+            }
+
+            var labelCell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == id + "_label");
+            var label = (string?)labelCell?.Attribute("value");
+            if (!string.IsNullOrEmpty(label))
+            {
+                _labels[id] = label;
             }
         }
 
@@ -202,10 +212,13 @@ public sealed class DrawIoFlowWriter : IFlowWriter
 
     private void AddNodeAndEdge(string nodeId, double x, double y, string label, string imageBase64, string? connectFromNodeId)
     {
+        // XAttribute XML-escapes its value automatically when the document is
+        // saved — pre-escaping here (e.g. via WebUtility.HtmlEncode) would
+        // double-escape it (e.g. "&" -> "&amp;" -> "&amp;amp;").
         var labelCell = new XElement("mxCell",
             new XAttribute("id", nodeId + "_label"),
-            new XAttribute("value", WebUtility.HtmlEncode(label)),
-            new XAttribute("style", "text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;spacingLeft=2;"),
+            new XAttribute("value", label),
+            new XAttribute("style", "text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;spacingLeft=2;"),
             new XAttribute("vertex", "1"),
             new XAttribute("parent", "1"),
             new XElement("mxGeometry",
@@ -213,10 +226,14 @@ public sealed class DrawIoFlowWriter : IFlowWriter
                 new XAttribute("width", Fmt(NodeWidth)), new XAttribute("height", Fmt(LabelHeight)),
                 new XAttribute("as", "geometry")));
 
+        // draw.io's own embedded-image convention uses a comma (not
+        // ";base64,") right after the MIME type — a semicolon there would
+        // be parsed as a style-property delimiter and truncate the image
+        // data, corrupting the shape.
         var imageCell = new XElement("mxCell",
             new XAttribute("id", nodeId),
             new XAttribute("value", ""),
-            new XAttribute("style", $"shape=image;imageAspect=0;image=data:image/png;base64,{imageBase64};"),
+            new XAttribute("style", $"shape=image;imageAspect=0;image=data:image/png,{imageBase64};"),
             new XAttribute("vertex", "1"),
             new XAttribute("parent", "1"),
             new XElement("mxGeometry",

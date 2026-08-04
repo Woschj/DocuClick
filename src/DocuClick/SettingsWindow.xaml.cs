@@ -100,6 +100,17 @@ public partial class SettingsWindow : Window
         FixedNoteNameBox.IsEnabled = NewNotePerSessionBox.IsChecked != true;
     }
 
+    private void OnOutputModeChanged(object sender, RoutedEventArgs e)
+    {
+        // draw.io embeds screenshots directly (no attachments folder), and
+        // isn't tied to an Obsidian vault at all — just any target folder.
+        var isDrawIo = OutputModeDrawIoRadio.IsChecked == true;
+
+        VaultCardHeader.Text = isDrawIo ? "Zielordner" : "Obsidian-Vault";
+        VaultPathLabel.Text = isDrawIo ? "Zielordner-Pfad (für die .drawio-Datei)" : "Vault-Pfad";
+        AttachmentsRow.Visibility = isDrawIo ? Visibility.Collapsed : Visibility.Visible;
+    }
+
     // --- Color swatches -----------------------------------------------
 
     private void OnHighlightColorSwatchClicked(object sender, RoutedEventArgs e)

@@ -96,17 +96,38 @@
 
                 <Border Style="{StaticResource CardBorder}">
                     <StackPanel>
-                        <TextBlock Text="Obsidian-Vault" Style="{StaticResource SectionHeader}"/>
+                        <TextBlock Text="Ausgabeformat" Style="{StaticResource SectionHeader}"/>
 
-                        <TextBlock Text="Vault-Pfad" Style="{StaticResource FieldLabel}"/>
+                        <RadioButton x:Name="OutputModeNoteRadio" GroupName="OutputMode" Margin="0,0,0,8"
+                                     Content="Notiz (Markdown, an eine .md-Datei anhängen)"
+                                     Checked="OnOutputModeChanged"/>
+                        <RadioButton x:Name="OutputModeCanvasRadio" GroupName="OutputMode" Margin="0,0,0,8"
+                                     Content="Obsidian-Canvas (.canvas, Ablaufdiagramm mit Abzweigungen)"
+                                     Checked="OnOutputModeChanged"/>
+                        <RadioButton x:Name="OutputModeDrawIoRadio" GroupName="OutputMode" Margin="0,0,0,4"
+                                     Content="draw.io / diagrams.net (.drawio, Ablaufdiagramm mit Abzweigungen)"
+                                     Checked="OnOutputModeChanged"/>
+
+                        <TextBlock Style="{StaticResource HintText}"
+                                   Text="Canvas und draw.io schreiben jeden Klick als verbundenen Knoten (vertikaler Hauptfluss, Abzweigungen als neue Spalten über die Hotkeys unten). Bei draw.io werden Screenshots direkt als Base64 in die Datei eingebettet — kein separater Attachments-Ordner nötig. Eine .drawio-Datei lässt sich in draw.io per „Datei → Exportieren als → VSDX” auch in eine echte Visio-Datei umwandeln."/>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource CardBorder}">
+                    <StackPanel>
+                        <TextBlock x:Name="VaultCardHeader" Text="Obsidian-Vault" Style="{StaticResource SectionHeader}"/>
+
+                        <TextBlock x:Name="VaultPathLabel" Text="Vault-Pfad" Style="{StaticResource FieldLabel}"/>
                         <DockPanel Margin="0,0,0,12">
                             <Button Content="Durchsuchen..." DockPanel.Dock="Right" Margin="8,0,0,0"
                                     Style="{StaticResource ModernButton}" Click="OnBrowseVaultClicked"/>
                             <TextBox x:Name="VaultPathBox" Style="{StaticResource ModernTextBox}"/>
                         </DockPanel>
 
-                        <TextBlock Text="Attachments-Unterordner" Style="{StaticResource FieldLabel}"/>
-                        <TextBox x:Name="AttachmentsFolderBox" Style="{StaticResource ModernTextBox}"/>
+                        <StackPanel x:Name="AttachmentsRow">
+                            <TextBlock Text="Attachments-Unterordner" Style="{StaticResource FieldLabel}"/>
+                            <TextBox x:Name="AttachmentsFolderBox" Style="{StaticResource ModernTextBox}"/>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
@@ -130,22 +151,6 @@
                                   Margin="0,0,0,6" Checked="OnNewNotePerSessionChanged" Unchecked="OnNewNotePerSessionChanged"/>
                         <TextBlock Text="Feste Zieldatei (Name im Vault-Root, ohne Pfad/Endung)" Style="{StaticResource FieldLabel}"/>
                         <TextBox x:Name="FixedNoteNameBox" Style="{StaticResource ModernTextBox}"/>
-                    </StackPanel>
-                </Border>
-
-                <Border Style="{StaticResource CardBorder}">
-                    <StackPanel>
-                        <TextBlock Text="Ausgabeformat" Style="{StaticResource SectionHeader}"/>
-
-                        <RadioButton x:Name="OutputModeNoteRadio" GroupName="OutputMode" Margin="0,0,0,8"
-                                     Content="Notiz (Markdown, an eine .md-Datei anhängen)"/>
-                        <RadioButton x:Name="OutputModeCanvasRadio" GroupName="OutputMode" Margin="0,0,0,8"
-                                     Content="Obsidian-Canvas (.canvas, Ablaufdiagramm mit Abzweigungen)"/>
-                        <RadioButton x:Name="OutputModeDrawIoRadio" GroupName="OutputMode" Margin="0,0,0,4"
-                                     Content="draw.io / diagrams.net (.drawio, Ablaufdiagramm mit Abzweigungen)"/>
-
-                        <TextBlock Style="{StaticResource HintText}"
-                                   Text="Canvas und draw.io schreiben jeden Klick als verbundenen Knoten (vertikaler Hauptfluss, Abzweigungen als neue Spalten über die Hotkeys unten). Bei draw.io werden Screenshots direkt als Base64 in die Datei eingebettet — kein separater Attachments-Ordner nötig. Eine .drawio-Datei lässt sich in draw.io per „Datei → Exportieren als → VSDX” auch in eine echte Visio-Datei umwandeln."/>
                     </StackPanel>
                 </Border>
 
