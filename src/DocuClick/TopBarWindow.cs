@@ -10,6 +10,7 @@ using System.Windows.Media;
 using Color = System.Windows.Media.Color;
 using Brushes = System.Windows.Media.Brushes;
 using Button = System.Windows.Controls.Button;
+using Orientation = System.Windows.Controls.Orientation;
 
 namespace DocuClick;
 
