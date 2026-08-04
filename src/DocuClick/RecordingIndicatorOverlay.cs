@@ -22,7 +22,7 @@ public sealed class RecordingIndicatorOverlay : Window
     private const double EdgeMargin = 8;
 
     /// <summary>Space reserved below the always-visible <see cref="TopBarWindow"/>.</summary>
-    internal const double TopBarClearance = 30;
+    internal const double TopBarClearance = TopBarWindow.BarHeight;
 
     public RecordingIndicatorOverlay()
     {

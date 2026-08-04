@@ -22,7 +22,8 @@ namespace DocuClick;
 /// </summary>
 public sealed class TopBarWindow : Window
 {
-    private const double BarHeight = 30;
+    // Slim like a TeamViewer session toolbar, not a full-height title bar.
+    internal const double BarHeight = 22;
 
     private readonly TextBlock _statusText;
     private readonly Button _newSessionButton;
@@ -48,16 +49,17 @@ public sealed class TopBarWindow : Window
         _statusText = new TextBlock
         {
             Foreground = Brushes.White,
-            FontSize = 12,
+            FontSize = 11,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(12, 0, 0, 0)
+            Margin = new Thickness(10, 0, 0, 0)
         };
 
         _newSessionButton = new Button
         {
             Content = "Neue Session",
-            Margin = new Thickness(0, 0, 12, 0),
-            Padding = new Thickness(10, 2, 10, 2),
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 8, 0),
+            Padding = new Thickness(8, 0, 8, 0),
             IsEnabled = false,
             VerticalAlignment = VerticalAlignment.Center,
             ToolTip = "Schließt das aktuelle Diagramm/die aktuelle Notiz ab und startet sofort eine neue Aufnahme-Session."
@@ -72,9 +74,12 @@ public sealed class TopBarWindow : Window
         grid.Children.Add(_statusText);
         grid.Children.Add(_newSessionButton);
 
+        // Solid, saturated blue (TeamViewer-toolbar style) instead of the
+        // previous near-black bar, which blended into dark taskbars/title
+        // bars and was hard to spot at a glance.
         Content = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb(215, 30, 30, 32)),
+            Background = new SolidColorBrush(Color.FromRgb(0x1C, 0x5D, 0xB3)),
             Child = grid
         };
 
