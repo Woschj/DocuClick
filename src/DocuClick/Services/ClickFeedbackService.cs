@@ -10,7 +10,7 @@ namespace DocuClick.Services;
 /// </summary>
 public static class ClickFeedbackService
 {
-    public static void PlayCaptured() => SystemSounds.Click.Play();
+    public static void PlayCaptured() => SystemSounds.Beep.Play();
 
     public static void PlaySkipped() => SystemSounds.Asterisk.Play();
 
