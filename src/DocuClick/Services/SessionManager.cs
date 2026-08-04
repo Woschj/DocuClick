@@ -58,6 +58,7 @@ public sealed class SessionManager : IDisposable
         _wordWriter = new WordFlowWriter(config);
         _excalidrawWriter = new ExcalidrawFlowWriter(config);
         _mouseHook.LeftButtonDown += OnLeftButtonDown;
+        _mouseHook.RightButtonDown += OnRightButtonDown;
         _keyboardHook.EnterPressed += OnEnterPressed;
     }
 
@@ -211,14 +212,26 @@ public sealed class SessionManager : IDisposable
     /// <summary>Queues a chosen node as the starting point of the next Start() call.</summary>
     public void SetResumeAnchor(ResumableNode node) => ActiveFlowWriter?.SetResumeAnchor(node);
 
-    private void OnLeftButtonDown(object? sender, MouseClickEventArgs e)
+    private void OnLeftButtonDown(object? sender, MouseClickEventArgs e) => HandleMouseButtonDown(e, isRightClick: false);
+
+    private void OnRightButtonDown(object? sender, MouseClickEventArgs e)
+    {
+        if (!_config.CaptureOnRightClick)
+        {
+            return;
+        }
+
+        HandleMouseButtonDown(e, isRightClick: true);
+    }
+
+    private void HandleMouseButtonDown(MouseClickEventArgs e, bool isRightClick)
     {
         if (IsPointOnOwnUi?.Invoke(e.Point) == true)
         {
             // Never counts as a "skipped" click either (no sound, no
             // balloon) — this isn't a deliberate skip, it's not a content
-            // click at all, just interaction with DocuClick's own controls.
-            LogService.Log($"Klick bei ({e.Point.X}, {e.Point.Y}) ignoriert (DocuClick-eigene UI: Top-Leiste/Tray-Icon).");
+            // click at all, just interaction with DocuClick's own UI.
+            LogService.Log($"Klick bei ({e.Point.X}, {e.Point.Y}) ignoriert (DocuClick-eigene UI).");
             return;
         }
 
@@ -239,8 +252,8 @@ public sealed class SessionManager : IDisposable
         var timestamp = e.Timestamp;
         var targetFileName = _currentTargetFileName;
 
-        LogService.Log($"Klick erkannt bei ({point.X}, {point.Y}).");
-        Task.Run(() => ProcessClick(point, timestamp, targetFileName));
+        LogService.Log($"{(isRightClick ? "Rechtsklick" : "Klick")} erkannt bei ({point.X}, {point.Y}).");
+        Task.Run(() => ProcessClick(point, timestamp, targetFileName, isRightClick));
     }
 
     private void OnEnterPressed(object? sender, EnterKeyEventArgs e)
@@ -270,11 +283,12 @@ public sealed class SessionManager : IDisposable
         _ => false
     };
 
-    private void ProcessClick(Point point, DateTime timestamp, string targetFileName)
+    private void ProcessClick(Point point, DateTime timestamp, string targetFileName, bool isRightClick)
     {
         var element = _config.UseUiAutomation ? UiAutomationService.GetElementAt(point) : null;
         var fallbackWindowTitle = element?.WindowTitle ?? ForegroundWindowService.GetTitle();
-        var description = DescriptionGenerator.Describe(element, fallbackWindowTitle, timestamp, InputAction.Click);
+        var action = isRightClick ? InputAction.RightClick : InputAction.Click;
+        var description = DescriptionGenerator.Describe(element, fallbackWindowTitle, timestamp, action);
 
         FinalizeCapture(description, timestamp, () => ScreenshotService.CaptureWindowAt(point), element, point, targetFileName);
     }

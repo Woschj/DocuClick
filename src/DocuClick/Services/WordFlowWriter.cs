@@ -30,6 +30,7 @@ public sealed class WordFlowWriter : IFlowWriter
 {
     private const long EmuPerPixel = 9525; // OOXML drawing units at 96 DPI
     private const double MaxImageWidthPx = 560;
+    private const string BranchMarkerPrefix = "Branch: ";
 
     private readonly AppConfig _config;
 
@@ -115,6 +116,8 @@ public sealed class WordFlowWriter : IFlowWriter
         OpenOrCreateDocument();
 
         _labels.Clear();
+        _branchAnchors.Clear();
+        _currentBranchName = null;
         _nextBookmarkId = 0;
         foreach (var bookmarkStart in GetBody().Elements<W.BookmarkStart>())
         {
@@ -125,14 +128,26 @@ public sealed class WordFlowWriter : IFlowWriter
 
             var name = bookmarkStart.Name?.Value;
             var label = name is null ? null : ExtractLabel(bookmarkStart);
-            if (name is not null && label is not null)
+            if (name is null || label is null)
             {
-                _labels[name] = label;
+                continue;
+            }
+
+            _labels[name] = label;
+
+            // Rebuild branch anchors by scanning for their marker
+            // paragraphs (see MarkBranchAnchor) instead of relying on
+            // in-memory state, so a Stop()/Start() cycle on the same file
+            // doesn't lose them.
+            if (label.StartsWith(BranchMarkerPrefix, StringComparison.Ordinal))
+            {
+                var branchName = label[BranchMarkerPrefix.Length..].Trim();
+                if (branchName.Length > 0)
+                {
+                    AddOrReplaceAnchor(new BranchAnchor(branchName, name));
+                }
             }
         }
-
-        _branchAnchors.Clear();
-        _currentBranchName = null;
 
         if (_pendingResumeAnchor is { } resume && _labels.ContainsKey(resume))
         {
@@ -181,6 +196,15 @@ public sealed class WordFlowWriter : IFlowWriter
         Save();
     }
 
+    /// <summary>
+    /// Appends a small, visible "Branch: &lt;name&gt;" marker paragraph
+    /// (its own bookmark) — an explicit waypoint in the document rather
+    /// than hidden state, so it shows up when reading the file and
+    /// survives a Stop()/Start() cycle (see StartSession). Doesn't move
+    /// the cursor; only <see cref="JumpToAnchor"/> actually jumps to a
+    /// marker. Re-marking an existing name appends a fresh marker (the
+    /// newest one wins on the next reload, same as in-memory re-marking).
+    /// </summary>
     public BranchActionResult MarkBranchAnchor(string branchName)
     {
         if (_cursorNodeId is null)
@@ -188,8 +212,27 @@ public sealed class WordFlowWriter : IFlowWriter
             return new BranchActionResult(false, _branchAnchors.Count, null);
         }
 
-        var anchor = new BranchAnchor(branchName, _cursorNodeId);
-        var existingIndex = _branchAnchors.FindIndex(a => a.Name == branchName);
+        var markerNodeId = "n" + Guid.NewGuid().ToString("N");
+        var bookmarkId = (_nextBookmarkId++).ToString();
+
+        var body = GetBody();
+        body.Append(new W.BookmarkStart { Id = bookmarkId, Name = markerNodeId });
+        body.Append(BuildBranchMarkerParagraph(branchName));
+        body.Append(new W.BookmarkEnd { Id = bookmarkId });
+
+        var label = TruncateLabel($"{BranchMarkerPrefix}{branchName}");
+        _labels[markerNodeId] = label;
+        AddOrReplaceAnchor(new BranchAnchor(branchName, markerNodeId));
+        Save();
+
+        return new BranchActionResult(true, _branchAnchors.Count, branchName);
+    }
+
+    public List<string> ListBranchAnchorNames() => _branchAnchors.Select(a => a.Name).ToList();
+
+    private void AddOrReplaceAnchor(BranchAnchor anchor)
+    {
+        var existingIndex = _branchAnchors.FindIndex(a => a.Name == anchor.Name);
         if (existingIndex >= 0)
         {
             _branchAnchors[existingIndex] = anchor;
@@ -198,11 +241,7 @@ public sealed class WordFlowWriter : IFlowWriter
         {
             _branchAnchors.Add(anchor);
         }
-
-        return new BranchActionResult(true, _branchAnchors.Count, branchName);
     }
-
-    public List<string> ListBranchAnchorNames() => _branchAnchors.Select(a => a.Name).ToList();
 
     public BranchActionResult JumpToAnchor(string branchName)
     {
@@ -239,6 +278,13 @@ public sealed class WordFlowWriter : IFlowWriter
 
         GetBody().Append(paragraph);
     }
+
+    private static W.Paragraph BuildBranchMarkerParagraph(string branchName) =>
+        new(
+            new W.ParagraphProperties(new W.SpacingBetweenLines { Before = "240", After = "80" }),
+            new W.Run(
+                new W.RunProperties(new W.Bold(), new W.Italic(), new W.Color { Val = "7C3AED" }),
+                new W.Text($"{BranchMarkerPrefix}{branchName}") { Space = SpaceProcessingModeValues.Preserve }));
 
     private static W.Paragraph BuildHeadingParagraph(string text) =>
         new(

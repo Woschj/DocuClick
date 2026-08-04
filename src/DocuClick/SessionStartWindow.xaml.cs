@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using DocuClick.Services;
 
 namespace DocuClick;
@@ -7,14 +8,22 @@ namespace DocuClick;
 /// <summary>
 /// Shown every time a recording session is about to start, so the target
 /// file is always either an explicitly typed new name or a deliberately
-/// chosen existing file — never an auto-generated "Screenshots yyyy-MM-dd"
-/// default. Also asks which (sub)folder relative to the vault path the
-/// file belongs in, so captures can be filed straight into a vault's
-/// existing structure instead of always landing at its root.
+/// chosen existing file — never a name so generic it silently collides
+/// with (and resumes) an earlier session. Also asks which (sub)folder
+/// relative to the vault path the file belongs in, so captures can be
+/// filed straight into a vault's existing structure instead of always
+/// landing at its root.
 /// </summary>
 public partial class SessionStartWindow : Window
 {
+    private readonly string _vaultPath;
     private readonly string _extension;
+
+    // Tracks whether the user has typed their own name, so the
+    // folder-aware suggestion (see SuggestFileName) only auto-updates
+    // while they haven't overridden it.
+    private bool _fileNameEditedByUser;
+    private bool _suppressFileNameChangeTracking;
 
     public string? SelectedFileName { get; private set; }
 
@@ -28,20 +37,20 @@ public partial class SessionStartWindow : Window
     {
         InitializeComponent();
 
-        var vaultPath = config.VaultPath;
+        _vaultPath = config.VaultPath;
         _extension = SessionManager.ExtensionForOutputMode(config.OutputMode);
 
         var existingFiles = new List<string>();
         var existingFolders = new List<string>();
-        if (!string.IsNullOrWhiteSpace(vaultPath) && Directory.Exists(vaultPath))
+        if (!string.IsNullOrWhiteSpace(_vaultPath) && Directory.Exists(_vaultPath))
         {
-            existingFiles = Directory.GetFiles(vaultPath, "*" + _extension, SearchOption.AllDirectories)
-                .Select(f => Path.GetRelativePath(vaultPath, f))
-                .OrderByDescending(f => File.GetLastWriteTimeUtc(Path.Combine(vaultPath, f)))
+            existingFiles = Directory.GetFiles(_vaultPath, "*" + _extension, SearchOption.AllDirectories)
+                .Select(f => Path.GetRelativePath(_vaultPath, f))
+                .OrderByDescending(f => File.GetLastWriteTimeUtc(Path.Combine(_vaultPath, f)))
                 .ToList();
 
-            existingFolders = Directory.GetDirectories(vaultPath, "*", SearchOption.AllDirectories)
-                .Select(d => Path.GetRelativePath(vaultPath, d))
+            existingFolders = Directory.GetDirectories(_vaultPath, "*", SearchOption.AllDirectories)
+                .Select(d => Path.GetRelativePath(_vaultPath, d))
                 // Hide Obsidian's own config folder and anything nested under it/other dot-folders.
                 .Where(d => !d.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
                     .Any(segment => segment.StartsWith('.')))
@@ -64,12 +73,75 @@ public partial class SessionStartWindow : Window
         }
         else
         {
-            NewFileNameBox.Text = $"Screenshots {DateTime.Now:yyyy-MM-dd}";
+            SetSuggestedFileName();
         }
+
+        NewFileNameBox.TextChanged += (_, _) =>
+        {
+            if (!_suppressFileNameChangeTracking)
+            {
+                _fileNameEditedByUser = true;
+            }
+        };
+        TargetFolderBox.SelectionChanged += (_, _) => SetSuggestedFileName();
+        TargetFolderBox.LostFocus += (_, _) => SetSuggestedFileName();
 
         ApplyModeToControls();
         NewFileNameBox.Focus();
         NewFileNameBox.SelectAll();
+    }
+
+    /// <summary>
+    /// Suggests "&lt;Zielordner-Name&gt; yyyy-MM-dd #N" (folder name of
+    /// wherever the file is about to be created, today's date, and a
+    /// running number that skips names already taken in that folder) —
+    /// never overwrites a name the user already typed themselves.
+    /// </summary>
+    private void SetSuggestedFileName()
+    {
+        if (_fileNameEditedByUser)
+        {
+            return;
+        }
+
+        var folder = SanitizeRelativeFolder(TargetFolderBox.Text ?? "");
+        var folderLabel = GetFolderLabel(folder);
+        var datePart = DateTime.Now.ToString("yyyy-MM-dd");
+        var targetDir = string.IsNullOrEmpty(folder) ? _vaultPath : Path.Combine(_vaultPath, folder);
+
+        var existingNames = Directory.Exists(targetDir)
+            ? Directory.GetFiles(targetDir, "*" + _extension)
+                .Select(f => Path.GetFileNameWithoutExtension(f)!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var n = 1;
+        string candidate;
+        do
+        {
+            candidate = $"{folderLabel} {datePart} #{n}";
+            n++;
+        } while (existingNames.Contains(candidate));
+
+        _suppressFileNameChangeTracking = true;
+        NewFileNameBox.Text = candidate;
+        _suppressFileNameChangeTracking = false;
+    }
+
+    private string GetFolderLabel(string relativeFolder)
+    {
+        if (string.IsNullOrWhiteSpace(relativeFolder))
+        {
+            var vaultName = Path.GetFileName(_vaultPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            return string.IsNullOrWhiteSpace(vaultName) ? "Session" : vaultName;
+        }
+
+        var lastSegment = relativeFolder
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            .LastOrDefault(s => !string.IsNullOrWhiteSpace(s));
+
+        return string.IsNullOrWhiteSpace(lastSegment) ? "Session" : lastSegment;
     }
 
     private void OnModeChanged(object sender, RoutedEventArgs e) => ApplyModeToControls();

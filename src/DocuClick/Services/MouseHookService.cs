@@ -12,7 +12,7 @@ public sealed class MouseClickEventArgs : EventArgs
 }
 
 /// <summary>
-/// Global, systemwide left-click listener via a WH_MOUSE_LL hook.
+/// Global, systemwide left-/right-click listener via a WH_MOUSE_LL hook.
 /// Must be created/started on a thread that pumps Windows messages
 /// (the WPF UI thread's Dispatcher loop qualifies).
 /// </summary>
@@ -20,6 +20,7 @@ public sealed class MouseHookService : IDisposable
 {
     private const int WH_MOUSE_LL = 14;
     private const int WM_LBUTTONDOWN = 0x0201;
+    private const int WM_RBUTTONDOWN = 0x0204;
 
     private delegate nint LowLevelMouseProc(int nCode, nint wParam, nint lParam);
 
@@ -60,6 +61,7 @@ public sealed class MouseHookService : IDisposable
     private nint _hookHandle;
 
     public event EventHandler<MouseClickEventArgs>? LeftButtonDown;
+    public event EventHandler<MouseClickEventArgs>? RightButtonDown;
 
     public bool IsEnabled { get; private set; }
 
@@ -102,21 +104,29 @@ public sealed class MouseHookService : IDisposable
 
     private nint HookCallback(int nCode, nint wParam, nint lParam)
     {
-        if (nCode >= 0 && wParam == WM_LBUTTONDOWN)
+        if (nCode >= 0 && (wParam == WM_LBUTTONDOWN || wParam == WM_RBUTTONDOWN))
         {
             var hookStruct = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
-
-            // Handlers must return fast: a low-level hook that blocks the
-            // message queue for too long gets silently unhooked by Windows,
-            // which would kill click detection for the rest of the session.
-            LeftButtonDown?.Invoke(this, new MouseClickEventArgs
+            var args = new MouseClickEventArgs
             {
                 Point = new System.Drawing.Point(hookStruct.pt.X, hookStruct.pt.Y),
                 Timestamp = DateTime.Now,
                 ShiftDown = ModifierKeyState.ShiftDown,
                 ControlDown = ModifierKeyState.ControlDown,
                 AltDown = ModifierKeyState.AltDown
-            });
+            };
+
+            // Handlers must return fast: a low-level hook that blocks the
+            // message queue for too long gets silently unhooked by Windows,
+            // which would kill click detection for the rest of the session.
+            if (wParam == WM_LBUTTONDOWN)
+            {
+                LeftButtonDown?.Invoke(this, args);
+            }
+            else
+            {
+                RightButtonDown?.Invoke(this, args);
+            }
         }
 
         return CallNextHookEx(_hookHandle, nCode, wParam, lParam);

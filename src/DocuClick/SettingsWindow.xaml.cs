@@ -49,6 +49,7 @@ public partial class SettingsWindow : Window
         UseUiAutomationBox.IsChecked = _config.UseUiAutomation;
         EnableClickSoundBox.IsChecked = _config.EnableClickSound;
         CaptureOnEnterBox.IsChecked = _config.CaptureOnEnter;
+        CaptureOnRightClickBox.IsChecked = _config.CaptureOnRightClick;
         SelectSkipModifier(_config.SkipRecordingModifier);
 
         switch (_config.OutputMode)
@@ -252,6 +253,7 @@ public partial class SettingsWindow : Window
         _config.UseUiAutomation = UseUiAutomationBox.IsChecked == true;
         _config.EnableClickSound = EnableClickSoundBox.IsChecked == true;
         _config.CaptureOnEnter = CaptureOnEnterBox.IsChecked == true;
+        _config.CaptureOnRightClick = CaptureOnRightClickBox.IsChecked == true;
 
         _config.SkipRecordingModifier = SkipModifierBox.SelectedItem is ComboBoxItem selected
             ? (string)selected.Tag

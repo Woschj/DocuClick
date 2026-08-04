@@ -64,20 +64,37 @@ public partial class App : Application
         _topBar.NewSessionRequested += OnNewSessionRequested;
         _topBar.Show();
 
-        // Clicks on DocuClick's own top bar or tray icon must never be
-        // recorded as content — the global mouse hook otherwise can't tell
-        // them apart from a real click (see SessionManager.IsPointOnOwnUi).
+        // Clicks on any of DocuClick's own interactive windows (top bar,
+        // branch dialogs, session-start picker, settings, ...) or the tray
+        // icon must never be recorded as content — the global mouse hook
+        // otherwise can't tell them apart from a real click (see
+        // SessionManager.IsPointOnOwnUi). Checked generically against
+        // Application.Windows so this covers every current and future
+        // dialog automatically, not just whichever ones are special-cased.
         _sessionManager.IsPointOnOwnUi = point =>
         {
             var drawingPoint = new System.Drawing.Point(point.X, point.Y);
 
-            if (_topBar.IsVisible && _topBar.GetScreenBounds().Contains(drawingPoint))
+            foreach (Window window in Windows)
             {
-                return true;
+                // The recording dot / canvas-status HUD are deliberately
+                // click-through (WS_EX_TRANSPARENT) — a click "on" them
+                // actually lands on whatever's underneath and must still
+                // be recorded normally, so they're excluded from this check.
+                if (window is RecordingIndicatorOverlay or CanvasStatusOverlay || !window.IsVisible)
+                {
+                    continue;
+                }
+
+                var bounds = new System.Drawing.Rectangle((int)window.Left, (int)window.Top, (int)window.ActualWidth, (int)window.ActualHeight);
+                if (bounds.Contains(drawingPoint))
+                {
+                    return true;
+                }
             }
 
             var trayBounds = _trayApp.GetIconScreenBounds();
-            return trayBounds is { } bounds && bounds.Contains(drawingPoint);
+            return trayBounds is { } trayRect && trayRect.Contains(drawingPoint);
         };
 
         SetUpHotkeys();
@@ -266,11 +283,45 @@ public partial class App : Application
         return window.ShowDialog() == true ? window.SelectedFileName : null;
     }
 
+    /// <summary>
+    /// The file "Start" should resume without prompting: the last file
+    /// used, unless a resume-from-point is pending (that always needs the
+    /// dialog to actually apply) or the output mode changed since, making
+    /// the remembered file's extension stale.
+    /// </summary>
+    private string? ResolveResumeFileName()
+    {
+        if (_pendingResumeFileName is not null)
+        {
+            return null;
+        }
+
+        var last = _config!.LastSessionFileName;
+        if (string.IsNullOrWhiteSpace(last))
+        {
+            return null;
+        }
+
+        var expectedExtension = SessionManager.ExtensionForOutputMode(_config.OutputMode);
+        return last.EndsWith(expectedExtension, StringComparison.OrdinalIgnoreCase) ? last : null;
+    }
+
+    private void RememberLastSession(string fileName)
+    {
+        _config!.LastSessionFileName = fileName;
+        ConfigService.Save(_config);
+    }
+
+    /// <summary>
+    /// "Start" (tray menu, top-bar button, hotkey): resumes the last-used
+    /// file directly, no dialog — "Neue Session" is the action that asks
+    /// for a file name every time.
+    /// </summary>
     private void OnRecordingStateChanged(bool isRecording)
     {
         if (isRecording)
         {
-            var fileName = PromptForSessionFile();
+            var fileName = ResolveResumeFileName() ?? PromptForSessionFile();
             if (fileName is null)
             {
                 _trayApp!.SetRecording(false);
@@ -280,6 +331,7 @@ public partial class App : Application
             try
             {
                 _sessionManager!.Start(fileName);
+                RememberLastSession(fileName);
                 _recordingOverlay ??= new RecordingIndicatorOverlay();
                 _recordingOverlay.Show();
             }
@@ -302,18 +354,11 @@ public partial class App : Application
         _topBar?.UpdateStatus(isRecording, detail: null, _sessionManager!.SupportsBranching);
     }
 
+    /// <summary>"Neue Session" (top-bar button only): always prompts for a target file, whether currently recording or not.</summary>
     private void OnNewSessionRequested()
     {
         if (_sessionManager is null)
         {
-            return;
-        }
-
-        if (!_sessionManager.IsRunning)
-        {
-            // Not recording yet: behaves like a plain Start (single prompt
-            // via OnRecordingStateChanged, no double-prompt risk).
-            _trayApp!.SetRecording(true);
             return;
         }
 
@@ -325,7 +370,22 @@ public partial class App : Application
 
         try
         {
-            _sessionManager.StartNewSession(fileName);
+            if (_sessionManager.IsRunning)
+            {
+                _sessionManager.StartNewSession(fileName);
+            }
+            else
+            {
+                _sessionManager.Start(fileName);
+                _recordingOverlay ??= new RecordingIndicatorOverlay();
+                _recordingOverlay.Show();
+                // Sync tray icon/tooltip without re-firing RecordingStateChanged
+                // (that would re-enter here via OnRecordingStateChanged's own
+                // start logic — this session is already started).
+                _trayApp!.SyncRecordingState(true);
+            }
+
+            RememberLastSession(fileName);
             _trayApp!.ShowInfo($"Neue Session gestartet: {fileName}");
             _topBar?.UpdateStatus(true, detail: null, _sessionManager.SupportsBranching);
         }
@@ -341,8 +401,19 @@ public partial class App : Application
     private void OnSettingsRequested()
     {
         var window = new SettingsWindow(_config!);
-        window.SettingsSaved += SetUpHotkeys;
+        window.SettingsSaved += OnSettingsSaved;
         window.ShowDialog();
+    }
+
+    private void OnSettingsSaved()
+    {
+        SetUpHotkeys();
+
+        // The top bar's branch buttons reflect SupportsBranching for the
+        // *active* output mode — if the user switches modes in Settings
+        // while a recording is already running (nothing prevents that),
+        // nothing else would ever refresh them until the next Stop/Start.
+        _topBar?.UpdateStatus(_trayApp!.IsRecording, detail: null, _sessionManager!.SupportsBranching);
     }
 
     protected override void OnExit(ExitEventArgs e)

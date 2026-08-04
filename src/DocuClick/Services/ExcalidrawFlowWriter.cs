@@ -31,7 +31,8 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
     private const double SequentialSpacing = 50;
     private const double BranchColumnSpacing = 80;
     private const int FontFamilyNormal = 2;
-    private const string BranchHighlightColor = "#d0bfff";
+    private const string BranchMarkerColor = "#7C3AED";
+    private const string BranchMarkerPrefix = "Branch: ";
 
     private sealed record BranchAnchor(string Name, string NodeId, double X, double Y);
 
@@ -91,8 +92,24 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
         var rectangles = _doc.Elements.Where(e => e.Type == "rectangle").ToList();
         _nextColumnX = rectangles.Count > 0 ? rectangles.Max(e => e.X) + NodeWidth + BranchColumnSpacing : 0;
 
-        _branchAnchors.Clear();
         _currentBranchName = null;
+
+        // Rebuild branch anchors by scanning for their marker text elements
+        // (see MarkBranchAnchor) instead of relying on in-memory state, so
+        // a Stop()/Start() cycle on the same file doesn't lose them.
+        _branchAnchors.Clear();
+        foreach (var el in _doc.Elements
+            .Where(e => e.Type == "text" && e.OriginalText is not null && e.OriginalText.StartsWith(BranchMarkerPrefix, StringComparison.Ordinal))
+            .OrderBy(e => e.Y).ThenBy(e => e.X))
+        {
+            var branchName = el.OriginalText![BranchMarkerPrefix.Length..].Trim();
+            if (branchName.Length == 0)
+            {
+                continue;
+            }
+
+            AddOrReplaceAnchor(new BranchAnchor(branchName, el.Id, el.X, el.Y));
+        }
 
         if (_pendingResumeAnchor is { } resume && rectangles.Any(e => e.Id == resume.NodeId))
         {
@@ -180,6 +197,15 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
         Save();
     }
 
+    /// <summary>
+    /// Adds a small, visible "Branch: &lt;name&gt;" text marker connected
+    /// from the current node with an arrow — an explicit waypoint object
+    /// rather than hidden state, so it shows up in the scene itself and
+    /// survives a Stop()/Start() cycle (see StartSession). Doesn't move
+    /// the cursor; only <see cref="JumpToAnchor"/> actually jumps to a
+    /// marker. Re-marking an existing name adds a fresh marker (the
+    /// newest one wins on the next reload, same as in-memory re-marking).
+    /// </summary>
     public BranchActionResult MarkBranchAnchor(string branchName)
     {
         if (_cursorNodeId is null)
@@ -187,8 +213,32 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
             return new BranchActionResult(false, _branchAnchors.Count, null);
         }
 
-        var anchor = new BranchAnchor(branchName, _cursorNodeId, _cursorX, _cursorY);
-        var existingIndex = _branchAnchors.FindIndex(a => a.Name == branchName);
+        var markerId = "branch" + Guid.NewGuid().ToString("N");
+        var markerY = _cursorY + LabelHeight + LabelGap + ImageHeightOf(_cursorNodeId) + SequentialSpacing;
+
+        var marker = NewElement("text", markerId, _cursorX, markerY, NodeWidth, LabelHeight);
+        marker.StrokeColor = BranchMarkerColor;
+        marker.Text = $"{BranchMarkerPrefix}{branchName}";
+        marker.OriginalText = marker.Text;
+        marker.FontSize = 16;
+        marker.FontFamily = FontFamilyNormal;
+        marker.TextAlign = "left";
+        marker.VerticalAlign = "top";
+
+        _doc.Elements.Add(marker);
+        _doc.Elements.Add(BuildArrow(_cursorNodeId, markerId));
+
+        AddOrReplaceAnchor(new BranchAnchor(branchName, markerId, marker.X, marker.Y));
+        Save();
+
+        return new BranchActionResult(true, _branchAnchors.Count, branchName);
+    }
+
+    public List<string> ListBranchAnchorNames() => _branchAnchors.Select(a => a.Name).ToList();
+
+    private void AddOrReplaceAnchor(BranchAnchor anchor)
+    {
+        var existingIndex = _branchAnchors.FindIndex(a => a.Name == anchor.Name);
         if (existingIndex >= 0)
         {
             _branchAnchors[existingIndex] = anchor;
@@ -197,18 +247,7 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
         {
             _branchAnchors.Add(anchor);
         }
-
-        var rectangle = _doc.Elements.FirstOrDefault(e => e.Id == _cursorNodeId);
-        if (rectangle is not null)
-        {
-            rectangle.BackgroundColor = BranchHighlightColor;
-            Save();
-        }
-
-        return new BranchActionResult(true, _branchAnchors.Count, branchName);
     }
-
-    public List<string> ListBranchAnchorNames() => _branchAnchors.Select(a => a.Name).ToList();
 
     public BranchActionResult JumpToAnchor(string branchName)
     {

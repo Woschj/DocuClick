@@ -221,13 +221,4 @@ public sealed class TopBarWindow : Window
         var baseText = isRecording ? "DocuClick – Aufnahme läuft" : "DocuClick – Aufnahme gestoppt";
         _statusText.Text = detail is null ? baseText : $"{baseText} · {detail}";
     }
-
-    /// <summary>
-    /// Current on-screen rectangle (physical pixels, same space as the
-    /// mouse hook's click points) — used to exclude clicks on the bar
-    /// itself from the recording. Recomputed each call since the bar is
-    /// draggable.
-    /// </summary>
-    public System.Drawing.Rectangle GetScreenBounds() =>
-        new((int)Left, (int)Top, (int)ActualWidth, (int)ActualHeight);
 }

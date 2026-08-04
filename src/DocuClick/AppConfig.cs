@@ -51,4 +51,17 @@ public sealed class AppConfig
     /// Enter key itself — it never inspects or records any other keystroke.
     /// </summary>
     public bool CaptureOnEnter { get; set; } = true;
+
+    /// <summary>Also capture on right-clicks, not just left-clicks (e.g. context-menu triggers).</summary>
+    public bool CaptureOnRightClick { get; set; } = true;
+
+    /// <summary>
+    /// Target file name (with extension, possibly subfolder-prefixed) most
+    /// recently used to start a session — persisted so a plain "Start"
+    /// (tray/hotkey/top-bar) can resume it directly without prompting.
+    /// "Neue Session" always prompts regardless of this. Ignored if its
+    /// extension no longer matches the current OutputMode (e.g. after
+    /// switching from Canvas to Word).
+    /// </summary>
+    public string? LastSessionFileName { get; set; }
 }

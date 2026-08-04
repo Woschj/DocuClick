@@ -17,17 +17,25 @@ public sealed record ResumableNode(string Id, string Label, double X, double Y);
 ///
 /// Layout is vertical: the main line runs top-to-bottom in one column.
 ///
-/// Branching: <see cref="MarkBranchAnchor"/> bookmarks the current node
-/// under a user-chosen name; <see cref="JumpToAnchor"/> moves the cursor to
-/// a named anchor (can be re-visited any number of times) and starts a new
-/// column to the right so the new branch doesn't overlap the existing flow.
+/// Branching: <see cref="MarkBranchAnchor"/> adds a small, visible marker
+/// node ("Branch: &lt;name&gt;") connected from the current node — an
+/// explicit waypoint object in the canvas itself, not hidden metadata.
+/// <see cref="JumpToAnchor"/> moves the cursor to that marker (can be
+/// re-visited any number of times) and starts a new column so the new
+/// branch doesn't overlap the existing flow. Because the marker is a real,
+/// recognizable node in the file, <see cref="StartSession"/> rebuilds the
+/// branch list by scanning for it — branches survive a Stop()/Start()
+/// cycle instead of only living in memory for one run.
 /// </summary>
 public sealed class CanvasFlowWriter : IFlowWriter
 {
     private const double NodeWidth = 380;
     private const double NodeHeight = 340;
+    private const double MarkerHeight = 60;
     private const double SequentialSpacing = 60; // gap between consecutive nodes along the main (vertical) flow
     private const double BranchColumnSpacing = 80; // gap between branch columns
+    private const string BranchMarkerPrefix = "Branch: ";
+    private const string BranchMarkerColor = "6"; // Obsidian canvas preset color slot ("purple"), just to stand out
 
     private sealed record BranchAnchor(string Name, string NodeId, double X, double Y);
 
@@ -35,6 +43,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
     private readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
 
     private string? _canvasPath;
+    private string _sessionName = "Session";
     private CanvasDocument _doc = new();
     private string? _cursorNodeId;
     private double _cursorX;
@@ -87,10 +96,27 @@ public sealed class CanvasFlowWriter : IFlowWriter
         }
 
         _canvasPath = Path.Combine(_config.VaultPath, canvasFileName);
+        _sessionName = Path.GetFileNameWithoutExtension(canvasFileName);
         _doc = LoadOrCreate(_canvasPath);
         _nextColumnX = _doc.Nodes.Count > 0 ? _doc.Nodes.Max(n => n.X) + NodeWidth + BranchColumnSpacing : 0;
-        _branchAnchors.Clear();
         _currentBranchName = null;
+
+        // Rebuild branch anchors by scanning for their marker nodes (see
+        // MarkBranchAnchor) instead of relying on in-memory state, so a
+        // Stop()/Start() cycle on the same file doesn't lose them.
+        _branchAnchors.Clear();
+        foreach (var n in _doc.Nodes
+            .Where(n => n.Text is not null && n.Text.StartsWith(BranchMarkerPrefix, StringComparison.Ordinal))
+            .OrderBy(n => n.Y).ThenBy(n => n.X))
+        {
+            var branchName = n.Text![BranchMarkerPrefix.Length..].Trim();
+            if (branchName.Length == 0)
+            {
+                continue;
+            }
+
+            AddOrReplaceAnchor(new BranchAnchor(branchName, n.Id, n.X, n.Y));
+        }
 
         if (_pendingResumeAnchor is { } resume && _doc.Nodes.Any(n => n.Id == resume.NodeId))
         {
@@ -134,7 +160,12 @@ public sealed class CanvasFlowWriter : IFlowWriter
             throw new InvalidOperationException("Canvas-Session wurde nicht gestartet.");
         }
 
-        var imageFileName = AttachmentSaver.SaveScreenshot(_config, screenshot, timestamp);
+        // Screenshots land in Attachments/<session>/ instead of flat in
+        // Attachments/. The wikilink embed only needs the bare filename —
+        // it's timestamp-based and thus unique vault-wide, so Obsidian
+        // resolves it regardless of which subfolder it's actually in.
+        var imageRelativeToAttachments = AttachmentSaver.SaveScreenshot(_config, screenshot, timestamp, _sessionName);
+        var imageFileName = Path.GetFileName(imageRelativeToAttachments);
 
         var newY = _cursorNodeId is null ? _cursorY : _cursorY + NodeHeight + SequentialSpacing;
         var node = new CanvasNode
@@ -165,7 +196,16 @@ public sealed class CanvasFlowWriter : IFlowWriter
         Save();
     }
 
-    /// <summary>Bookmarks the current node under <paramref name="branchName"/> (re-marking an existing name replaces its target).</summary>
+    /// <summary>
+    /// Adds a small, visible "Branch: &lt;name&gt;" marker node connected
+    /// from the current node — an explicit waypoint object rather than a
+    /// hidden field, so it shows up in the canvas itself and survives a
+    /// Stop()/Start() cycle (see StartSession). Doesn't move the cursor;
+    /// the ongoing flow keeps recording from where it was — only
+    /// <see cref="JumpToAnchor"/> actually jumps to a marker.
+    /// Re-marking an existing name adds a fresh marker (the newest one
+    /// wins on the next reload, same as in-memory re-marking).
+    /// </summary>
     public BranchActionResult MarkBranchAnchor(string branchName)
     {
         if (_cursorNodeId is null)
@@ -173,23 +213,28 @@ public sealed class CanvasFlowWriter : IFlowWriter
             return new BranchActionResult(false, _branchAnchors.Count, null);
         }
 
-        var anchor = new BranchAnchor(branchName, _cursorNodeId, _cursorX, _cursorY);
-        var existingIndex = _branchAnchors.FindIndex(a => a.Name == branchName);
-        if (existingIndex >= 0)
+        var markerY = _cursorY + NodeHeight + SequentialSpacing;
+        var marker = new CanvasNode
         {
-            _branchAnchors[existingIndex] = anchor;
-        }
-        else
+            Id = Guid.NewGuid().ToString("N"),
+            Type = "text",
+            Text = $"{BranchMarkerPrefix}{branchName}",
+            X = _cursorX,
+            Y = markerY,
+            Width = NodeWidth,
+            Height = MarkerHeight,
+            Color = BranchMarkerColor
+        };
+        _doc.Nodes.Add(marker);
+        _doc.Edges.Add(new CanvasEdge
         {
-            _branchAnchors.Add(anchor);
-        }
+            Id = Guid.NewGuid().ToString("N"),
+            FromNode = _cursorNodeId,
+            ToNode = marker.Id
+        });
 
-        var node = _doc.Nodes.FirstOrDefault(n => n.Id == _cursorNodeId);
-        if (node is not null)
-        {
-            node.Color = "6"; // Obsidian canvas preset color slot, just to stand out visually
-            Save();
-        }
+        AddOrReplaceAnchor(new BranchAnchor(branchName, marker.Id, marker.X, marker.Y));
+        Save();
 
         return new BranchActionResult(true, _branchAnchors.Count, branchName);
     }
@@ -212,6 +257,19 @@ public sealed class CanvasFlowWriter : IFlowWriter
         _currentBranchName = branchName;
 
         return new BranchActionResult(true, _branchAnchors.Count, branchName);
+    }
+
+    private void AddOrReplaceAnchor(BranchAnchor anchor)
+    {
+        var existingIndex = _branchAnchors.FindIndex(a => a.Name == anchor.Name);
+        if (existingIndex >= 0)
+        {
+            _branchAnchors[existingIndex] = anchor;
+        }
+        else
+        {
+            _branchAnchors.Add(anchor);
+        }
     }
 
     private string? GetNodeLabel(string nodeId) =>

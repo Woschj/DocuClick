@@ -3,6 +3,7 @@ namespace DocuClick.Services;
 public enum InputAction
 {
     Click,
+    RightClick,
     EnterKey
 }
 
@@ -27,12 +28,14 @@ public static class DescriptionGenerator
     private static string ElementPhrase(InputAction action) => action switch
     {
         InputAction.EnterKey => "Eingabe (Enter) bestätigt in",
+        InputAction.RightClick => "Rechtsklick auf",
         _ => "Linksklick auf"
     };
 
     private static string FallbackPhrase(InputAction action) => action switch
     {
         InputAction.EnterKey => "Enter gedrückt",
+        InputAction.RightClick => "Rechtsklick",
         _ => "Linksklick"
     };
 }

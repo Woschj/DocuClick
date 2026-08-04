@@ -77,7 +77,10 @@ Klick darf nie ungefragt eine Aufnahme starten), **Rechtsklick öffnet das
 Kontextmenü** mit "Aufnahme starten/stoppen" — oder einfach den Start/Stop-Hotkey
 verwenden (Standard `Strg+Alt+R`).
 
-Solange die Aufnahme aktiv ist, löst jeder Linksklick aus:
+Solange die Aufnahme aktiv ist, löst jeder Links- **und Rechtsklick** aus
+(Rechtsklick-Erfassung abschaltbar in den Einstellungen, Standard: an;
+die Beschreibung unterscheidet "Linksklick auf ..." von "Rechtsklick
+auf ..."):
 
 1. UI-Automation-Lookup des Elements unter dem Cursor (abschaltbar in den
    Einstellungen) inkl. Fallback auf Fenstertitel + Zeitstempel
@@ -88,38 +91,54 @@ Solange die Aufnahme aktiv ist, löst jeder Linksklick aus:
    großes UIA-Bounding-Rect — z. B. wenn die Automation die Fensterfläche
    selbst zurückgibt — fällt automatisch auf den Kreis zurück, damit nicht
    ganze Fenster rot eingerahmt werden)
-4. Speichern des Bilds im konfigurierten Attachments-Ordner und Anhängen von
-   Beschreibung + `![bild.png](relativer/Pfad.png)` (Standard-Markdown, kein
+4. Speichern des Bilds im konfigurierten Attachments-Ordner (in einem
+   Unterordner benannt nach der Zieldatei, z. B.
+   `Attachments/Onboarding-Flow/screenshot_....png`, statt alles flach zu
+   sammeln) und Anhängen von Beschreibung +
+   `![bild.png](relativer/Pfad.png)` (Standard-Markdown, kein
    Obsidian-spezifisches Wikilink — funktioniert daher auch in GitHub-/
    GitLab-Wikis und anderen Markdown-Renderern, nicht nur in Obsidian) an
    die Session-Notiz im Obsidian-Vault (im Canvas-/Word-/Excalidraw-Modus
    stattdessen als Knoten bzw. Abschnitt, siehe unten)
 
+Klicks auf DocuClicks eigene Fenster (Top-Leiste, Branch-Dialoge,
+Session-Start, Einstellungen, ...) sowie auf das Tray-Icon selbst zählen
+nie als Aufnahme — automatisch erkannt und gefiltert.
+
 Konfiguration über das Tray-Menü ("Einstellungen...") oder direkt in
 `%APPDATA%/DocuClick/config.json`.
 
-### Zieldatei bei jedem Session-Start
+### Start vs. "Neue Session": Zieldatei
 
-Jedes Mal, wenn eine Aufnahme startet (Tray-Menü, Start/Stop-Hotkey,
-Top-Leiste oder "Neue Session"), fragt DocuClick zuerst nach der Zieldatei
-— es gibt keinen automatisch generierten Namen mehr:
+**Start** (Tray-Menü, Start/Stop-Hotkey, Top-Leiste) setzt die zuletzt
+verwendete Aufnahme direkt fort — ohne Rückfrage. **Neue Session**
+(Top-Leiste) fragt dagegen immer nach der Zieldatei, egal ob gerade
+aufgezeichnet wird oder nicht — sie ist der einzige Weg, um bewusst zu
+einer anderen bzw. neuen Datei zu wechseln:
 
-- **Neue Datei anlegen**: Name eintippen (Endung ergibt sich aus dem
-  gewählten Ausgabeformat) und optional einen **Zielordner** (relativ zum
+- **Neue Datei anlegen**: Ein Name wird automatisch vorgeschlagen
+  (**Zielordner-Name + Datum + laufende Nummer**, z. B.
+  `IT-Support 2026-08-04 #1`, statt eines generischen "Screenshots"), lässt
+  sich aber frei überschreiben. Endung ergibt sich aus dem gewählten
+  Ausgabeformat. Optional ein **Zielordner** wählen (relativ zum
   Vault-/Zielordner-Pfad) — Vorschläge kommen aus allen bereits
-  vorhandenen Unterordnern, ein neuer Name wird automatisch angelegt. So
-  lassen sich Aufnahmen direkt in eine bestehende Vault-Struktur
-  einsortieren (z. B. `Prozesse/IT-Support`) statt immer im Wurzelordner
-  zu landen.
+  vorhandenen Unterordnern, der Namensvorschlag passt sich beim
+  Ordnerwechsel automatisch an, solange der Name nicht von Hand geändert
+  wurde. So landen Aufnahmen direkt in der Vault-Struktur (z. B.
+  `Prozesse/IT-Support`) statt immer im Wurzelordner, und die laufende
+  Nummer verhindert, dass ein zweiter Klick auf "Neue Session" am selben
+  Tag versehentlich eine bestehende Datei fortsetzt.
 - **Bestehende Datei fortsetzen**: Auswahl aus allen vorhandenen Dateien
   mit passender Endung im konfigurierten Ordner (inkl. Unterordner),
   neueste zuerst. Neue Klicks werden an diese Datei angehängt (im
-  Canvas-/Word-Modus ab dem bisherigen Cursor-Stand, siehe Branch-Logik
-  unten).
+  Canvas-/Word-/Excalidraw-Modus ab dem bisherigen Cursor-Stand, siehe
+  Branch-Logik unten).
 
-Wird der Dialog abgebrochen, bleibt die Aufnahme aus (bzw. bei "Neue
-Session" während einer laufenden Aufnahme: die laufende Session bleibt
-unverändert bestehen).
+Der Dialog erscheint außerdem beim allerersten "Start" nach Installation
+(noch keine Datei zum Fortsetzen vorhanden) oder wenn das Ausgabeformat
+seit der letzten Aufnahme gewechselt wurde. Wird der Dialog abgebrochen,
+bleibt die Aufnahme aus (bzw. bei "Neue Session" während einer laufenden
+Aufnahme: die laufende Session bleibt unverändert bestehen).
 
 ### Vault-Template für Prozessdokumentation
 
@@ -138,14 +157,15 @@ blockieren) ist sichtbar, solange die App läuft, und zeigt auf einen Blick
 den Aufnahmestatus (inkl. aktuellem Branch-Namen, falls einer aktiv ist).
 Frei verschiebbar per Ziehen. Sie enthält vier Buttons:
 
-- **Start/Stop**: entspricht dem Tray-Menüpunkt bzw. dem Start/Stop-Hotkey.
+- **Start/Stop**: entspricht dem Tray-Menüpunkt bzw. dem Start/Stop-Hotkey
+  — setzt die zuletzt verwendete Datei ohne Rückfrage fort.
 - **Branch setzen** / **Branch auswählen**: entsprechen den beiden
   Branch-Hotkeys (siehe unten), nur aktiv während einer laufenden Aufnahme
-  im Canvas- oder Word-Modus.
-- **Neue Session**: immer klickbar. Läuft gerade keine Aufnahme, verhält es
-  sich wie Start. Läuft eine Aufnahme, schließt es die aktuelle Datei ab
-  und startet direkt danach eine neue Session (wieder mit Dateiauswahl,
-  siehe vorheriger Abschnitt).
+  im Canvas-, Word- oder Excalidraw-Modus.
+- **Neue Session**: immer klickbar, fragt **immer** nach der Zieldatei
+  (anders als Start). Läuft gerade keine Aufnahme, startet sie damit neu.
+  Läuft eine Aufnahme, schließt es die aktuelle Datei ab und startet
+  direkt danach die neue (siehe vorheriger Abschnitt).
 
 Anders als die beiden folgenden Overlays ist die Leiste **nicht**
 klick-durchlässig, da sie echte Buttons hostet — deshalb ist sie bewusst
@@ -209,16 +229,27 @@ Abzweigungen werden benannt und über zwei globale Hotkeys gesteuert
 (Standard: `F9` / `F10`, änderbar in den Einstellungen):
 
 - **Branch setzen** (`F9`): fragt nach einem Namen (z. B. "Login-Fehler")
-  und merkt sich den zuletzt erstellten Knoten/Abschnitt darunter (im
-  Canvas-Modus wird der Knoten zur Kennzeichnung eingefärbt). Ein bereits
-  vergebener Name wird beim erneuten Setzen einfach auf den neuen
-  aktuellen Punkt umgehängt.
+  und legt dafür ein eigenes, sichtbares **"Branch: Login-Fehler"**-Objekt
+  an (Knoten in Canvas/Excalidraw, Absatz in Word), verbunden mit dem
+  zuletzt erstellten Knoten/Abschnitt — kein verstecktes Metadatenfeld,
+  sondern ein normales Element in der Datei. Der laufende Ablauf wird dabei
+  nicht unterbrochen, der nächste Klick hängt sich weiterhin ganz normal an
+  den zuletzt aufgezeichneten Punkt. Ein bereits vergebener Name bekommt
+  beim erneuten Setzen ein weiteres, aktuelleres Marker-Objekt (das neueste
+  gilt).
 - **Branch auswählen** (`F10`): öffnet eine Liste aller aktuell benannten
-  Branches — die Auswahl setzt den "Cursor" dorthin zurück (beliebig oft
-  wiederholbar, auch nachdem bereits andere Klicks dazwischen aufgezeichnet
-  wurden). Der nächste Klick beginnt dann eine neue Spalte (Canvas) bzw.
-  einen neuen Abschnitt mit Rücksprung-Link (Word), verbunden mit dem
-  gewählten Branch statt mit dem zuletzt aufgezeichneten Klick.
+  Branches — die Auswahl setzt den "Cursor" auf das Marker-Objekt zurück
+  (beliebig oft wiederholbar, auch nachdem bereits andere Klicks
+  dazwischen aufgezeichnet wurden). Der nächste Klick beginnt dann eine
+  neue Spalte (Canvas/Excalidraw) bzw. einen neuen Abschnitt mit
+  Rücksprung-Link (Word), verbunden mit dem gewählten Branch statt mit dem
+  zuletzt aufgezeichneten Klick.
+
+Da Branches als echte, sichtbare Objekte in der Datei stehen, übersteht die
+Liste der verfügbaren Branches auch ein Stoppen und erneutes Starten der
+Aufnahme (auf derselben Datei) — DocuClick liest sie beim nächsten Start
+einfach wieder aus der Datei ein, ohne dass ein separater Speicherzustand
+nötig wäre.
 
 Nach jeder Aktion zeigt DocuClick, wo man gerade steht: ein Balloon-Tip mit
 Branch-Namen und der Beschreibung des betroffenen Knotens, und der aktuelle
@@ -261,10 +292,15 @@ Klick" (Standard: an) einen kurzen Ton:
 - Klick übersprungen (Modifier-Taste gedrückt) → dezenter Windows-Systemton
 - Fehler bei der Verarbeitung → Fehler-Systemton + Balloon-Tip am Tray-Icon
 
-## Enter-Taste als zweiter Trigger
+## Rechtsklick und Enter-Taste als weitere Trigger
 
-Neben Linksklicks kann DocuClick auch bei jedem Druck der Enter-Taste
-auslösen (Einstellungen → "Auch bei Enter-Taste aufzeichnen", Standard: an).
+Neben Linksklicks kann DocuClick auch bei **Rechtsklicks** auslösen
+(Einstellungen → "Auch bei Rechtsklick aufzeichnen", Standard: an) — z. B.
+um das Öffnen eines Kontextmenüs zu dokumentieren. Die Beschreibung
+unterscheidet "Rechtsklick auf ..." von "Linksklick auf ...".
+
+Zusätzlich kann DocuClick bei jedem Druck der **Enter-Taste** auslösen
+(Einstellungen → "Auch bei Enter-Taste aufzeichnen", Standard: an).
 Erfasst wird dann das aktive Fenster plus das aktuell fokussierte
 UI-Automation-Element (z. B. ein abgeschicktes Formularfeld) statt einer
 Klickposition — ohne Bounding-Box wird der Screenshot unmarkiert

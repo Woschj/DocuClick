@@ -52,7 +52,17 @@ public sealed class TrayApp : IDisposable
 
     public void ToggleRecording() => SetRecording(!_isRecording);
 
-    public void SetRecording(bool isRecording)
+    public void SetRecording(bool isRecording) => SetRecording(isRecording, raiseEvent: true);
+
+    /// <summary>
+    /// Updates the icon/tooltip/menu to reflect a recording state that was
+    /// already started/stopped elsewhere (e.g. "Neue Session" driving its
+    /// own start sequence) — without re-firing <see cref="RecordingStateChanged"/>,
+    /// which would otherwise re-trigger that same start/stop logic.
+    /// </summary>
+    public void SyncRecordingState(bool isRecording) => SetRecording(isRecording, raiseEvent: false);
+
+    private void SetRecording(bool isRecording, bool raiseEvent)
     {
         if (_isRecording == isRecording)
         {
@@ -72,7 +82,10 @@ public sealed class TrayApp : IDisposable
         _notifyIcon.Icon = BuildStatusIcon(isRecording);
         oldIcon?.Dispose();
 
-        RecordingStateChanged?.Invoke(isRecording);
+        if (raiseEvent)
+        {
+            RecordingStateChanged?.Invoke(isRecording);
+        }
     }
 
     /// <summary>
