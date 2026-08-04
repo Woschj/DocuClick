@@ -55,6 +55,9 @@ public partial class App : Application
         // Visible for the app's whole lifetime (not just while recording),
         // so there is always an at-a-glance answer to "is it running".
         _topBar = new TopBarWindow();
+        _topBar.ToggleRecordingRequested += () => _trayApp?.ToggleRecording();
+        _topBar.MarkBranchRequested += () => _sessionManager?.MarkBranchAnchor();
+        _topBar.JumpBranchRequested += () => _sessionManager?.JumpToLastAnchor();
         _topBar.NewSessionRequested += OnNewSessionRequested;
         _topBar.Show();
 
@@ -114,7 +117,7 @@ public partial class App : Application
         Dispatcher.Invoke(() =>
         {
             _trayApp?.SetBranchDepth(depth);
-            _topBar?.UpdateStatus(_trayApp!.IsRecording, depth > 0 ? $"Branch-Tiefe {depth}" : null);
+            _topBar?.UpdateStatus(_trayApp!.IsRecording, depth > 0 ? $"Branch-Tiefe {depth}" : null, _sessionManager!.SupportsBranching);
         });
     }
 
@@ -189,7 +192,7 @@ public partial class App : Application
             _canvasStatusOverlay?.Hide();
         }
 
-        _topBar?.UpdateStatus(isRecording, detail: null);
+        _topBar?.UpdateStatus(isRecording, detail: null, _sessionManager!.SupportsBranching);
     }
 
     private void OnNewSessionRequested()

@@ -15,10 +15,11 @@ namespace DocuClick;
 
 /// <summary>
 /// Small floating pill centered at the top of the primary screen — like a
-/// TeamViewer session toolbar, NOT a full-width bar. It hosts a real button
-/// ("Neue Session") so it can't be click-through like the other overlays,
-/// which means it must stay content-sized: a full-width bar would block
-/// window dragging, menu bars, and Snap zones along the entire top edge.
+/// TeamViewer session toolbar, NOT a full-width bar. It hosts real buttons
+/// (start/stop, branch controls, "Neue Session") so it can't be
+/// click-through like the other overlays, which means it must stay
+/// content-sized: a full-width bar would block window dragging, menu bars,
+/// and Snap zones along the entire top edge.
 /// Visible for the app's whole lifetime (not just while recording), so
 /// there is always an at-a-glance answer to "is it running right now".
 /// </summary>
@@ -27,8 +28,14 @@ public sealed class TopBarWindow : Window
     internal const double BarHeight = 22;
 
     private readonly TextBlock _statusText;
+    private readonly Button _toggleRecordingButton;
+    private readonly Button _markBranchButton;
+    private readonly Button _jumpBranchButton;
     private readonly Button _newSessionButton;
 
+    public event Action? ToggleRecordingRequested;
+    public event Action? MarkBranchRequested;
+    public event Action? JumpBranchRequested;
     public event Action? NewSessionRequested;
 
     public TopBarWindow()
@@ -53,20 +60,24 @@ public sealed class TopBarWindow : Window
             Margin = new Thickness(10, 0, 10, 0)
         };
 
-        _newSessionButton = new Button
-        {
-            Content = "Neue Session",
-            FontSize = 11,
-            Margin = new Thickness(0, 0, 6, 0),
-            Padding = new Thickness(8, 0, 8, 0),
-            IsEnabled = false,
-            VerticalAlignment = VerticalAlignment.Center,
-            ToolTip = "Schließt das aktuelle Diagramm/die aktuelle Notiz ab und startet sofort eine neue Aufnahme-Session."
-        };
+        _toggleRecordingButton = CreateButton("Start", "Aufnahme starten/stoppen (wie der Tray-Menüpunkt bzw. der Start/Stop-Hotkey).");
+        _toggleRecordingButton.Click += (_, _) => ToggleRecordingRequested?.Invoke();
+
+        _markBranchButton = CreateButton("Branch setzen", "Abzweigungspunkt setzen: merkt sich den aktuellen Knoten/Abschnitt als Anker.");
+        _markBranchButton.Click += (_, _) => MarkBranchRequested?.Invoke();
+
+        _jumpBranchButton = CreateButton("→ Branch", "Zu letztem Abzweigungspunkt springen: der nächste Klick beginnt eine neue Abzweigung von dort.");
+        _jumpBranchButton.Click += (_, _) => JumpBranchRequested?.Invoke();
+
+        _newSessionButton = CreateButton("Neue Session", "Schließt das aktuelle Diagramm/die aktuelle Notiz ab und startet sofort eine neue Aufnahme-Session.");
+        _newSessionButton.Margin = new Thickness(0, 0, 6, 0);
         _newSessionButton.Click += (_, _) => NewSessionRequested?.Invoke();
 
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
         panel.Children.Add(_statusText);
+        panel.Children.Add(_toggleRecordingButton);
+        panel.Children.Add(_markBranchButton);
+        panel.Children.Add(_jumpBranchButton);
         panel.Children.Add(_newSessionButton);
 
         // Solid, saturated blue (TeamViewer-toolbar style) instead of the
@@ -80,7 +91,7 @@ public sealed class TopBarWindow : Window
             Child = panel
         };
 
-        UpdateStatus(isRecording: false, detail: null);
+        UpdateStatus(isRecording: false, detail: null, supportsBranching: false);
 
         // Content-sized (not screen-wide), so it only ever occupies a small
         // pill at the top-center — everything outside it (window title
@@ -95,9 +106,23 @@ public sealed class TopBarWindow : Window
         };
     }
 
-    public void UpdateStatus(bool isRecording, string? detail)
+    private static Button CreateButton(string text, string tooltip) => new()
     {
+        Content = text,
+        FontSize = 11,
+        Margin = new Thickness(0, 0, 4, 0),
+        Padding = new Thickness(8, 0, 8, 0),
+        VerticalAlignment = VerticalAlignment.Center,
+        ToolTip = tooltip
+    };
+
+    public void UpdateStatus(bool isRecording, string? detail, bool supportsBranching)
+    {
+        _toggleRecordingButton.Content = isRecording ? "Stop" : "Start";
+        _markBranchButton.IsEnabled = isRecording && supportsBranching;
+        _jumpBranchButton.IsEnabled = isRecording && supportsBranching;
         _newSessionButton.IsEnabled = isRecording;
+
         var baseText = isRecording ? "DocuClick – Aufnahme läuft" : "DocuClick – Aufnahme gestoppt";
         _statusText.Text = detail is null ? baseText : $"{baseText} · {detail}";
     }
