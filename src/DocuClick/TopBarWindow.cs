@@ -3,11 +3,13 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 
-// UseWindowsForms implicitly brings System.Drawing into every file too;
-// combined with System.Windows.Media above, Color/Brushes exist in both
-// and become ambiguous. This file is WPF-only UI, so alias to those.
+// UseWindowsForms implicitly brings System.Drawing/Windows.Forms into every
+// file too; combined with the System.Windows(.Media) usings above, several
+// names (Color, Brushes, Button, TextBox, ...) exist in both and become
+// ambiguous. This file is WPF-only UI, so alias to those.
 using Color = System.Windows.Media.Color;
 using Brushes = System.Windows.Media.Brushes;
+using Button = System.Windows.Controls.Button;
 
 namespace DocuClick;
 
