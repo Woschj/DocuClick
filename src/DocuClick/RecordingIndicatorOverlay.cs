@@ -21,6 +21,9 @@ public sealed class RecordingIndicatorOverlay : Window
     private const double Size = 14;
     private const double EdgeMargin = 8;
 
+    /// <summary>Space reserved below the always-visible <see cref="TopBarWindow"/>.</summary>
+    internal const double TopBarClearance = 30;
+
     public RecordingIndicatorOverlay()
     {
         Width = Size;
@@ -38,6 +41,6 @@ public sealed class RecordingIndicatorOverlay : Window
 
         var bounds = System.Windows.Forms.Screen.PrimaryScreen!.Bounds;
         Left = bounds.Left + EdgeMargin;
-        Top = bounds.Top + EdgeMargin;
+        Top = bounds.Top + TopBarClearance + EdgeMargin;
     }
 }

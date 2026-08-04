@@ -23,9 +23,11 @@ public sealed class AppConfig
 
     /// <summary>
     /// Where clicks get written to: "Note" (linear Markdown), "Canvas"
-    /// (Obsidian .canvas flow diagram), or "DrawIo" (.drawio flow diagram,
-    /// screenshots embedded as base64). Canvas and DrawIo both support
-    /// branching via the hotkeys below.
+    /// (Obsidian .canvas flow diagram), or "Word" (.docx, one heading +
+    /// screenshot per click, appended sequentially — handles long flows
+    /// better than a fixed canvas, and stays fully editable in
+    /// Word/SharePoint). Canvas and Word both support branching via the
+    /// hotkeys below.
     /// </summary>
     public string OutputMode { get; set; } = "Note";
 

@@ -59,8 +59,8 @@ public partial class SettingsWindow : Window
             case "Canvas":
                 OutputModeCanvasRadio.IsChecked = true;
                 break;
-            case "DrawIo":
-                OutputModeDrawIoRadio.IsChecked = true;
+            case "Word":
+                OutputModeWordRadio.IsChecked = true;
                 break;
             default:
                 OutputModeNoteRadio.IsChecked = true;
@@ -102,13 +102,13 @@ public partial class SettingsWindow : Window
 
     private void OnOutputModeChanged(object sender, RoutedEventArgs e)
     {
-        // draw.io embeds screenshots directly (no attachments folder), and
+        // Word embeds screenshots directly (no attachments folder), and
         // isn't tied to an Obsidian vault at all — just any target folder.
-        var isDrawIo = OutputModeDrawIoRadio.IsChecked == true;
+        var isWord = OutputModeWordRadio.IsChecked == true;
 
-        VaultCardHeader.Text = isDrawIo ? "Zielordner" : "Obsidian-Vault";
-        VaultPathLabel.Text = isDrawIo ? "Zielordner-Pfad (für die .drawio-Datei)" : "Vault-Pfad";
-        AttachmentsRow.Visibility = isDrawIo ? Visibility.Collapsed : Visibility.Visible;
+        VaultCardHeader.Text = isWord ? "Zielordner" : "Obsidian-Vault";
+        VaultPathLabel.Text = isWord ? "Zielordner-Pfad (für die .docx-Datei)" : "Vault-Pfad";
+        AttachmentsRow.Visibility = isWord ? Visibility.Collapsed : Visibility.Visible;
     }
 
     // --- Color swatches -----------------------------------------------
@@ -263,8 +263,8 @@ public partial class SettingsWindow : Window
 
         _config.OutputMode = OutputModeCanvasRadio.IsChecked == true
             ? "Canvas"
-            : OutputModeDrawIoRadio.IsChecked == true
-                ? "DrawIo"
+            : OutputModeWordRadio.IsChecked == true
+                ? "Word"
                 : "Note";
 
         _config.StartStopModifiers = _startStopModifiers;

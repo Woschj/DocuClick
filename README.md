@@ -1,9 +1,9 @@
 # DocuClick
 
-Windows-Screenshot-Tool, das bei jedem Mausklick automatisch einen Screenshot
-mit Klick-Markierung erstellt und samt Beschreibungstext in eine
-Obsidian-Notiz einfügt. Siehe Projektspezifikation für den vollständigen
-Funktionsumfang.
+Windows-Screenshot-Tool, das bei jedem Mausklick (optional auch bei Enter)
+automatisch einen Screenshot mit Klick-Markierung erstellt und samt
+Beschreibungstext in eine Obsidian-Notiz, ein Obsidian-Canvas oder ein
+Word-Dokument einfügt. Details zu allen drei Ausgabeformaten weiter unten.
 
 App-Icon: [Assets/app.ico](src/DocuClick/Assets/app.ico) (im selben
 Rot-auf-Dunkel-Stil wie das Tray-Icon).
@@ -66,18 +66,20 @@ git push origin v1.0.0
 
 ## Stand
 
-- [x] Schritt 1: Grundgerüst mit Tray-Icon, Start/Stop-Menü
-- [x] Schritt 2: Globaler Mouse-Hook (WH_MOUSE_LL)
-- [x] Schritt 3: Screenshot-Erstellung (richtiger Monitor bei Multi-Monitor)
-- [x] Schritt 4: Highlighter (Kreis)
-- [x] Schritt 5: Obsidian-Schreiblogik (Bild + Text an Notiz anhängen)
-- [x] Schritt 6: UI-Automation-Beschreibungstexte (mit Fallback)
-- [x] Schritt 7: Bounding-Box-Highlighter (statt Kreis, wenn UIA-Element vorhanden)
-- [x] Schritt 8: Einstellungsfenster + JSON-Konfiguration
-- [x] Globale Hotkeys (Aufnahme starten/stoppen + Canvas-Branch-Steuerung)
-- [x] Canvas-Flow-Modus mit Abzweigungen (siehe unten)
-- [x] Akustisches Feedback pro aufgezeichnetem/übersprungenem Klick
-- [ ] Feinschliff: Multi-Monitor/DPI-Kantenfälle, robustere Fehlerbehandlung
+Funktional vollständig für den Alltagsgebrauch:
+
+- Tray-Icon mit Start/Stop, globale Maus-/Tastatur-Hooks, fenstergenaue
+  Screenshots (richtiger Monitor bei Multi-Monitor)
+- Markierung: Bounding-Box (UI-Automation) oder roter Kreis als Fallback
+- Drei Ausgabeformate: Notiz, Obsidian-Canvas, Word (siehe unten)
+- Einstellungsfenster mit JSON-Konfiguration, änderbare globale Hotkeys
+- Branch-Logik (Abzweigungen) für Canvas und Word, inkl. "Ablauf
+  fortsetzen ab Punkt..."
+- Immer sichtbare Top-Leiste mit Aufnahmestatus + "Neue Session"-Button
+- Akustisches Feedback pro aufgezeichnetem/übersprungenem/fehlgeschlagenem Klick
+
+Offen: Feinschliff bei Multi-Monitor/DPI-Kantenfällen, robustere
+Fehlerbehandlung in Randfällen.
 
 ## Funktionsumfang (erste funktionale Version)
 
@@ -99,63 +101,81 @@ Solange die Aufnahme aktiv ist, löst jeder Linksklick aus:
    ganze Fenster rot eingerahmt werden)
 4. Speichern des Bilds im konfigurierten Attachments-Ordner und Anhängen von
    Beschreibung + `![[bild.png]]` an die Session-Notiz im Obsidian-Vault
+   (im Canvas-/Word-Modus stattdessen als Knoten bzw. Abschnitt, siehe unten)
 
 Konfiguration über das Tray-Menü ("Einstellungen...") oder direkt in
 `%APPDATA%/DocuClick/config.json`.
 
-### Overlays während der Aufnahme
+### Top-Leiste, Overlays und "Neue Session"
 
-- Ein kleiner roter Punkt oben links auf dem primären Bildschirm zeigt an,
-  dass die Aufnahme läuft.
-- Im Canvas-Modus zeigt ein zweites, kleines Overlay direkt darunter die
-  aktuelle Position im Ablauf (Branch-Tiefe + letzter Knoten).
+Eine schmale Leiste am oberen Bildschirmrand ist sichtbar, solange die App
+läuft (nicht nur während einer Aufnahme), und zeigt auf einen Blick den
+Aufnahmestatus (inkl. Branch-Tiefe, falls > 0). Ihr Button **"Neue
+Session"** ist nur aktiv, während eine Aufnahme läuft: Ein Klick beendet
+die laufende Session (Datei wird abgeschlossen) und startet sofort eine
+neue mit garantiert neuer Zieldatei — auch wenn in den Einstellungen eine
+feste Zieldatei konfiguriert ist. Anders als die beiden folgenden Overlays
+ist die Leiste **nicht** klick-durchlässig, da sie einen echten Button
+hostet.
 
-Beide Overlays sind klick-durchlässig (stören keine Bedienung) und werden
-aktiv aus Screenshots ausgeschlossen (`SetWindowDisplayAffinity`), tauchen
-also nie selbst im aufgenommenen Bild auf.
+Zusätzlich, nur während einer laufenden Aufnahme:
 
-## Ausgabeformat: Notiz, Canvas oder draw.io
+- Ein kleiner roter Punkt (unterhalb der Top-Leiste) zeigt an, dass die
+  Aufnahme läuft.
+- Im Canvas-/Word-Modus zeigt ein zweites, kleines Overlay direkt darunter
+  die aktuelle Position im Ablauf (Branch-Tiefe + letzter Knoten).
+
+Diese beiden Overlays sind klick-durchlässig (stören keine Bedienung) und
+werden wie die Top-Leiste aktiv aus Screenshots ausgeschlossen
+(`SetWindowDisplayAffinity`), tauchen also nie selbst im aufgenommenen Bild
+auf.
+
+## Ausgabeformat: Notiz, Canvas oder Word
 
 In den Einstellungen lässt sich eines von drei Formaten wählen:
 
 - **Notiz**: linearer Markdown-Text + Bild-Link, an eine `.md`-Datei angehängt (Standard).
-- **Obsidian-Canvas**: jeder Klick wird ein verbundener Knoten in einer
-  `.canvas`-Datei (reines JSON, kein Obsidian-Plugin nötig).
-- **draw.io / diagrams.net**: jeder Klick wird ein verbundener Knoten in
-  einer `.drawio`-Datei (reines XML). Screenshots werden direkt als
-  Base64-PNG in die Datei eingebettet — kein separater Attachments-Ordner
-  nötig für dieses Format. Öffnen/Bearbeiten in der kostenlosen
-  draw.io-App/Website oder Desktop-App. Wird eine echte Visio-Datei
-  benötigt: in draw.io über "Datei → Exportieren als → VSDX" — DocuClick
-  erzeugt selbst kein VSDX, da das Format ohne offizielles .NET-SDK deutlich
-  fehleranfälliger wäre.
+- **Obsidian-Canvas**: jeder Klick wird ein verbundener Knoten auf einer
+  Fläche in einer `.canvas`-Datei (reines JSON, kein Obsidian-Plugin
+  nötig). Gut für kurze bis mittlere Abläufe; bei sehr langen Abläufen wird
+  eine feste Fläche schnell unübersichtlich.
+- **Word**: jeder Klick wird ein eigener Abschnitt (Überschrift +
+  Screenshot), fortlaufend an eine `.docx`-Datei angehängt — kein
+  Canvas-Größenlimit, beliebig lange Abläufe bleiben lesbar. Abzweigungen
+  werden als Rücksprung-Link im Dokument dargestellt statt als eigene
+  Spalte. Screenshots werden direkt eingebettet (kein separater
+  Attachments-Ordner nötig). Voll editierbar in Microsoft Word, SharePoint
+  zeigt/bearbeitet `.docx` nativ ohne zusätzliches Plugin.
 
 Das Pfad-Feld in den Einstellungen passt sich dem gewählten Format an: bei
 Notiz/Canvas heißt es "Obsidian-Vault" (inkl. Attachments-Unterordner); bei
-draw.io heißt es "Zielordner" und der Attachments-Unterordner wird
-ausgeblendet, da draw.io Bilder direkt einbettet und keinen Obsidian-Vault
+Word heißt es "Zielordner" und der Attachments-Unterordner wird
+ausgeblendet, da Word Bilder direkt einbettet und keinen Obsidian-Vault
 braucht — es kann jeder beliebige Ordner sein (z. B. ein SharePoint-Sync-Ordner).
 
-Canvas und draw.io teilen sich dieselbe Fluss-Logik: Der Hauptablauf läuft
-**vertikal** (von oben nach unten in einer Spalte); Abzweigungen öffnen
-jeweils eine neue Spalte rechts daneben.
+Canvas und Word unterstützen dieselbe Branch-Logik, nur mit
+unterschiedlicher Darstellung: Canvas legt Abzweigungen als neue Spalte
+rechts neben dem Hauptablauf an; Word hängt sie stattdessen als neuen
+Abschnitt mit Rücksprung-Link ans Dokumentende an, da ein Word-Dokument
+keine räumlichen Koordinaten kennt.
 
 Abzweigungen werden über zwei globale Hotkeys gesteuert (Standard: `F9` /
 `F10`, änderbar in den Einstellungen):
 
 - **Abzweigungspunkt setzen** (`F9`): merkt sich den zuletzt erstellten
-  Knoten als Anker (der Knoten wird zur Kennzeichnung eingefärbt) und legt
-  ihn auf einen Stack.
+  Knoten/Abschnitt als Anker (im Canvas-Modus wird der Knoten zur
+  Kennzeichnung eingefärbt) und legt ihn auf einen Stack.
 - **Zu letztem Abzweigungspunkt springen** (`F10`): setzt den "Cursor"
   zurück auf den obersten Anker im Stack (ohne ihn zu entfernen — man kann
   also mehrfach vom selben Punkt abzweigen). Der nächste Klick beginnt dann
-  eine neue Spalte, verbunden mit dem Anker statt mit dem zuletzt
-  aufgezeichneten Klick.
+  eine neue Spalte (Canvas) bzw. einen neuen Abschnitt mit Rücksprung-Link
+  (Word), verbunden mit dem Anker statt mit dem zuletzt aufgezeichneten
+  Klick.
 
 Nach jeder Aktion zeigt DocuClick, wo man gerade steht: ein Balloon-Tip mit
 der Beschreibung des betroffenen Knotens sowie der aktuellen Branch-Tiefe,
-und die Branch-Tiefe bleibt zusätzlich dauerhaft im Tray-Icon-Tooltip
-sichtbar (z. B. "DocuClick - Aufnahme läuft · Branch-Tiefe: 2").
+und die Branch-Tiefe bleibt zusätzlich dauerhaft im Tray-Icon-Tooltip und
+in der Top-Leiste sichtbar (z. B. "DocuClick – Aufnahme läuft · Branch-Tiefe 2").
 
 Änderungen an den Hotkeys gelten sofort nach "Speichern" in den
 Einstellungen (keine Neustart nötig).
@@ -163,14 +183,15 @@ Einstellungen (keine Neustart nötig).
 ### Ablauf nachträglich fortsetzen
 
 Über das Tray-Menü "Ablauf fortsetzen ab Punkt..." (nur verfügbar im
-Canvas- oder draw.io-Modus, bei gestoppter Aufnahme) öffnet sich eine Liste
-aller bereits vorhandenen Knoten in der aktuellen Datei. Die Auswahl legt
-fest, an welchem Knoten die *nächste* Aufnahme-Session ansetzt — neue
-Klicks bilden dann eine neue Spalte ab genau diesem Punkt, unabhängig
-davon, wie lange die ursprüngliche Aufzeichnung schon zurückliegt. Das
-funktioniert nur zuverlässig, solange "Neue Notiz/Canvas pro
-Aufnahme-Session" deaktiviert ist (eine feste Zieldatei), da sich die
-Auswahl auf die Knoten in exakt dieser einen Datei bezieht.
+Canvas- oder Word-Modus, bei gestoppter Aufnahme) öffnet sich eine Liste
+aller bereits vorhandenen Knoten/Abschnitte in der aktuellen Datei. Die
+Auswahl legt fest, an welchem Punkt die *nächste* Aufnahme-Session ansetzt
+— neue Klicks werden dann (im Canvas als neue Spalte, in Word als neuer
+Abschnitt mit Rücksprung-Link) mit genau diesem Punkt verbunden,
+unabhängig davon, wie lange die ursprüngliche Aufzeichnung schon
+zurückliegt. Das funktioniert nur zuverlässig, solange "Neue Notiz/Canvas
+pro Aufnahme-Session" deaktiviert ist (eine feste Zieldatei), da sich die
+Auswahl auf die Knoten/Abschnitte in exakt dieser einen Datei bezieht.
 
 ## Start/Stopp per Hotkey
 
@@ -183,11 +204,13 @@ Einstellungen).
 Der eigentliche Screenshot läuft absichtlich unsichtbar im Hintergrund
 (kein Bildschirm-Flackern). Damit trotzdem klar ist, dass etwas passiert,
 spielt DocuClick bei aktivierter Option "Signalton bei jedem aufgezeichneten
-Klick" (Standard: an) einen kurzen Systemsound:
+Klick" (Standard: an) einen kurzen Ton:
 
-- normaler Klick aufgezeichnet → kurzer Klick-Sound
-- Klick übersprungen (Modifier-Taste gedrückt) → anderer, dezenter Ton
-- Fehler bei der Verarbeitung → Fehler-Sound + Balloon-Tip am Tray-Icon
+- normaler Klick aufgezeichnet → ein synthetischer Kamera-Klick (zwei
+  kurze, schnell abklingende Impulse) statt eines Windows-Systemtons, damit
+  es sich nach Bestätigung statt nach Fehlermeldung anhört
+- Klick übersprungen (Modifier-Taste gedrückt) → dezenter Windows-Systemton
+- Fehler bei der Verarbeitung → Fehler-Systemton + Balloon-Tip am Tray-Icon
 
 ## Enter-Taste als zweiter Trigger
 

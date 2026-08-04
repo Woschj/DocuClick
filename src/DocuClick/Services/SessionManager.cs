@@ -7,8 +7,8 @@ namespace DocuClick.Services;
 /// Glues the mouse/keyboard hooks to the capture pipeline (UI Automation
 /// lookup -> screenshot -> highlight -> write) and owns the current
 /// session's target file. Writes either a linear note (ObsidianWriter) or
-/// a branching flow diagram (<see cref="IFlowWriter"/>: Obsidian Canvas or
-/// draw.io), depending on <see cref="AppConfig.OutputMode"/>.
+/// a branching flow (<see cref="IFlowWriter"/>: Obsidian Canvas or Word),
+/// depending on <see cref="AppConfig.OutputMode"/>.
 /// </summary>
 public sealed class SessionManager : IDisposable
 {
@@ -17,9 +17,10 @@ public sealed class SessionManager : IDisposable
     private readonly AppConfig _config;
     private readonly ObsidianWriter _noteWriter;
     private readonly CanvasFlowWriter _canvasWriter;
-    private readonly DrawIoFlowWriter _drawIoWriter;
+    private readonly WordFlowWriter _wordWriter;
     private string _currentTargetFileName = string.Empty;
     private bool _isRunning;
+    private bool _forceNewTargetFile;
 
     public event Action<string>? ErrorOccurred;
     public event Action<string>? InfoOccurred;
@@ -28,13 +29,13 @@ public sealed class SessionManager : IDisposable
 
     public bool IsRunning => _isRunning;
 
-    /// <summary>Whether the active output mode supports branching (Canvas/DrawIo vs. plain Note).</summary>
+    /// <summary>Whether the active output mode supports branching (Canvas/Word vs. plain Note).</summary>
     public bool SupportsBranching => ActiveFlowWriter is not null;
 
     private IFlowWriter? ActiveFlowWriter => _config.OutputMode switch
     {
         "Canvas" => _canvasWriter,
-        "DrawIo" => _drawIoWriter,
+        "Word" => _wordWriter,
         _ => null
     };
 
@@ -43,7 +44,7 @@ public sealed class SessionManager : IDisposable
         _config = config;
         _noteWriter = new ObsidianWriter(config);
         _canvasWriter = new CanvasFlowWriter(config);
-        _drawIoWriter = new DrawIoFlowWriter(config);
+        _wordWriter = new WordFlowWriter(config);
         _mouseHook.LeftButtonDown += OnLeftButtonDown;
         _keyboardHook.EnterPressed += OnEnterPressed;
     }
@@ -77,6 +78,20 @@ public sealed class SessionManager : IDisposable
         BranchDepthChanged?.Invoke(0);
         CanvasStatusChanged?.Invoke(null);
         LogService.Log("Session gestoppt.");
+    }
+
+    /// <summary>
+    /// "Neue Session"-Aktion: closes out the current target file (a normal
+    /// Stop) and immediately starts a fresh one with a new, guaranteed-unique
+    /// file name — even when "Neue Notiz/Canvas pro Aufnahme-Session" is
+    /// disabled and a fixed target file is configured, since the whole point
+    /// of this action is to leave the old diagram alone and begin another.
+    /// </summary>
+    public void StartNewSession()
+    {
+        Stop();
+        _forceNewTargetFile = true;
+        Start();
     }
 
     private string BuildStatusText()
@@ -144,9 +159,15 @@ public sealed class SessionManager : IDisposable
         var extension = _config.OutputMode switch
         {
             "Canvas" => ".canvas",
-            "DrawIo" => ".drawio",
+            "Word" => ".docx",
             _ => ".md"
         };
+
+        if (_forceNewTargetFile)
+        {
+            _forceNewTargetFile = false;
+            return $"Screenshots {DateTime.Now:yyyy-MM-dd HHmmss}{extension}";
+        }
 
         if (!_config.NewNotePerSession && !string.IsNullOrWhiteSpace(_config.FixedNoteName))
         {

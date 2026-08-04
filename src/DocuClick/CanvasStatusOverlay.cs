@@ -19,7 +19,7 @@ public sealed class CanvasStatusOverlay : Window
 {
     private const double PanelWidth = 280;
     private const double EdgeMargin = 8;
-    private const double TopOffset = 14 + EdgeMargin + 6; // below the recording dot
+    private const double TopOffset = RecordingIndicatorOverlay.TopBarClearance + 14 + EdgeMargin + 6; // below the top bar and the recording dot
 
     private readonly TextBlock _textBlock;
 

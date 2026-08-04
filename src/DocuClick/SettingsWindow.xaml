@@ -104,12 +104,12 @@
                         <RadioButton x:Name="OutputModeCanvasRadio" GroupName="OutputMode" Margin="0,0,0,8"
                                      Content="Obsidian-Canvas (.canvas, Ablaufdiagramm mit Abzweigungen)"
                                      Checked="OnOutputModeChanged"/>
-                        <RadioButton x:Name="OutputModeDrawIoRadio" GroupName="OutputMode" Margin="0,0,0,4"
-                                     Content="draw.io / diagrams.net (.drawio, Ablaufdiagramm mit Abzweigungen)"
+                        <RadioButton x:Name="OutputModeWordRadio" GroupName="OutputMode" Margin="0,0,0,4"
+                                     Content="Word (.docx, ein Schritt = ein Abschnitt, für Office/SharePoint)"
                                      Checked="OnOutputModeChanged"/>
 
                         <TextBlock Style="{StaticResource HintText}"
-                                   Text="Canvas und draw.io schreiben jeden Klick als verbundenen Knoten (vertikaler Hauptfluss, Abzweigungen als neue Spalten über die Hotkeys unten). Bei draw.io werden Screenshots direkt als Base64 in die Datei eingebettet — kein separater Attachments-Ordner nötig. Eine .drawio-Datei lässt sich in draw.io per „Datei → Exportieren als → VSDX” auch in eine echte Visio-Datei umwandeln."/>
+                                   Text="Canvas schreibt jeden Klick als verbundenen Knoten auf einer Fläche (vertikaler Hauptfluss, Abzweigungen als neue Spalten über die Hotkeys unten) — gut für kurze Abläufe, wird bei sehr langen Abläufen aber schnell unübersichtlich. Word hängt stattdessen jeden Klick als eigenen Abschnitt fortlaufend ans Dokumentende an (kein Größenlimit), Abzweigungen werden als Rücksprung-Link dargestellt. Beide Modi betten Screenshots direkt in die Datei ein — kein separater Attachments-Ordner nötig — und sind voll editierbar (Canvas in Obsidian, Word in Microsoft Word/SharePoint)."/>
                     </StackPanel>
                 </Border>
 

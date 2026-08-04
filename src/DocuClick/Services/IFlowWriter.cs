@@ -3,8 +3,8 @@ using System.Drawing;
 namespace DocuClick.Services;
 
 /// <summary>
-/// Common contract for the graph-based output modes (Obsidian Canvas,
-/// draw.io) so SessionManager doesn't need to know which one is active.
+/// Common contract for the branching output modes (Obsidian Canvas, Word)
+/// so SessionManager doesn't need to know which one is active.
 /// The plain note mode (ObsidianWriter) has no branching concept and
 /// deliberately does not implement this.
 /// </summary>

@@ -12,6 +12,7 @@ public partial class App : Application
     private HotkeyService? _hotkeyService;
     private RecordingIndicatorOverlay? _recordingOverlay;
     private CanvasStatusOverlay? _canvasStatusOverlay;
+    private TopBarWindow? _topBar;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -32,6 +33,12 @@ public partial class App : Application
         _trayApp.RecordingStateChanged += OnRecordingStateChanged;
         _trayApp.SettingsRequested += OnSettingsRequested;
         _trayApp.ResumeFromPointRequested += OnResumeFromPointRequested;
+
+        // Visible for the app's whole lifetime (not just while recording),
+        // so there is always an at-a-glance answer to "is it running".
+        _topBar = new TopBarWindow();
+        _topBar.NewSessionRequested += OnNewSessionRequested;
+        _topBar.Show();
 
         SetUpHotkeys();
 
@@ -86,7 +93,11 @@ public partial class App : Application
 
     private void OnBranchDepthChanged(int depth)
     {
-        Dispatcher.Invoke(() => _trayApp?.SetBranchDepth(depth));
+        Dispatcher.Invoke(() =>
+        {
+            _trayApp?.SetBranchDepth(depth);
+            _topBar?.UpdateStatus(_trayApp!.IsRecording, depth > 0 ? $"Branch-Tiefe {depth}" : null);
+        });
     }
 
     private void OnCanvasStatusChanged(string? statusText)
@@ -115,7 +126,7 @@ public partial class App : Application
 
         if (!_sessionManager.SupportsBranching)
         {
-            _trayApp!.ShowInfo("Nur im Canvas- oder draw.io-Modus verfügbar (siehe Einstellungen).");
+            _trayApp!.ShowInfo("Nur im Canvas- oder Word-Modus verfügbar (siehe Einstellungen).");
             return;
         }
 
@@ -150,6 +161,7 @@ public partial class App : Application
                     $"Aufnahme konnte nicht gestartet werden:\n{ex.Message}",
                     "DocuClick", MessageBoxButton.OK, MessageBoxImage.Error);
                 _trayApp!.SetRecording(false);
+                return;
             }
         }
         else
@@ -157,6 +169,29 @@ public partial class App : Application
             _sessionManager!.Stop();
             _recordingOverlay?.Hide();
             _canvasStatusOverlay?.Hide();
+        }
+
+        _topBar?.UpdateStatus(isRecording, detail: null);
+    }
+
+    private void OnNewSessionRequested()
+    {
+        if (_sessionManager is null || !_sessionManager.IsRunning)
+        {
+            return;
+        }
+
+        try
+        {
+            _sessionManager.StartNewSession();
+            _trayApp!.ShowInfo("Neue Session gestartet — vorheriges Diagramm/Notiz abgeschlossen.");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Neue Session konnte nicht gestartet werden:\n{ex.Message}",
+                "DocuClick", MessageBoxButton.OK, MessageBoxImage.Error);
+            _trayApp!.SetRecording(false);
         }
     }
 
@@ -174,6 +209,7 @@ public partial class App : Application
         _trayApp?.Dispose();
         _recordingOverlay?.Close();
         _canvasStatusOverlay?.Close();
+        _topBar?.Close();
         base.OnExit(e);
     }
 }
