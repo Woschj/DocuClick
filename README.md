@@ -8,84 +8,23 @@ Word-Dokument einfügt. Details zu allen drei Ausgabeformaten weiter unten.
 App-Icon: [Assets/app.ico](src/DocuClick/Assets/app.ico) (im selben
 Rot-auf-Dunkel-Stil wie das Tray-Icon).
 
-## Windows-Sicherheitswarnung beim Download
+## Installation
 
-Die `.exe` ist aktuell **nicht code-signiert**, daher zeigt Windows
-SmartScreen beim ersten Ausführen eine Warnung ("Windows hat den Start
-dieser App verhindert" o. Ä.) — das ist normal für unsignierte, neue
-Software und keine Fehlfunktion. Ein Code-Signing-Zertifikat kostet
-laufend Geld und erfordert in der Regel eine verifizierte Firma (siehe
-CA/Browser-Forum-Anforderungen); solange keines eingerichtet ist, bleibt
-die Warnung bestehen. Wer die Warnung wegklicken will: "Weitere
-Informationen" → "Trotzdem ausführen".
+Fertige `.exe` von den [Releases](../../releases) herunterladen
+(`DocuClick-win-x64.zip`), entpacken und `DocuClick.exe` starten —
+self-contained, kein separat installiertes .NET nötig.
 
-## Build (nur unter Windows)
+> **SmartScreen-Warnung beim ersten Start:** Die `.exe` ist aktuell nicht
+> code-signiert, daher zeigt Windows SmartScreen eine Warnung ("Windows
+> hat den Start dieser App verhindert" o. Ä.) — normal für unsignierte,
+> neue Software, keine Fehlfunktion. Wegklicken über "Weitere
+> Informationen" → "Trotzdem ausführen".
 
-Voraussetzung: .NET 8 SDK.
+Nach dem Start läuft DocuClick als Tray-Icon im Infobereich der
+Taskleiste — kein sichtbares Fenster, siehe [Funktionsumfang](#funktionsumfang)
+für die Bedienung.
 
-```
-dotnet build DocuClick.sln
-```
-
-Start:
-
-```
-dotnet run --project src/DocuClick/DocuClick.csproj
-```
-
-> Hinweis: WPF-Projekte lassen sich nur unter Windows kompilieren
-> (der XAML-Compiler ist Windows-only). Dieses Repo wurde auf macOS
-> geschrieben und dort **nicht gebaut** – vor dem ersten Release bitte
-> auf einer Windows-Maschine `dotnet build` ausführen.
-
-## Fertige .exe herunterladen
-
-Es wird keine kompilierte `.exe` im Repo mitversioniert. Stattdessen baut
-[.github/workflows/build.yml](.github/workflows/build.yml) bei jedem Push
-automatisch auf einem Windows-Runner:
-
-- Bei jedem Push nach `main`: Artefakt "DocuClick-win-x64" (ein Zip mit
-  `DocuClick.exe` + den benötigten DLLs) im jeweiligen
-  [Actions-Lauf](../../actions) herunterladbar (self-contained, läuft ohne
-  separat installiertes .NET).
-- Bei einem Tag wie `v1.0.0`: zusätzlich ein
-  [GitHub Release](../../releases) mit `DocuClick-win-x64.zip` als Anhang.
-
-Bewusst kein Single-File-Publish: Der Self-Extract-Mechanismus (Entpacken
-in einen Temp-Ordner beim Start) ist bei unsignierten Binaries ein
-häufiger Auslöser für Windows-Defender-ML-Fehlalarme (z. B.
-`Wacatac.B!ml`). Nach dem Download muss das Zip entpackt werden;
-`DocuClick.exe` startet dann direkt aus dem entpackten Ordner.
-
-Neues Release erstellen:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-## Stand
-
-Funktional vollständig für den Alltagsgebrauch:
-
-- Tray-Icon mit Start/Stop, globale Maus-/Tastatur-Hooks, fenstergenaue
-  Screenshots (richtiger Monitor bei Multi-Monitor)
-- Markierung: Bounding-Box (UI-Automation) oder roter Kreis als Fallback
-- Drei Ausgabeformate: Notiz, Obsidian-Canvas, Word (siehe unten)
-- Einstellungsfenster mit JSON-Konfiguration, änderbare globale Hotkeys
-- Branch-Logik (Abzweigungen) für Canvas und Word, inkl. "Ablauf
-  fortsetzen ab Punkt..."
-- Session-Start-Dialog: Zieldatei bei jeder Aufnahme explizit wählen
-  (neu anlegen oder bestehende fortsetzen), keine generischen Dateinamen
-- Immer sichtbare, kompakte Top-Leiste (Start/Stop, Branch-Steuerung,
-  "Neue Session") mit Aufnahmestatus
-- Nur eine laufende Instanz gleichzeitig (Mutex-Guard)
-- Akustisches Feedback pro aufgezeichnetem/übersprungenem/fehlgeschlagenem Klick
-
-Offen: Feinschliff bei Multi-Monitor/DPI-Kantenfällen, robustere
-Fehlerbehandlung in Randfällen.
-
-## Funktionsumfang (erste funktionale Version)
+## Funktionsumfang
 
 Tray-Icon-Bedienung: **Linksklick öffnet die Einstellungen** (ein versehentlicher
 Klick darf nie ungefragt eine Aufnahme starten), **Rechtsklick öffnet das
@@ -147,8 +86,8 @@ den Grund dafür (Screenshots landen sonst im öffentlichen Git-Verlauf).
 Eine kleine, mittig oben schwebende Pille (wie die TeamViewer-Session-Leiste
 — nicht bildschirmbreit, sonst würde sie Fenster ziehen/Menüs/Snap-Zonen
 blockieren) ist sichtbar, solange die App läuft, und zeigt auf einen Blick
-den Aufnahmestatus (inkl. Branch-Tiefe, falls > 0). Sie enthält vier
-Buttons:
+den Aufnahmestatus (inkl. Branch-Tiefe, falls > 0). Frei verschiebbar per
+Ziehen. Sie enthält vier Buttons:
 
 - **Start/Stop**: entspricht dem Tray-Menüpunkt bzw. dem Start/Stop-Hotkey.
 - **Branch setzen** / **→ Branch**: entsprechen den beiden Branch-Hotkeys
@@ -157,7 +96,7 @@ Buttons:
 - **Neue Session**: immer klickbar. Läuft gerade keine Aufnahme, verhält es
   sich wie Start. Läuft eine Aufnahme, schließt es die aktuelle Datei ab
   und startet direkt danach eine neue Session (wieder mit Dateiauswahl,
-  siehe nächster Abschnitt).
+  siehe vorheriger Abschnitt).
 
 Anders als die beiden folgenden Overlays ist die Leiste **nicht**
 klick-durchlässig, da sie echte Buttons hostet — deshalb ist sie bewusst
@@ -171,9 +110,8 @@ Zusätzlich, nur während einer laufenden Aufnahme:
   die aktuelle Position im Ablauf (Branch-Tiefe + letzter Knoten).
 
 Diese beiden Overlays sind klick-durchlässig (stören keine Bedienung) und
-werden wie die Top-Leiste aktiv aus Screenshots ausgeschlossen
-(`SetWindowDisplayAffinity`), tauchen also nie selbst im aufgenommenen Bild
-auf.
+werden wie die Top-Leiste aktiv aus Screenshots ausgeschlossen, tauchen
+also nie selbst im aufgenommenen Bild auf.
 
 ## Ausgabeformat: Notiz, Canvas oder Word
 
@@ -266,11 +204,6 @@ UI-Automation-Element (z. B. ein abgeschicktes Formularfeld) statt einer
 Klickposition — ohne Bounding-Box wird der Screenshot unmarkiert
 gespeichert, es gibt keinen "Blindkreis".
 
-Der zugrunde liegende Tastatur-Hook (`WH_KEYBOARD_LL`) vergleicht
-ausschließlich den virtuellen Tastencode gegen Enter (`VK_RETURN`); jede
-andere Taste läuft unbeachtet durch (`CallNextHookEx`) und wird nicht
-ausgelesen.
-
 ## Hotkeys per Tastendruck festlegen
 
 In den Einstellungen auf "Ändern" neben einem Hotkey klicken und die
@@ -292,3 +225,33 @@ erscheint zusätzlich ein Balloon-Tip am Tray-Icon. Wenn nach einem Klick
 weder im Log noch als Notiz etwas ankommt, wurde der Klick vom Mouse-Hook gar
 nicht erst erkannt (Session nicht gestartet, oder der Hook konnte nicht
 registriert werden — siehe Log-Zeile "Session gestartet").
+
+---
+
+## Für Entwickler
+
+Voraussetzung: .NET 8 SDK (WPF/XAML-Compiler ist Windows-only, lässt sich
+also nur unter Windows bauen).
+
+```bash
+dotnet build DocuClick.sln
+dotnet run --project src/DocuClick/DocuClick.csproj
+```
+
+Es wird keine kompilierte `.exe` im Repo mitversioniert — stattdessen baut
+[.github/workflows/build.yml](.github/workflows/build.yml) bei jedem Push
+nach `main` automatisch auf einem Windows-Runner (Artefakt im jeweiligen
+[Actions-Lauf](../../actions)). Bewusst kein Single-File-Publish: Der
+Self-Extract-Mechanismus ist bei unsignierten Binaries ein häufiger
+Auslöser für Windows-Defender-ML-Fehlalarme.
+
+Neues Release erstellen (baut automatisch und hängt das Zip an ein neues
+GitHub Release):
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Offene Punkte: Feinschliff bei Multi-Monitor/DPI-Kantenfällen, robustere
+Fehlerbehandlung in Randfällen.
