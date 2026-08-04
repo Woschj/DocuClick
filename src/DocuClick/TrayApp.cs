@@ -93,11 +93,14 @@ public sealed class TrayApp : IDisposable
 
     private void OnTrayIconClick(object? sender, MouseEventArgs e)
     {
-        // Left-click on the icon itself is a shortcut for the same toggle
-        // the context menu item performs; right-click still opens the menu.
+        // Left-click opens settings (a stray click must never silently
+        // start a recording session); right-click opens the context menu
+        // (Windows does this automatically for ContextMenuStrip) which has
+        // the actual start/stop item, and the start/stop hotkey covers the
+        // "quick toggle" case instead.
         if (e.Button == MouseButtons.Left)
         {
-            ToggleRecording();
+            SettingsRequested?.Invoke();
         }
     }
 

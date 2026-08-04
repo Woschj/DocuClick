@@ -60,19 +60,38 @@ git push origin v1.0.0
 
 ## Funktionsumfang (erste funktionale Version)
 
-Solange die Aufnahme aktiv ist (Tray-Icon-Menü oder Links-Klick auf das Icon),
-löst jeder Linksklick aus:
+Tray-Icon-Bedienung: **Linksklick öffnet die Einstellungen** (ein versehentlicher
+Klick darf nie ungefragt eine Aufnahme starten), **Rechtsklick öffnet das
+Kontextmenü** mit "Aufnahme starten/stoppen" — oder einfach den Start/Stop-Hotkey
+verwenden (Standard `Strg+Alt+R`).
+
+Solange die Aufnahme aktiv ist, löst jeder Linksklick aus:
 
 1. UI-Automation-Lookup des Elements unter dem Cursor (abschaltbar in den
    Einstellungen) inkl. Fallback auf Fenstertitel + Zeitstempel
-2. Screenshot des betroffenen Monitors
-3. Markierung: Bounding-Box des Elements, falls vorhanden, sonst roter Kreis
-   um die Klickposition
+2. Screenshot **nur des Fensters, in dem geklickt wurde** (nicht des ganzen
+   Monitors) — ermittelt über das Fenster unter der Klickposition
+3. Markierung: Bounding-Box des Elements, falls vorhanden und deutlich
+   kleiner als das Fenster, sonst roter Kreis um die Klickposition (ein zu
+   großes UIA-Bounding-Rect — z. B. wenn die Automation die Fensterfläche
+   selbst zurückgibt — fällt automatisch auf den Kreis zurück, damit nicht
+   ganze Fenster rot eingerahmt werden)
 4. Speichern des Bilds im konfigurierten Attachments-Ordner und Anhängen von
    Beschreibung + `![[bild.png]]` an die Session-Notiz im Obsidian-Vault
 
 Konfiguration über das Tray-Menü ("Einstellungen...") oder direkt in
 `%APPDATA%/DocuClick/config.json`.
+
+### Overlays während der Aufnahme
+
+- Ein kleiner roter Punkt oben links auf dem primären Bildschirm zeigt an,
+  dass die Aufnahme läuft.
+- Im Canvas-Modus zeigt ein zweites, kleines Overlay direkt darunter die
+  aktuelle Position im Ablauf (Branch-Tiefe + letzter Knoten).
+
+Beide Overlays sind klick-durchlässig (stören keine Bedienung) und werden
+aktiv aus Screenshots ausgeschlossen (`SetWindowDisplayAffinity`), tauchen
+also nie selbst im aufgenommenen Bild auf.
 
 ## Canvas-Flow-Modus
 
@@ -131,6 +150,12 @@ Klick" (Standard: an) einen kurzen Systemsound:
 - normaler Klick aufgezeichnet → kurzer Klick-Sound
 - Klick übersprungen (Modifier-Taste gedrückt) → anderer, dezenter Ton
 - Fehler bei der Verarbeitung → Fehler-Sound + Balloon-Tip am Tray-Icon
+
+## Hotkeys per Tastendruck festlegen
+
+In den Einstellungen auf "Ändern" neben einem Hotkey klicken und die
+gewünschte Tastenkombination drücken (statt Text einzutippen) — Esc bricht
+die Aufnahme ab. Betrifft Start/Stop sowie die beiden Branch-Hotkeys.
 
 ## Klicks überspringen
 

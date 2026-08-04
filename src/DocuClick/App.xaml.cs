@@ -10,6 +10,8 @@ public partial class App : Application
     private SessionManager? _sessionManager;
     private AppConfig? _config;
     private HotkeyService? _hotkeyService;
+    private RecordingIndicatorOverlay? _recordingOverlay;
+    private CanvasStatusOverlay? _canvasStatusOverlay;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -24,6 +26,7 @@ public partial class App : Application
         _sessionManager.ErrorOccurred += OnSessionError;
         _sessionManager.InfoOccurred += OnSessionInfo;
         _sessionManager.BranchDepthChanged += OnBranchDepthChanged;
+        _sessionManager.CanvasStatusChanged += OnCanvasStatusChanged;
 
         _trayApp = new TrayApp();
         _trayApp.RecordingStateChanged += OnRecordingStateChanged;
@@ -86,6 +89,22 @@ public partial class App : Application
         Dispatcher.Invoke(() => _trayApp?.SetBranchDepth(depth));
     }
 
+    private void OnCanvasStatusChanged(string? statusText)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            if (statusText is null)
+            {
+                _canvasStatusOverlay?.Hide();
+                return;
+            }
+
+            _canvasStatusOverlay ??= new CanvasStatusOverlay();
+            _canvasStatusOverlay.UpdateText(statusText);
+            _canvasStatusOverlay.Show();
+        });
+    }
+
     private void OnResumeFromPointRequested()
     {
         if (_sessionManager!.IsRunning)
@@ -122,6 +141,8 @@ public partial class App : Application
             try
             {
                 _sessionManager!.Start();
+                _recordingOverlay ??= new RecordingIndicatorOverlay();
+                _recordingOverlay.Show();
             }
             catch (Exception ex)
             {
@@ -134,6 +155,8 @@ public partial class App : Application
         else
         {
             _sessionManager!.Stop();
+            _recordingOverlay?.Hide();
+            _canvasStatusOverlay?.Hide();
         }
     }
 
@@ -149,6 +172,8 @@ public partial class App : Application
         _hotkeyService?.Dispose();
         _sessionManager?.Dispose();
         _trayApp?.Dispose();
+        _recordingOverlay?.Close();
+        _canvasStatusOverlay?.Close();
         base.OnExit(e);
     }
 }

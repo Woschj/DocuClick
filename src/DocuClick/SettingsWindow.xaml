@@ -1,96 +1,214 @@
 <Window x:Class="DocuClick.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="DocuClick - Einstellungen" Height="680" Width="480"
-        WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
-    <DockPanel Margin="16">
+        Title="DocuClick - Einstellungen" Height="820" Width="620"
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
+        Background="#F3F3F6" FontFamily="Segoe UI">
+
+    <Window.Resources>
+        <Style x:Key="CardBorder" TargetType="Border">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#E1E1E6"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="16"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+        </Style>
+
+        <Style x:Key="SectionHeader" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#1F1F23"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#3A3A3F"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+
+        <Style x:Key="HintText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="Foreground" Value="#8A8A92"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
+        </Style>
+
+        <Style x:Key="ModernTextBox" TargetType="TextBox">
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="BorderBrush" Value="#D6D6DC"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Background" Value="White"/>
+        </Style>
+
+        <Style x:Key="ModernComboBox" TargetType="ComboBox">
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="BorderBrush" Value="#D6D6DC"/>
+        </Style>
+
+        <Style x:Key="ModernButton" TargetType="Button">
+            <Setter Property="Padding" Value="14,7"/>
+            <Setter Property="Background" Value="#ECECF0"/>
+            <Setter Property="Foreground" Value="#1F1F23"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+            <Setter Property="Background" Value="#2D6CDF"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <Style x:Key="ColorSwatchButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+            <Setter Property="Width" Value="32"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="BorderBrush" Value="#C9C9D1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+    </Window.Resources>
+
+    <DockPanel Margin="20">
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0" DockPanel.Dock="Bottom">
-            <Button Content="Abbrechen" Width="90" Margin="0,0,8,0" Click="OnCancelClicked"/>
-            <Button Content="Speichern" Width="90" Click="OnSaveClicked"/>
+            <Button Content="Abbrechen" Width="100" Margin="0,0,8,0" Style="{StaticResource ModernButton}" Click="OnCancelClicked"/>
+            <Button Content="Speichern" Width="100" Style="{StaticResource PrimaryButton}" Click="OnSaveClicked"/>
         </StackPanel>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel>
-                <TextBlock Text="Obsidian-Vault-Pfad" FontWeight="Bold"/>
-                <DockPanel Margin="0,4,0,12">
-                    <Button Content="Durchsuchen..." DockPanel.Dock="Right" Margin="8,0,0,0" Click="OnBrowseVaultClicked"/>
-                    <TextBox x:Name="VaultPathBox"/>
-                </DockPanel>
 
-                <TextBlock Text="Attachments-Unterordner" FontWeight="Bold"/>
-                <TextBox x:Name="AttachmentsFolderBox" Margin="0,4,0,12"/>
+                <Border Style="{StaticResource CardBorder}">
+                    <StackPanel>
+                        <TextBlock Text="Obsidian-Vault" Style="{StaticResource SectionHeader}"/>
 
-                <CheckBox x:Name="UseUiAutomationBox" Content="UI-Automation-Beschreibungstexte verwenden" Margin="0,0,0,12"/>
+                        <TextBlock Text="Vault-Pfad" Style="{StaticResource FieldLabel}"/>
+                        <DockPanel Margin="0,0,0,12">
+                            <Button Content="Durchsuchen..." DockPanel.Dock="Right" Margin="8,0,0,0"
+                                    Style="{StaticResource ModernButton}" Click="OnBrowseVaultClicked"/>
+                            <TextBox x:Name="VaultPathBox" Style="{StaticResource ModernTextBox}"/>
+                        </DockPanel>
 
-                <CheckBox x:Name="EnableClickSoundBox" Content="Signalton bei jedem aufgezeichneten Klick" Margin="0,0,0,12"/>
-
-                <TextBlock Text="Hotkey: Aufnahme starten/stoppen" FontWeight="Bold"/>
-                <Grid Margin="0,4,0,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="80"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBox x:Name="StartStopModifiersBox" Grid.Column="0" Margin="0,0,8,0"/>
-                    <TextBox x:Name="StartStopKeyBox" Grid.Column="1"/>
-                </Grid>
-
-                <TextBlock Text="Klicks überspringen bei gedrückter Taste" FontWeight="Bold"/>
-                <ComboBox x:Name="SkipModifierBox" Margin="0,4,0,12">
-                    <ComboBoxItem Content="Keine (immer aufzeichnen)" Tag="None"/>
-                    <ComboBoxItem Content="Umschalt (Shift)" Tag="Shift"/>
-                    <ComboBoxItem Content="Strg (Control)" Tag="Control"/>
-                    <ComboBoxItem Content="Alt" Tag="Alt"/>
-                </ComboBox>
-
-                <CheckBox x:Name="NewNotePerSessionBox" Content="Neue Notiz/Canvas pro Aufnahme-Session"
-                          Margin="0,0,0,4" Checked="OnNewNotePerSessionChanged" Unchecked="OnNewNotePerSessionChanged"/>
-                <TextBlock Text="Feste Zieldatei (Name im Vault-Root, ohne Pfad/Endung)"/>
-                <TextBox x:Name="FixedNoteNameBox" Margin="0,4,0,12"/>
-
-                <CheckBox x:Name="UseCanvasBox" Content="Canvas-Modus: als Ablaufdiagramm (.canvas) statt als Notiz schreiben"
-                          Margin="0,0,0,4" Checked="OnUseCanvasChanged" Unchecked="OnUseCanvasChanged"/>
-                <TextBlock x:Name="CanvasHintText" TextWrapping="Wrap" Foreground="Gray" Margin="0,0,0,12"
-                           Text="Jeder Klick wird als verbundener Knoten in eine .canvas-Datei im Vault geschrieben. Mit den beiden Hotkeys unten lassen sich Abzweigungen setzen."/>
-
-                <TextBlock Text="Hotkey: Abzweigungspunkt setzen" FontWeight="Bold"/>
-                <Grid Margin="0,4,0,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="80"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBox x:Name="BranchMarkModifiersBox" Grid.Column="0" Margin="0,0,8,0"/>
-                    <TextBox x:Name="BranchMarkKeyBox" Grid.Column="1"/>
-                </Grid>
-
-                <TextBlock Text="Hotkey: zu letztem Abzweigungspunkt springen" FontWeight="Bold"/>
-                <Grid Margin="0,4,0,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="80"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBox x:Name="BranchJumpModifiersBox" Grid.Column="0" Margin="0,0,8,0"/>
-                    <TextBox x:Name="BranchJumpKeyBox" Grid.Column="1"/>
-                </Grid>
-                <TextBlock TextWrapping="Wrap" Foreground="Gray" Margin="0,0,0,12"
-                           Text="Modifier z.B. 'Control+Alt', Taste ein einzelner Buchstabe/eine Zifferntaste, z.B. 'B'. Änderungen gelten sofort nach dem Speichern."/>
-
-                <TextBlock Text="Highlighter-Farbe (Hex)" FontWeight="Bold"/>
-                <TextBox x:Name="HighlightColorBox" Margin="0,4,0,12"/>
-
-                <Grid Margin="0,0,0,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                        <TextBlock Text="Radius (px)" FontWeight="Bold"/>
-                        <TextBox x:Name="HighlightRadiusBox" Margin="0,4,0,0"/>
+                        <TextBlock Text="Attachments-Unterordner" Style="{StaticResource FieldLabel}"/>
+                        <TextBox x:Name="AttachmentsFolderBox" Style="{StaticResource ModernTextBox}"/>
                     </StackPanel>
-                    <StackPanel Grid.Column="1" Margin="8,0,0,0">
-                        <TextBlock Text="Strichstärke (px)" FontWeight="Bold"/>
-                        <TextBox x:Name="HighlightThicknessBox" Margin="0,4,0,0"/>
+                </Border>
+
+                <Border Style="{StaticResource CardBorder}">
+                    <StackPanel>
+                        <TextBlock Text="Aufnahme-Verhalten" Style="{StaticResource SectionHeader}"/>
+
+                        <CheckBox x:Name="UseUiAutomationBox" Content="UI-Automation-Beschreibungstexte verwenden" Margin="0,0,0,10"/>
+                        <CheckBox x:Name="EnableClickSoundBox" Content="Signalton bei jedem aufgezeichneten Klick" Margin="0,0,0,12"/>
+
+                        <TextBlock Text="Klicks überspringen bei gedrückter Taste" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox x:Name="SkipModifierBox" Style="{StaticResource ModernComboBox}" Margin="0,0,0,12">
+                            <ComboBoxItem Content="Keine (immer aufzeichnen)" Tag="None"/>
+                            <ComboBoxItem Content="Umschalt (Shift)" Tag="Shift"/>
+                            <ComboBoxItem Content="Strg (Control)" Tag="Control"/>
+                            <ComboBoxItem Content="Alt" Tag="Alt"/>
+                        </ComboBox>
+
+                        <CheckBox x:Name="NewNotePerSessionBox" Content="Neue Notiz/Canvas pro Aufnahme-Session"
+                                  Margin="0,0,0,6" Checked="OnNewNotePerSessionChanged" Unchecked="OnNewNotePerSessionChanged"/>
+                        <TextBlock Text="Feste Zieldatei (Name im Vault-Root, ohne Pfad/Endung)" Style="{StaticResource FieldLabel}"/>
+                        <TextBox x:Name="FixedNoteNameBox" Style="{StaticResource ModernTextBox}"/>
                     </StackPanel>
-                </Grid>
+                </Border>
+
+                <Border Style="{StaticResource CardBorder}">
+                    <StackPanel>
+                        <TextBlock Text="Canvas-Modus" Style="{StaticResource SectionHeader}"/>
+                        <CheckBox x:Name="UseCanvasBox" Content="Als Ablaufdiagramm (.canvas) statt als Notiz schreiben"/>
+                        <TextBlock Style="{StaticResource HintText}"
+                                   Text="Jeder Klick wird als verbundener Knoten in eine .canvas-Datei im Vault geschrieben (vertikaler Hauptfluss, Abzweigungen als neue Spalten). Steuerung über die Hotkeys unten."/>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource CardBorder}">
+                    <StackPanel>
+                        <TextBlock Text="Hotkeys" Style="{StaticResource SectionHeader}"/>
+
+                        <TextBlock Text="Aufnahme starten/stoppen" Style="{StaticResource FieldLabel}"/>
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="110"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="StartStopDisplayBox" Grid.Column="0" Margin="0,0,8,0" IsReadOnly="True" Style="{StaticResource ModernTextBox}"/>
+                            <Button Grid.Column="1" Content="Ändern" Style="{StaticResource ModernButton}" Click="OnRecordStartStopClicked"/>
+                        </Grid>
+
+                        <TextBlock Text="Abzweigungspunkt setzen" Style="{StaticResource FieldLabel}"/>
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="110"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="BranchMarkDisplayBox" Grid.Column="0" Margin="0,0,8,0" IsReadOnly="True" Style="{StaticResource ModernTextBox}"/>
+                            <Button Grid.Column="1" Content="Ändern" Style="{StaticResource ModernButton}" Click="OnRecordBranchMarkClicked"/>
+                        </Grid>
+
+                        <TextBlock Text="Zu letztem Abzweigungspunkt springen" Style="{StaticResource FieldLabel}"/>
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="110"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="BranchJumpDisplayBox" Grid.Column="0" Margin="0,0,8,0" IsReadOnly="True" Style="{StaticResource ModernTextBox}"/>
+                            <Button Grid.Column="1" Content="Ändern" Style="{StaticResource ModernButton}" Click="OnRecordBranchJumpClicked"/>
+                        </Grid>
+                        <TextBlock Style="{StaticResource HintText}" Text="Auf „Ändern” klicken und die gewünschte Tastenkombination drücken. Esc bricht ab. Änderungen gelten sofort nach „Speichern”."/>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource CardBorder}">
+                    <StackPanel>
+                        <TextBlock Text="Highlighter" Style="{StaticResource SectionHeader}"/>
+
+                        <TextBlock Text="Farbe" Style="{StaticResource FieldLabel}"/>
+                        <StackPanel x:Name="HighlightColorSwatchPanel" Orientation="Horizontal" Margin="0,0,0,14">
+                            <Button Tag="#E63946" Background="#E63946" Style="{StaticResource ColorSwatchButton}" Click="OnHighlightColorSwatchClicked"/>
+                            <Button Tag="#F77F00" Background="#F77F00" Style="{StaticResource ColorSwatchButton}" Click="OnHighlightColorSwatchClicked"/>
+                            <Button Tag="#FFD60A" Background="#FFD60A" Style="{StaticResource ColorSwatchButton}" Click="OnHighlightColorSwatchClicked"/>
+                            <Button Tag="#22C55E" Background="#22C55E" Style="{StaticResource ColorSwatchButton}" Click="OnHighlightColorSwatchClicked"/>
+                            <Button Tag="#1D4ED8" Background="#1D4ED8" Style="{StaticResource ColorSwatchButton}" Click="OnHighlightColorSwatchClicked"/>
+                            <Button Tag="#7C3AED" Background="#7C3AED" Style="{StaticResource ColorSwatchButton}" Click="OnHighlightColorSwatchClicked"/>
+                        </StackPanel>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                <TextBlock Text="Radius (px)" Style="{StaticResource FieldLabel}"/>
+                                <TextBox x:Name="HighlightRadiusBox" Style="{StaticResource ModernTextBox}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                <TextBlock Text="Strichstärke (px)" Style="{StaticResource FieldLabel}"/>
+                                <TextBox x:Name="HighlightThicknessBox" Style="{StaticResource ModernTextBox}"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
             </StackPanel>
         </ScrollViewer>
     </DockPanel>

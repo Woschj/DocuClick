@@ -21,6 +21,7 @@ public sealed class SessionManager : IDisposable
     public event Action<string>? ErrorOccurred;
     public event Action<string>? InfoOccurred;
     public event Action<int>? BranchDepthChanged;
+    public event Action<string?>? CanvasStatusChanged;
 
     public bool IsRunning => _isRunning;
 
@@ -43,6 +44,10 @@ public sealed class SessionManager : IDisposable
 
         _mouseHook.Start();
         _isRunning = true;
+        if (_config.UseCanvas)
+        {
+            CanvasStatusChanged?.Invoke(BuildCanvasStatusText());
+        }
         LogService.Log($"Session gestartet. Ziel: {_currentTargetFileName} (Canvas: {_config.UseCanvas}), Vault: '{_config.VaultPath}'");
     }
 
@@ -52,7 +57,16 @@ public sealed class SessionManager : IDisposable
         _canvasWriter.Stop();
         _isRunning = false;
         BranchDepthChanged?.Invoke(0);
+        CanvasStatusChanged?.Invoke(null);
         LogService.Log("Session gestoppt.");
+    }
+
+    private string BuildCanvasStatusText()
+    {
+        var depth = _canvasWriter.BranchDepth;
+        var branchText = depth > 0 ? $"Branch-Tiefe {depth}" : "Hauptablauf";
+        var label = _canvasWriter.CurrentNodeLabel ?? "(noch kein Klick)";
+        return $"Canvas: {branchText}\nZuletzt: {label}";
     }
 
     /// <summary>Hotkey action: bookmark the current node as a branch point.</summary>
@@ -68,6 +82,7 @@ public sealed class SessionManager : IDisposable
         if (result.Success)
         {
             BranchDepthChanged?.Invoke(result.Depth);
+            CanvasStatusChanged?.Invoke(BuildCanvasStatusText());
             InfoOccurred?.Invoke($"Abzweigungspunkt #{result.Depth} gesetzt bei: {result.AnchorLabel}");
         }
         else
@@ -89,6 +104,7 @@ public sealed class SessionManager : IDisposable
         if (result.Success)
         {
             BranchDepthChanged?.Invoke(result.Depth);
+            CanvasStatusChanged?.Invoke(BuildCanvasStatusText());
             InfoOccurred?.Invoke($"Neue Abzweigung von Punkt #{result.Depth} ({result.AnchorLabel}) — nächster Klick startet die neue Spalte.");
         }
         else
@@ -155,17 +171,29 @@ public sealed class SessionManager : IDisposable
             var fallbackWindowTitle = element?.WindowTitle ?? ForegroundWindowService.GetTitle();
             var description = DescriptionGenerator.Describe(element, fallbackWindowTitle, timestamp);
 
-            using var screenshot = ScreenshotService.CaptureMonitorAt(point);
+            var captured = ScreenshotService.CaptureWindowAt(point);
+            using var screenshot = captured.Bitmap;
             var highlightColor = ColorTranslator.FromHtml(_config.HighlightColorHex);
 
-            if (element?.BoundingRectangle is { } rect)
+            // A UIA element occasionally reports its parent pane/window as
+            // its own bounding rect (poor automation trees, clicks on window
+            // chrome, ...). Drawing that as a "highlight" would paint most
+            // of the screenshot red, so only trust boxes that are clearly
+            // smaller than the captured window itself; anything bigger
+            // falls back to a plain click-circle.
+            var rect = element?.BoundingRectangle;
+            var useBoundingBox = rect is { Width: > 0, Height: > 0 } r
+                && r.Width <= captured.Bounds.Width * 0.9
+                && r.Height <= captured.Bounds.Height * 0.9;
+
+            if (useBoundingBox)
             {
-                var localRect = ScreenshotService.ToMonitorLocal(rect, point);
+                var localRect = ScreenshotService.ToLocal(rect!.Value, captured.Bounds);
                 HighlightRenderer.DrawBoundingBox(screenshot, localRect, highlightColor, _config.HighlightThickness);
             }
             else
             {
-                var localPoint = ScreenshotService.ToMonitorLocal(point);
+                var localPoint = ScreenshotService.ToLocal(point, captured.Bounds);
                 HighlightRenderer.DrawClickCircle(screenshot, localPoint, highlightColor, _config.HighlightRadius, _config.HighlightThickness);
             }
 

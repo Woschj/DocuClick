@@ -118,6 +118,9 @@ public sealed class CanvasFlowWriter
 
     public int BranchDepth => _branchAnchors.Count;
 
+    /// <summary>Short preview of the node the next click would connect from, if any.</summary>
+    public string? CurrentNodeLabel => _cursorNodeId is null ? null : GetNodeLabel(_cursorNodeId);
+
     public void AddClickNode(string description, Bitmap screenshot, DateTime timestamp)
     {
         if (_canvasPath is null)
