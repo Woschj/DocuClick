@@ -59,10 +59,26 @@ public partial class App : Application
         // so there is always an at-a-glance answer to "is it running".
         _topBar = new TopBarWindow();
         _topBar.ToggleRecordingRequested += () => _trayApp?.ToggleRecording();
-        _topBar.MarkBranchRequested += () => _sessionManager?.MarkBranchAnchor();
-        _topBar.JumpBranchRequested += () => _sessionManager?.JumpToLastAnchor();
+        _topBar.MarkBranchRequested += OnMarkBranchRequested;
+        _topBar.JumpBranchRequested += OnSelectBranchRequested;
         _topBar.NewSessionRequested += OnNewSessionRequested;
         _topBar.Show();
+
+        // Clicks on DocuClick's own top bar or tray icon must never be
+        // recorded as content — the global mouse hook otherwise can't tell
+        // them apart from a real click (see SessionManager.IsPointOnOwnUi).
+        _sessionManager.IsPointOnOwnUi = point =>
+        {
+            var drawingPoint = new System.Drawing.Point(point.X, point.Y);
+
+            if (_topBar.IsVisible && _topBar.GetScreenBounds().Contains(drawingPoint))
+            {
+                return true;
+            }
+
+            var trayBounds = _trayApp.GetIconScreenBounds();
+            return trayBounds is { } bounds && bounds.Contains(drawingPoint);
+        };
 
         SetUpHotkeys();
 
@@ -75,10 +91,10 @@ public partial class App : Application
         _hotkeyService = new HotkeyService();
         _hotkeyService.Initialize();
 
-        RegisterHotkey(_config!.BranchMarkModifiers, _config.BranchMarkKey, "Abzweigungspunkt setzen",
-            () => _sessionManager?.MarkBranchAnchor());
-        RegisterHotkey(_config.BranchJumpModifiers, _config.BranchJumpKey, "Zu letztem Abzweigungspunkt springen",
-            () => _sessionManager?.JumpToLastAnchor());
+        RegisterHotkey(_config!.BranchMarkModifiers, _config.BranchMarkKey, "Branch setzen",
+            OnMarkBranchRequested);
+        RegisterHotkey(_config.BranchJumpModifiers, _config.BranchJumpKey, "Branch auswählen",
+            OnSelectBranchRequested);
         RegisterHotkey(_config.StartStopModifiers, _config.StartStopKey, "Aufnahme starten/stoppen",
             () => _trayApp?.ToggleRecording());
     }
@@ -120,8 +136,69 @@ public partial class App : Application
         Dispatcher.Invoke(() =>
         {
             _trayApp?.SetBranchDepth(depth);
-            _topBar?.UpdateStatus(_trayApp!.IsRecording, depth > 0 ? $"Branch-Tiefe {depth}" : null, _sessionManager!.SupportsBranching);
+            var currentBranch = _sessionManager!.CurrentBranchName;
+            var detail = currentBranch is not null
+                ? $"Branch: {currentBranch}"
+                : depth > 0 ? $"{depth} Branch(es) gesetzt" : null;
+            _topBar?.UpdateStatus(_trayApp!.IsRecording, detail, _sessionManager.SupportsBranching);
         });
+    }
+
+    /// <summary>Prompts for a branch name; null means the user cancelled.</summary>
+    private string? PromptForBranchName()
+    {
+        var window = new BranchNameWindow();
+        return window.ShowDialog() == true ? window.BranchName : null;
+    }
+
+    private void OnMarkBranchRequested()
+    {
+        if (_sessionManager is null)
+        {
+            return;
+        }
+
+        if (!_sessionManager.IsRunning || !_sessionManager.SupportsBranching)
+        {
+            // Still routes through SessionManager so the usual "not
+            // running"/"mode doesn't support branching" info balloon fires
+            // — no point showing a naming prompt first in that case.
+            _sessionManager.MarkBranchAnchor(string.Empty);
+            return;
+        }
+
+        var name = PromptForBranchName();
+        if (name is not null)
+        {
+            _sessionManager.MarkBranchAnchor(name);
+        }
+    }
+
+    private void OnSelectBranchRequested()
+    {
+        if (_sessionManager is null)
+        {
+            return;
+        }
+
+        if (!_sessionManager.IsRunning || !_sessionManager.SupportsBranching)
+        {
+            _sessionManager.JumpToAnchor(string.Empty);
+            return;
+        }
+
+        var names = _sessionManager.ListBranchAnchorNames();
+        if (names.Count == 0)
+        {
+            _trayApp!.ShowInfo("Noch keine Branches gesetzt (erst mit \"Branch setzen\" einen anlegen).");
+            return;
+        }
+
+        var picker = new BranchPickerWindow(names);
+        if (picker.ShowDialog() == true && picker.SelectedBranchName is not null)
+        {
+            _sessionManager.JumpToAnchor(picker.SelectedBranchName);
+        }
     }
 
     private void OnCanvasStatusChanged(string? statusText)
@@ -150,7 +227,7 @@ public partial class App : Application
 
         if (!_sessionManager.SupportsBranching)
         {
-            _trayApp!.ShowInfo("Nur im Canvas- oder Word-Modus verfügbar (siehe Einstellungen).");
+            _trayApp!.ShowInfo("Nur im Canvas-, Word- oder Excalidraw-Modus verfügbar (siehe Einstellungen).");
             return;
         }
 

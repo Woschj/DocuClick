@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Reflection;
 using System.Windows.Forms;
 
 namespace DocuClick;
@@ -85,9 +86,51 @@ public sealed class TrayApp : IDisposable
         UpdateTooltip();
     }
 
+    /// <summary>
+    /// On-screen rectangle of this tray icon in the taskbar, if it can be
+    /// resolved — used to exclude clicks on the icon itself from the
+    /// recording. NotifyIcon exposes neither its window handle nor its
+    /// icon id publicly, so both come via reflection into BCL-private
+    /// fields; if that ever breaks (a future .NET changes field names),
+    /// this fails closed (returns null, meaning "don't filter") instead of
+    /// throwing.
+    /// </summary>
+    public Rectangle? GetIconScreenBounds()
+    {
+        try
+        {
+            var windowField = typeof(NotifyIcon).GetField("window", BindingFlags.NonPublic | BindingFlags.Instance);
+            var idField = typeof(NotifyIcon).GetField("id", BindingFlags.NonPublic | BindingFlags.Instance);
+
+            if (windowField?.GetValue(_notifyIcon) is not NativeWindow window
+                || idField?.GetValue(_notifyIcon) is not int id)
+            {
+                return null;
+            }
+
+            var identifier = new NativeMethods.NOTIFYICONIDENTIFIER
+            {
+                cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.NOTIFYICONIDENTIFIER>(),
+                hWnd = window.Handle,
+                uID = (uint)id
+            };
+
+            if (NativeMethods.Shell_NotifyIconGetRect(ref identifier, out var rect) != 0)
+            {
+                return null;
+            }
+
+            return Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private void UpdateTooltip()
     {
-        var text = _branchDepth > 0 ? $"{_baseStatusText} · Branch-Tiefe: {_branchDepth}" : _baseStatusText;
+        var text = _branchDepth > 0 ? $"{_baseStatusText} · Branches: {_branchDepth}" : _baseStatusText;
         _notifyIcon.Text = text.Length > 63 ? text[..63] : text;
     }
 

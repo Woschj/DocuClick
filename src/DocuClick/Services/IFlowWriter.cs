@@ -13,10 +13,24 @@ public interface IFlowWriter
     void StartSession(string fileName);
     void Stop();
     void AddClickNode(string description, Bitmap screenshot, DateTime timestamp);
-    BranchActionResult MarkBranchAnchor();
-    BranchActionResult JumpToLastAnchor();
+
+    /// <summary>Bookmarks the current node under a user-chosen name (re-marking an existing name replaces its target).</summary>
+    BranchActionResult MarkBranchAnchor(string branchName);
+
+    /// <summary>Moves the cursor to a previously named anchor.</summary>
+    BranchActionResult JumpToAnchor(string branchName);
+
+    /// <summary>All currently defined branch names, in the order they were first marked.</summary>
+    List<string> ListBranchAnchorNames();
+
     List<ResumableNode> ListNodesForResume(string fileName);
     void SetResumeAnchor(ResumableNode node);
+
+    /// <summary>How many named branch anchors are currently defined.</summary>
     int BranchDepth { get; }
+
+    /// <summary>Name of the branch the cursor is currently positioned in, or null for the main flow.</summary>
+    string? CurrentBranchName { get; }
+
     string? CurrentNodeLabel { get; }
 }

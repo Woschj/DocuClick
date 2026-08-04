@@ -7,8 +7,9 @@ namespace DocuClick.Services;
 /// Glues the mouse/keyboard hooks to the capture pipeline (UI Automation
 /// lookup -> screenshot -> highlight -> write) and owns the current
 /// session's target file. Writes either a linear note (ObsidianWriter) or
-/// a branching flow (<see cref="IFlowWriter"/>: Obsidian Canvas or Word),
-/// depending on <see cref="AppConfig.OutputMode"/>.
+/// a branching flow (<see cref="IFlowWriter"/>: Obsidian Canvas, Word, or
+/// the experimental Excalidraw mode), depending on
+/// <see cref="AppConfig.OutputMode"/>.
 /// </summary>
 public sealed class SessionManager : IDisposable
 {
@@ -18,6 +19,7 @@ public sealed class SessionManager : IDisposable
     private readonly ObsidianWriter _noteWriter;
     private readonly CanvasFlowWriter _canvasWriter;
     private readonly WordFlowWriter _wordWriter;
+    private readonly ExcalidrawFlowWriter _excalidrawWriter;
     private string _currentTargetFileName = string.Empty;
     private bool _isRunning;
 
@@ -26,15 +28,25 @@ public sealed class SessionManager : IDisposable
     public event Action<int>? BranchDepthChanged;
     public event Action<string?>? CanvasStatusChanged;
 
+    /// <summary>
+    /// Set once by App.xaml.cs to answer "is this screen point over
+    /// DocuClick's own UI (top bar / tray icon)?" — the global mouse hook
+    /// otherwise has no way to distinguish those from actual content
+    /// clicks, since WH_MOUSE_LL sees every click on screen regardless of
+    /// which window it lands on.
+    /// </summary>
+    public Func<Point, bool>? IsPointOnOwnUi { get; set; }
+
     public bool IsRunning => _isRunning;
 
-    /// <summary>Whether the active output mode supports branching (Canvas/Word vs. plain Note).</summary>
+    /// <summary>Whether the active output mode supports branching (Canvas/Word/Excalidraw vs. plain Note).</summary>
     public bool SupportsBranching => ActiveFlowWriter is not null;
 
     private IFlowWriter? ActiveFlowWriter => _config.OutputMode switch
     {
         "Canvas" => _canvasWriter,
         "Word" => _wordWriter,
+        "Excalidraw" => _excalidrawWriter,
         _ => null
     };
 
@@ -44,6 +56,7 @@ public sealed class SessionManager : IDisposable
         _noteWriter = new ObsidianWriter(config);
         _canvasWriter = new CanvasFlowWriter(config);
         _wordWriter = new WordFlowWriter(config);
+        _excalidrawWriter = new ExcalidrawFlowWriter(config);
         _mouseHook.LeftButtonDown += OnLeftButtonDown;
         _keyboardHook.EnterPressed += OnEnterPressed;
     }
@@ -53,6 +66,7 @@ public sealed class SessionManager : IDisposable
     {
         "Canvas" => ".canvas",
         "Word" => ".docx",
+        "Excalidraw" => ".excalidraw",
         _ => ".md"
     };
 
@@ -133,53 +147,60 @@ public sealed class SessionManager : IDisposable
     private string BuildStatusText()
     {
         var writer = ActiveFlowWriter!;
-        var depth = writer.BranchDepth;
-        var branchText = depth > 0 ? $"Branch-Tiefe {depth}" : "Hauptablauf";
+        var branches = writer.ListBranchAnchorNames();
+        var currentBranch = writer.CurrentBranchName ?? "Hauptablauf";
+        var branchesInfo = branches.Count > 0 ? $"Branches: {string.Join(", ", branches)}" : "Keine Branches gesetzt";
         var label = writer.CurrentNodeLabel ?? "(noch kein Klick)";
-        return $"{_config.OutputMode}: {branchText}\nZuletzt: {label}";
+        return $"{_config.OutputMode}: {currentBranch}\n{branchesInfo}\nZuletzt: {label}";
     }
 
-    /// <summary>Hotkey action: bookmark the current node as a branch point.</summary>
-    public void MarkBranchAnchor()
+    /// <summary>Names of all currently defined branch anchors, for the "Branch auswählen" picker.</summary>
+    public List<string> ListBranchAnchorNames() => ActiveFlowWriter?.ListBranchAnchorNames() ?? new List<string>();
+
+    /// <summary>Name of the branch the cursor is currently positioned in, or null for the main flow.</summary>
+    public string? CurrentBranchName => ActiveFlowWriter?.CurrentBranchName;
+
+    /// <summary>Hotkey/button action: bookmark the current node under a user-chosen name.</summary>
+    public void MarkBranchAnchor(string branchName)
     {
         if (!_isRunning || ActiveFlowWriter is not { } writer)
         {
-            InfoOccurred?.Invoke("Hotkey ignoriert: aktueller Ausgabemodus unterstützt keine Abzweigungen.");
+            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Abzweigungen.");
             return;
         }
 
-        var result = writer.MarkBranchAnchor();
+        var result = writer.MarkBranchAnchor(branchName);
         if (result.Success)
         {
             BranchDepthChanged?.Invoke(result.Depth);
             CanvasStatusChanged?.Invoke(BuildStatusText());
-            InfoOccurred?.Invoke($"Abzweigungspunkt #{result.Depth} gesetzt bei: {result.AnchorLabel}");
+            InfoOccurred?.Invoke($"Branch \"{branchName}\" gesetzt bei: {writer.CurrentNodeLabel ?? "(ohne Beschreibung)"}");
         }
         else
         {
-            InfoOccurred?.Invoke("Noch kein Klick vorhanden, der als Abzweigungspunkt markiert werden könnte.");
+            InfoOccurred?.Invoke("Noch kein Klick vorhanden, der als Branch-Punkt markiert werden könnte.");
         }
     }
 
-    /// <summary>Hotkey action: rewind the cursor to the last bookmarked branch point.</summary>
-    public void JumpToLastAnchor()
+    /// <summary>Hotkey/button action: move the cursor to a previously named branch anchor.</summary>
+    public void JumpToAnchor(string branchName)
     {
         if (!_isRunning || ActiveFlowWriter is not { } writer)
         {
-            InfoOccurred?.Invoke("Hotkey ignoriert: aktueller Ausgabemodus unterstützt keine Abzweigungen.");
+            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Abzweigungen.");
             return;
         }
 
-        var result = writer.JumpToLastAnchor();
+        var result = writer.JumpToAnchor(branchName);
         if (result.Success)
         {
             BranchDepthChanged?.Invoke(result.Depth);
             CanvasStatusChanged?.Invoke(BuildStatusText());
-            InfoOccurred?.Invoke($"Neue Abzweigung von Punkt #{result.Depth} ({result.AnchorLabel}) — nächster Klick startet die neue Spalte.");
+            InfoOccurred?.Invoke($"Zu Branch \"{branchName}\" gesprungen — nächster Klick beginnt dort eine neue Spalte/einen neuen Abschnitt.");
         }
         else
         {
-            InfoOccurred?.Invoke("Kein Abzweigungspunkt gesetzt (erst mit dem Mark-Hotkey einen setzen).");
+            InfoOccurred?.Invoke($"Branch \"{branchName}\" nicht gefunden.");
         }
     }
 
@@ -192,6 +213,15 @@ public sealed class SessionManager : IDisposable
 
     private void OnLeftButtonDown(object? sender, MouseClickEventArgs e)
     {
+        if (IsPointOnOwnUi?.Invoke(e.Point) == true)
+        {
+            // Never counts as a "skipped" click either (no sound, no
+            // balloon) — this isn't a deliberate skip, it's not a content
+            // click at all, just interaction with DocuClick's own controls.
+            LogService.Log($"Klick bei ({e.Point.X}, {e.Point.Y}) ignoriert (DocuClick-eigene UI: Top-Leiste/Tray-Icon).");
+            return;
+        }
+
         if (IsSkipModifierDown(e.ShiftDown, e.ControlDown, e.AltDown))
         {
             LogService.Log($"Klick bei ({e.Point.X}, {e.Point.Y}) übersprungen ({_config.SkipRecordingModifier}-Taste gedrückt).");

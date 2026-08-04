@@ -17,11 +17,10 @@ public sealed record ResumableNode(string Id, string Label, double X, double Y);
 ///
 /// Layout is vertical: the main line runs top-to-bottom in one column.
 ///
-/// Branching: <see cref="MarkBranchAnchor"/> bookmarks the current node on a
-/// stack; <see cref="JumpToLastAnchor"/> rewinds the cursor to the top of
-/// that stack (without popping it, so the same point can be branched from
-/// more than once) and starts a new column to the right so the new branch
-/// doesn't overlap the existing flow.
+/// Branching: <see cref="MarkBranchAnchor"/> bookmarks the current node
+/// under a user-chosen name; <see cref="JumpToAnchor"/> moves the cursor to
+/// a named anchor (can be re-visited any number of times) and starts a new
+/// column to the right so the new branch doesn't overlap the existing flow.
 /// </summary>
 public sealed class CanvasFlowWriter : IFlowWriter
 {
@@ -29,6 +28,8 @@ public sealed class CanvasFlowWriter : IFlowWriter
     private const double NodeHeight = 340;
     private const double SequentialSpacing = 60; // gap between consecutive nodes along the main (vertical) flow
     private const double BranchColumnSpacing = 80; // gap between branch columns
+
+    private sealed record BranchAnchor(string Name, string NodeId, double X, double Y);
 
     private readonly AppConfig _config;
     private readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
@@ -39,7 +40,8 @@ public sealed class CanvasFlowWriter : IFlowWriter
     private double _cursorX;
     private double _cursorY;
     private double _nextColumnX;
-    private readonly Stack<(string NodeId, double X, double Y)> _branchAnchors = new();
+    private string? _currentBranchName;
+    private readonly List<BranchAnchor> _branchAnchors = new();
     private (string NodeId, double X, double Y)? _pendingResumeAnchor;
 
     public CanvasFlowWriter(AppConfig config)
@@ -88,6 +90,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
         _doc = LoadOrCreate(_canvasPath);
         _nextColumnX = _doc.Nodes.Count > 0 ? _doc.Nodes.Max(n => n.X) + NodeWidth + BranchColumnSpacing : 0;
         _branchAnchors.Clear();
+        _currentBranchName = null;
 
         if (_pendingResumeAnchor is { } resume && _doc.Nodes.Any(n => n.Id == resume.NodeId))
         {
@@ -114,9 +117,12 @@ public sealed class CanvasFlowWriter : IFlowWriter
     {
         _cursorNodeId = null;
         _branchAnchors.Clear();
+        _currentBranchName = null;
     }
 
     public int BranchDepth => _branchAnchors.Count;
+
+    public string? CurrentBranchName => _currentBranchName;
 
     /// <summary>Short preview of the node the next click would connect from, if any.</summary>
     public string? CurrentNodeLabel => _cursorNodeId is null ? null : GetNodeLabel(_cursorNodeId);
@@ -159,15 +165,24 @@ public sealed class CanvasFlowWriter : IFlowWriter
         Save();
     }
 
-    /// <summary>Bookmarks the current node as a branch point.</summary>
-    public BranchActionResult MarkBranchAnchor()
+    /// <summary>Bookmarks the current node under <paramref name="branchName"/> (re-marking an existing name replaces its target).</summary>
+    public BranchActionResult MarkBranchAnchor(string branchName)
     {
         if (_cursorNodeId is null)
         {
             return new BranchActionResult(false, _branchAnchors.Count, null);
         }
 
-        _branchAnchors.Push((_cursorNodeId, _cursorX, _cursorY));
+        var anchor = new BranchAnchor(branchName, _cursorNodeId, _cursorX, _cursorY);
+        var existingIndex = _branchAnchors.FindIndex(a => a.Name == branchName);
+        if (existingIndex >= 0)
+        {
+            _branchAnchors[existingIndex] = anchor;
+        }
+        else
+        {
+            _branchAnchors.Add(anchor);
+        }
 
         var node = _doc.Nodes.FirstOrDefault(n => n.Id == _cursorNodeId);
         if (node is not null)
@@ -176,24 +191,27 @@ public sealed class CanvasFlowWriter : IFlowWriter
             Save();
         }
 
-        return new BranchActionResult(true, _branchAnchors.Count, GetNodeLabel(_cursorNodeId));
+        return new BranchActionResult(true, _branchAnchors.Count, branchName);
     }
 
-    /// <summary>Rewinds the cursor to the top of the branch-anchor stack (without popping it).</summary>
-    public BranchActionResult JumpToLastAnchor()
+    public List<string> ListBranchAnchorNames() => _branchAnchors.Select(a => a.Name).ToList();
+
+    /// <summary>Moves the cursor to the named anchor and opens a new column so the branch doesn't overlap the existing flow.</summary>
+    public BranchActionResult JumpToAnchor(string branchName)
     {
-        if (_branchAnchors.Count == 0)
+        var anchor = _branchAnchors.FirstOrDefault(a => a.Name == branchName);
+        if (anchor is null)
         {
-            return new BranchActionResult(false, 0, null);
+            return new BranchActionResult(false, _branchAnchors.Count, null);
         }
 
-        var anchor = _branchAnchors.Peek();
         _nextColumnX += NodeWidth + BranchColumnSpacing;
         _cursorNodeId = anchor.NodeId;
         _cursorX = _nextColumnX;
         _cursorY = anchor.Y;
+        _currentBranchName = branchName;
 
-        return new BranchActionResult(true, _branchAnchors.Count, GetNodeLabel(anchor.NodeId));
+        return new BranchActionResult(true, _branchAnchors.Count, branchName);
     }
 
     private string? GetNodeLabel(string nodeId) =>

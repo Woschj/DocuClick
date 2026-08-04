@@ -37,11 +37,14 @@ public sealed class WordFlowWriter : IFlowWriter
     private MemoryStream? _stream;
     private WordprocessingDocument? _wordDoc;
 
+    private sealed record BranchAnchor(string Name, string NodeId);
+
     private string? _cursorNodeId;
     private int _nextBookmarkId;
     private uint _nextDrawingId = 1;
+    private string? _currentBranchName;
     private readonly Dictionary<string, string> _labels = new();
-    private readonly Stack<string> _branchAnchors = new();
+    private readonly List<BranchAnchor> _branchAnchors = new();
     private string? _pendingResumeAnchor;
 
     public WordFlowWriter(AppConfig config)
@@ -50,6 +53,8 @@ public sealed class WordFlowWriter : IFlowWriter
     }
 
     public int BranchDepth => _branchAnchors.Count;
+
+    public string? CurrentBranchName => _currentBranchName;
 
     public string? CurrentNodeLabel => _cursorNodeId is null ? null : _labels.GetValueOrDefault(_cursorNodeId);
 
@@ -127,6 +132,7 @@ public sealed class WordFlowWriter : IFlowWriter
         }
 
         _branchAnchors.Clear();
+        _currentBranchName = null;
 
         if (_pendingResumeAnchor is { } resume && _labels.ContainsKey(resume))
         {
@@ -146,6 +152,7 @@ public sealed class WordFlowWriter : IFlowWriter
     {
         _cursorNodeId = null;
         _branchAnchors.Clear();
+        _currentBranchName = null;
         _wordDoc?.Dispose();
         _wordDoc = null;
         _stream?.Dispose();
@@ -174,30 +181,43 @@ public sealed class WordFlowWriter : IFlowWriter
         Save();
     }
 
-    public BranchActionResult MarkBranchAnchor()
+    public BranchActionResult MarkBranchAnchor(string branchName)
     {
         if (_cursorNodeId is null)
         {
             return new BranchActionResult(false, _branchAnchors.Count, null);
         }
 
-        _branchAnchors.Push(_cursorNodeId);
-        return new BranchActionResult(true, _branchAnchors.Count, CurrentNodeLabel ?? "(ohne Beschreibung)");
-    }
-
-    public BranchActionResult JumpToLastAnchor()
-    {
-        if (_branchAnchors.Count == 0)
+        var anchor = new BranchAnchor(branchName, _cursorNodeId);
+        var existingIndex = _branchAnchors.FindIndex(a => a.Name == branchName);
+        if (existingIndex >= 0)
         {
-            return new BranchActionResult(false, 0, null);
+            _branchAnchors[existingIndex] = anchor;
+        }
+        else
+        {
+            _branchAnchors.Add(anchor);
         }
 
-        var anchor = _branchAnchors.Peek();
-        AppendJumpMarker(anchor, "Abzweigung von");
-        _cursorNodeId = anchor;
+        return new BranchActionResult(true, _branchAnchors.Count, branchName);
+    }
+
+    public List<string> ListBranchAnchorNames() => _branchAnchors.Select(a => a.Name).ToList();
+
+    public BranchActionResult JumpToAnchor(string branchName)
+    {
+        var anchor = _branchAnchors.FirstOrDefault(a => a.Name == branchName);
+        if (anchor is null)
+        {
+            return new BranchActionResult(false, _branchAnchors.Count, null);
+        }
+
+        AppendJumpMarker(anchor.NodeId, $"Abzweigung '{branchName}' von");
+        _cursorNodeId = anchor.NodeId;
+        _currentBranchName = branchName;
         Save();
 
-        return new BranchActionResult(true, _branchAnchors.Count, _labels.GetValueOrDefault(anchor, "(ohne Beschreibung)"));
+        return new BranchActionResult(true, _branchAnchors.Count, branchName);
     }
 
     private void AppendJumpMarker(string anchorNodeId, string verb)

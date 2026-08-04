@@ -59,6 +59,9 @@ public partial class SettingsWindow : Window
             case "Word":
                 OutputModeWordRadio.IsChecked = true;
                 break;
+            case "Excalidraw":
+                OutputModeExcalidrawRadio.IsChecked = true;
+                break;
             default:
                 OutputModeNoteRadio.IsChecked = true;
                 break;
@@ -94,13 +97,16 @@ public partial class SettingsWindow : Window
 
     private void OnOutputModeChanged(object sender, RoutedEventArgs e)
     {
-        // Word embeds screenshots directly (no attachments folder), and
-        // isn't tied to an Obsidian vault at all — just any target folder.
+        // Word embeds screenshots directly and isn't tied to an Obsidian
+        // vault at all — just any target folder. Excalidraw also embeds
+        // directly but (unlike Word) still needs an actual Obsidian vault
+        // (plus its plugin) to open, so it keeps the "Obsidian-Vault" wording.
         var isWord = OutputModeWordRadio.IsChecked == true;
+        var embedsScreenshotsDirectly = isWord || OutputModeExcalidrawRadio.IsChecked == true;
 
         VaultCardHeader.Text = isWord ? "Zielordner" : "Obsidian-Vault";
         VaultPathLabel.Text = isWord ? "Zielordner-Pfad (für die .docx-Datei)" : "Vault-Pfad";
-        AttachmentsRow.Visibility = isWord ? Visibility.Collapsed : Visibility.Visible;
+        AttachmentsRow.Visibility = embedsScreenshotsDirectly ? Visibility.Collapsed : Visibility.Visible;
     }
 
     // --- Color swatches -----------------------------------------------
@@ -254,7 +260,9 @@ public partial class SettingsWindow : Window
             ? "Canvas"
             : OutputModeWordRadio.IsChecked == true
                 ? "Word"
-                : "Note";
+                : OutputModeExcalidrawRadio.IsChecked == true
+                    ? "Excalidraw"
+                    : "Note";
 
         _config.StartStopModifiers = _startStopModifiers;
         _config.StartStopKey = _startStopKey;

@@ -73,10 +73,10 @@ public sealed class TopBarWindow : Window
         _toggleRecordingButton = CreateButton(buttonStyle, "Start", "Aufnahme starten/stoppen (wie der Tray-Menüpunkt bzw. der Start/Stop-Hotkey).");
         _toggleRecordingButton.Click += (_, _) => ToggleRecordingRequested?.Invoke();
 
-        _markBranchButton = CreateButton(buttonStyle, "Branch setzen", "Abzweigungspunkt setzen: merkt sich den aktuellen Knoten/Abschnitt als Anker.");
+        _markBranchButton = CreateButton(buttonStyle, "Branch setzen", "Aktuellen Knoten/Abschnitt unter einem Namen als Branch-Punkt markieren (fragt nach dem Namen).");
         _markBranchButton.Click += (_, _) => MarkBranchRequested?.Invoke();
 
-        _jumpBranchButton = CreateButton(buttonStyle, "→ Branch", "Zu letztem Abzweigungspunkt springen: der nächste Klick beginnt eine neue Abzweigung von dort.");
+        _jumpBranchButton = CreateButton(buttonStyle, "Branch auswählen", "Zu einem benannten Branch-Punkt springen: der nächste Klick beginnt dort eine neue Abzweigung.");
         _jumpBranchButton.Click += (_, _) => JumpBranchRequested?.Invoke();
 
         _newSessionButton = CreateButton(buttonStyle, "Neue Session", "Startet eine neue Aufnahme-Session (fragt nach Zieldatei) — schließt bei laufender Aufnahme zuerst die aktuelle Datei ab.");
@@ -221,4 +221,13 @@ public sealed class TopBarWindow : Window
         var baseText = isRecording ? "DocuClick – Aufnahme läuft" : "DocuClick – Aufnahme gestoppt";
         _statusText.Text = detail is null ? baseText : $"{baseText} · {detail}";
     }
+
+    /// <summary>
+    /// Current on-screen rectangle (physical pixels, same space as the
+    /// mouse hook's click points) — used to exclude clicks on the bar
+    /// itself from the recording. Recomputed each call since the bar is
+    /// draggable.
+    /// </summary>
+    public System.Drawing.Rectangle GetScreenBounds() =>
+        new((int)Left, (int)Top, (int)ActualWidth, (int)ActualHeight);
 }

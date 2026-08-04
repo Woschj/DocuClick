@@ -73,4 +73,23 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetWindowRect(nint hWnd, out RECT lpRect);
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct NOTIFYICONIDENTIFIER
+    {
+        public uint cbSize;
+        public nint hWnd;
+        public uint uID;
+        public Guid guidItem;
+    }
+
+    /// <summary>
+    /// Resolves a NotifyIcon's actual on-screen rectangle in the taskbar,
+    /// so clicks on DocuClick's own tray icon can be excluded from the
+    /// recording (a global WH_MOUSE_LL hook sees them just like any other
+    /// click otherwise). WinForms' NotifyIcon has no public Handle/Id, so
+    /// the caller obtains those via reflection.
+    /// </summary>
+    [LibraryImport("shell32.dll")]
+    internal static partial int Shell_NotifyIconGetRect(ref NOTIFYICONIDENTIFIER identifier, out RECT iconLocation);
 }

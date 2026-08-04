@@ -104,12 +104,15 @@
                         <RadioButton x:Name="OutputModeCanvasRadio" GroupName="OutputMode" Margin="0,0,0,8"
                                      Content="Obsidian-Canvas (.canvas, Ablaufdiagramm mit Abzweigungen)"
                                      Checked="OnOutputModeChanged"/>
-                        <RadioButton x:Name="OutputModeWordRadio" GroupName="OutputMode" Margin="0,0,0,4"
+                        <RadioButton x:Name="OutputModeWordRadio" GroupName="OutputMode" Margin="0,0,0,8"
                                      Content="Word (.docx, ein Schritt = ein Abschnitt, für Office/SharePoint)"
+                                     Checked="OnOutputModeChanged"/>
+                        <RadioButton x:Name="OutputModeExcalidrawRadio" GroupName="OutputMode" Margin="0,0,0,4"
+                                     Content="Excalidraw (.excalidraw, Skizzen-Look, experimentell — benötigt das Excalidraw-Plugin)"
                                      Checked="OnOutputModeChanged"/>
 
                         <TextBlock Style="{StaticResource HintText}"
-                                   Text="Canvas schreibt jeden Klick als verbundenen Knoten auf einer Fläche (vertikaler Hauptfluss, Abzweigungen als neue Spalten über die Hotkeys unten) — gut für kurze Abläufe, wird bei sehr langen Abläufen aber schnell unübersichtlich. Word hängt stattdessen jeden Klick als eigenen Abschnitt fortlaufend ans Dokumentende an (kein Größenlimit), Abzweigungen werden als Rücksprung-Link dargestellt. Beide Modi betten Screenshots direkt in die Datei ein — kein separater Attachments-Ordner nötig — und sind voll editierbar (Canvas in Obsidian, Word in Microsoft Word/SharePoint)."/>
+                                   Text="Canvas schreibt jeden Klick als verbundenen Knoten auf einer Fläche (vertikaler Hauptfluss, Abzweigungen als neue Spalten über die Hotkeys unten) — gut für kurze Abläufe, wird bei sehr langen Abläufen aber schnell unübersichtlich. Word hängt stattdessen jeden Klick als eigenen Abschnitt fortlaufend ans Dokumentende an (kein Größenlimit), Abzweigungen werden als Rücksprung-Link dargestellt. Excalidraw funktioniert wie Canvas (Knoten + Abzweigungen), aber im freien Skizzen-Look statt fester Boxen — experimentell, benötigt zusätzlich das kostenlose Excalidraw-Community-Plugin (anders als Canvas, das in Obsidian bereits eingebaut ist). Canvas/Word/Excalidraw betten Screenshots direkt in die Datei ein — kein separater Attachments-Ordner nötig — und sind voll editierbar."/>
                     </StackPanel>
                 </Border>
 
@@ -166,7 +169,7 @@
                             <Button Grid.Column="1" Content="Ändern" Style="{StaticResource ModernButton}" Click="OnRecordStartStopClicked"/>
                         </Grid>
 
-                        <TextBlock Text="Abzweigungspunkt setzen" Style="{StaticResource FieldLabel}"/>
+                        <TextBlock Text="Branch setzen" Style="{StaticResource FieldLabel}"/>
                         <Grid Margin="0,0,0,12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -176,7 +179,7 @@
                             <Button Grid.Column="1" Content="Ändern" Style="{StaticResource ModernButton}" Click="OnRecordBranchMarkClicked"/>
                         </Grid>
 
-                        <TextBlock Text="Zu letztem Abzweigungspunkt springen" Style="{StaticResource FieldLabel}"/>
+                        <TextBlock Text="Branch auswählen" Style="{StaticResource FieldLabel}"/>
                         <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>

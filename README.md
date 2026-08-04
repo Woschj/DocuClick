@@ -2,8 +2,9 @@
 
 Windows-Screenshot-Tool, das bei jedem Mausklick (optional auch bei Enter)
 automatisch einen Screenshot mit Klick-Markierung erstellt und samt
-Beschreibungstext in eine Obsidian-Notiz, ein Obsidian-Canvas oder ein
-Word-Dokument einfügt. Details zu allen drei Ausgabeformaten weiter unten.
+Beschreibungstext in eine Obsidian-Notiz, ein Obsidian-Canvas, ein
+Word-Dokument oder (experimentell) ein Excalidraw-Sketch einfügt. Details
+zu allen vier Ausgabeformaten weiter unten.
 
 App-Icon: [Assets/app.ico](src/DocuClick/Assets/app.ico) (im selben
 Rot-auf-Dunkel-Stil wie das Tray-Icon).
@@ -23,6 +24,51 @@ self-contained, kein separat installiertes .NET nötig.
 Nach dem Start läuft DocuClick als Tray-Icon im Infobereich der
 Taskleiste — kein sichtbares Fenster, siehe [Funktionsumfang](#funktionsumfang)
 für die Bedienung.
+
+## Obsidian einrichten und den Vault nutzen
+
+Für die Notiz-, Canvas- und Excalidraw-Ausgabeformate (nicht für Word) wird
+[Obsidian](https://obsidian.md) empfohlen — kostenlos, kein Account nötig,
+öffnet einfach einen lokalen Ordner als "Vault". Für Notiz/Canvas ist kein
+Plugin erforderlich, DocuClick schreibt reine Markdown-/JSON-Dateien direkt
+auf die Festplatte; für Excalidraw wird zusätzlich das kostenlose
+Excalidraw-Community-Plugin gebraucht (siehe
+[Ausgabeformat](#ausgabeformat-notiz-canvas-word-oder-excalidraw)).
+
+1. **Obsidian installieren**: Installer von [obsidian.md](https://obsidian.md/download)
+   herunterladen und ausführen.
+2. **Vault vorbereiten**: [VaultTemplate/](VaultTemplate/) aus diesem Repo
+   an einen Ort außerhalb des Repos kopieren (z. B.
+   `%USERPROFILE%\Documents\Prozess-Vault`) — Details und der Grund dafür
+   (Screenshots landen sonst im öffentlichen Git-Verlauf) in
+   [VaultTemplate/README.md](VaultTemplate/README.md).
+3. **Als Vault öffnen**: In Obsidian "Open folder as vault" → den kopierten
+   Ordner auswählen. Das mitgelieferte Theme (inkl. automatischer
+   Ordnerfärbung) wird direkt übernommen.
+4. **DocuClick verbinden**: In den DocuClick-Einstellungen den
+   Vault-Pfad auf denselben kopierten Ordner setzen, Ausgabeformat auf
+   Notiz oder Canvas stellen.
+
+Danach läuft die Aufnahme unabhängig von Obsidian — die App muss beim
+Aufzeichnen nicht mal geöffnet sein, DocuClick schreibt direkt in die
+Dateien. Obsidian wird nur zum Ansehen/Bearbeiten der Ergebnisse gebraucht
+und aktualisiert offene Notizen/Canvases automatisch, sobald sich die
+Datei auf der Festplatte ändert.
+
+Alltags-Workflow:
+
+- Beim Start einer Aufnahme fragt DocuClick nach Zieldatei **und
+  -ordner** innerhalb des Vaults (siehe [Zieldatei bei jedem
+  Session-Start](#zieldatei-bei-jedem-session-start)) — damit landet
+  jede Aufnahme direkt dort, wo sie in der Vault-Struktur hingehört,
+  statt alles im Wurzelordner zu sammeln.
+- Für länger geplante Abläufe lohnt es sich, vorher eine Vorlage aus
+  `02 Vorlagen/` zu kopieren und mit Titel/Zweck auszufüllen, dann beim
+  Session-Start "Bestehende Datei fortsetzen" wählen.
+- Verzweigt sich ein Ablauf (z. B. Fehlerfall vs. Erfolgsfall), mit
+  "Branch setzen" einen Namen vergeben und später über "Branch
+  auswählen" gezielt dorthin zurückspringen (siehe
+  [Ausgabeformat](#ausgabeformat-notiz-canvas-word-oder-excalidraw)).
 
 ## Funktionsumfang
 
@@ -86,13 +132,13 @@ den Grund dafür (Screenshots landen sonst im öffentlichen Git-Verlauf).
 Eine kleine, mittig oben schwebende Pille (wie die TeamViewer-Session-Leiste
 — nicht bildschirmbreit, sonst würde sie Fenster ziehen/Menüs/Snap-Zonen
 blockieren) ist sichtbar, solange die App läuft, und zeigt auf einen Blick
-den Aufnahmestatus (inkl. Branch-Tiefe, falls > 0). Frei verschiebbar per
-Ziehen. Sie enthält vier Buttons:
+den Aufnahmestatus (inkl. aktuellem Branch-Namen, falls einer aktiv ist).
+Frei verschiebbar per Ziehen. Sie enthält vier Buttons:
 
 - **Start/Stop**: entspricht dem Tray-Menüpunkt bzw. dem Start/Stop-Hotkey.
-- **Branch setzen** / **→ Branch**: entsprechen den beiden Branch-Hotkeys
-  (siehe unten), nur aktiv während einer laufenden Aufnahme im Canvas- oder
-  Word-Modus.
+- **Branch setzen** / **Branch auswählen**: entsprechen den beiden
+  Branch-Hotkeys (siehe unten), nur aktiv während einer laufenden Aufnahme
+  im Canvas- oder Word-Modus.
 - **Neue Session**: immer klickbar. Läuft gerade keine Aufnahme, verhält es
   sich wie Start. Läuft eine Aufnahme, schließt es die aktuelle Datei ab
   und startet direkt danach eine neue Session (wieder mit Dateiauswahl,
@@ -100,22 +146,25 @@ Ziehen. Sie enthält vier Buttons:
 
 Anders als die beiden folgenden Overlays ist die Leiste **nicht**
 klick-durchlässig, da sie echte Buttons hostet — deshalb ist sie bewusst
-content-groß statt bildschirmbreit.
+content-groß statt bildschirmbreit. Klicks auf die Top-Leiste oder auf das
+Tray-Icon selbst werden nie als Aufnahme gewertet (kein Screenshot, kein
+Eintrag) — die App erkennt und filtert das automatisch.
 
 Zusätzlich, nur während einer laufenden Aufnahme:
 
 - Ein kleiner roter Punkt (unterhalb der Top-Leiste) zeigt an, dass die
   Aufnahme läuft.
 - Im Canvas-/Word-Modus zeigt ein zweites, kleines Overlay direkt darunter
-  die aktuelle Position im Ablauf (Branch-Tiefe + letzter Knoten).
+  die aktuelle Position im Ablauf (aktueller Branch, alle gesetzten
+  Branches, letzter Knoten).
 
 Diese beiden Overlays sind klick-durchlässig (stören keine Bedienung) und
 werden wie die Top-Leiste aktiv aus Screenshots ausgeschlossen, tauchen
 also nie selbst im aufgenommenen Bild auf.
 
-## Ausgabeformat: Notiz, Canvas oder Word
+## Ausgabeformat: Notiz, Canvas, Word oder Excalidraw
 
-In den Einstellungen lässt sich eines von drei Formaten wählen:
+In den Einstellungen lässt sich eines von vier Formaten wählen:
 
 - **Notiz**: linearer Markdown-Text + Bild-Link, an eine `.md`-Datei angehängt (Standard).
 - **Obsidian-Canvas**: jeder Klick wird ein verbundener Knoten auf einer
@@ -129,36 +178,50 @@ In den Einstellungen lässt sich eines von drei Formaten wählen:
   Spalte. Screenshots werden direkt eingebettet (kein separater
   Attachments-Ordner nötig). Voll editierbar in Microsoft Word, SharePoint
   zeigt/bearbeitet `.docx` nativ ohne zusätzliches Plugin.
+- **Excalidraw** *(experimentell)*: funktioniert wie Canvas (Knoten +
+  Abzweigungen als neue Spalte), aber im freien Skizzen-Look statt fester
+  Boxen — jeder Klick wird eine abgerundete Karte (Beschreibung +
+  eingebetteter Screenshot) in einer `.excalidraw`-Datei. Braucht
+  zusätzlich das kostenlose [Excalidraw-Community-Plugin](https://github.com/zsviczian/obsidian-excalidraw-plugin)
+  für Obsidian (anders als Canvas, das bereits eingebaut ist). Textbeschriftungen
+  nutzen bewusst Excalidraws eingebaute "Normal"-Schriftart statt der
+  Standard-Handschrift-Schrift "Virgil", für einen saubereren Look — eine
+  eigene Schriftdatei lässt sich in eine `.excalidraw`-Datei nicht sinnvoll
+  einbetten (das Rendering hängt vom Plugin lokal ab, nicht vom File).
 
 Das Pfad-Feld in den Einstellungen passt sich dem gewählten Format an: bei
-Notiz/Canvas heißt es "Obsidian-Vault" (inkl. Attachments-Unterordner); bei
-Word heißt es "Zielordner" und der Attachments-Unterordner wird
-ausgeblendet, da Word Bilder direkt einbettet und keinen Obsidian-Vault
-braucht — es kann jeder beliebige Ordner sein (z. B. ein SharePoint-Sync-Ordner).
+Notiz/Canvas/Excalidraw heißt es "Obsidian-Vault" (Attachments-Unterordner
+nur bei Notiz/Canvas sichtbar, da Word und Excalidraw Bilder direkt
+einbetten); bei Word heißt es "Zielordner" und ist nicht an einen
+Obsidian-Vault gebunden — es kann jeder beliebige Ordner sein (z. B. ein
+SharePoint-Sync-Ordner).
 
-Canvas und Word unterstützen dieselbe Branch-Logik, nur mit
-unterschiedlicher Darstellung: Canvas legt Abzweigungen als neue Spalte
-rechts neben dem Hauptablauf an; Word hängt sie stattdessen als neuen
-Abschnitt mit Rücksprung-Link ans Dokumentende an, da ein Word-Dokument
-keine räumlichen Koordinaten kennt.
+Canvas, Word und Excalidraw unterstützen dieselbe Branch-Logik, nur mit
+unterschiedlicher Darstellung: Canvas und Excalidraw legen Abzweigungen
+als neue Spalte rechts neben dem Hauptablauf an; Word hängt sie
+stattdessen als neuen Abschnitt mit Rücksprung-Link ans Dokumentende an,
+da ein Word-Dokument keine räumlichen Koordinaten kennt.
 
-Abzweigungen werden über zwei globale Hotkeys gesteuert (Standard: `F9` /
-`F10`, änderbar in den Einstellungen):
+Abzweigungen werden benannt und über zwei globale Hotkeys gesteuert
+(Standard: `F9` / `F10`, änderbar in den Einstellungen):
 
-- **Abzweigungspunkt setzen** (`F9`): merkt sich den zuletzt erstellten
-  Knoten/Abschnitt als Anker (im Canvas-Modus wird der Knoten zur
-  Kennzeichnung eingefärbt) und legt ihn auf einen Stack.
-- **Zu letztem Abzweigungspunkt springen** (`F10`): setzt den "Cursor"
-  zurück auf den obersten Anker im Stack (ohne ihn zu entfernen — man kann
-  also mehrfach vom selben Punkt abzweigen). Der nächste Klick beginnt dann
-  eine neue Spalte (Canvas) bzw. einen neuen Abschnitt mit Rücksprung-Link
-  (Word), verbunden mit dem Anker statt mit dem zuletzt aufgezeichneten
-  Klick.
+- **Branch setzen** (`F9`): fragt nach einem Namen (z. B. "Login-Fehler")
+  und merkt sich den zuletzt erstellten Knoten/Abschnitt darunter (im
+  Canvas-Modus wird der Knoten zur Kennzeichnung eingefärbt). Ein bereits
+  vergebener Name wird beim erneuten Setzen einfach auf den neuen
+  aktuellen Punkt umgehängt.
+- **Branch auswählen** (`F10`): öffnet eine Liste aller aktuell benannten
+  Branches — die Auswahl setzt den "Cursor" dorthin zurück (beliebig oft
+  wiederholbar, auch nachdem bereits andere Klicks dazwischen aufgezeichnet
+  wurden). Der nächste Klick beginnt dann eine neue Spalte (Canvas) bzw.
+  einen neuen Abschnitt mit Rücksprung-Link (Word), verbunden mit dem
+  gewählten Branch statt mit dem zuletzt aufgezeichneten Klick.
 
 Nach jeder Aktion zeigt DocuClick, wo man gerade steht: ein Balloon-Tip mit
-der Beschreibung des betroffenen Knotens sowie der aktuellen Branch-Tiefe,
-und die Branch-Tiefe bleibt zusätzlich dauerhaft im Tray-Icon-Tooltip und
-in der Top-Leiste sichtbar (z. B. "DocuClick – Aufnahme läuft · Branch-Tiefe 2").
+Branch-Namen und der Beschreibung des betroffenen Knotens, und der aktuelle
+Branch bleibt zusätzlich dauerhaft im Tray-Icon-Tooltip (Anzahl gesetzter
+Branches) und in der Top-Leiste sichtbar (z. B. "DocuClick – Aufnahme
+läuft · Branch: Login-Fehler").
 
 Änderungen an den Hotkeys gelten sofort nach "Speichern" in den
 Einstellungen (keine Neustart nötig).
