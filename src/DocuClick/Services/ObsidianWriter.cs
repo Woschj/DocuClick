@@ -21,7 +21,15 @@ public sealed class ObsidianWriter
         var imageFileName = AttachmentSaver.SaveScreenshot(_config, screenshot, timestamp);
 
         var notePath = Path.Combine(_config.VaultPath, noteFileName);
-        var entry = $"{description}{Environment.NewLine}![[{imageFileName}]]{Environment.NewLine}{Environment.NewLine}";
+        var noteDirectory = Path.GetDirectoryName(notePath) ?? _config.VaultPath;
+        var imagePath = Path.Combine(_config.VaultPath, _config.AttachmentsFolder, imageFileName);
+
+        // Standard Markdown image syntax with a relative path, not
+        // Obsidian's own ![[wikilink]] embed — Obsidian renders both, but
+        // only the standard syntax also works in GitHub/GitLab wikis and
+        // plain CommonMark viewers.
+        var relativeImagePath = Path.GetRelativePath(noteDirectory, imagePath).Replace('\\', '/');
+        var entry = $"{description}{Environment.NewLine}![{imageFileName}]({relativeImagePath}){Environment.NewLine}{Environment.NewLine}";
         File.AppendAllText(notePath, entry);
     }
 }

@@ -89,8 +89,11 @@ Solange die Aufnahme aktiv ist, löst jeder Linksklick aus:
    selbst zurückgibt — fällt automatisch auf den Kreis zurück, damit nicht
    ganze Fenster rot eingerahmt werden)
 4. Speichern des Bilds im konfigurierten Attachments-Ordner und Anhängen von
-   Beschreibung + `![[bild.png]]` an die Session-Notiz im Obsidian-Vault
-   (im Canvas-/Word-Modus stattdessen als Knoten bzw. Abschnitt, siehe unten)
+   Beschreibung + `![bild.png](relativer/Pfad.png)` (Standard-Markdown, kein
+   Obsidian-spezifisches Wikilink — funktioniert daher auch in GitHub-/
+   GitLab-Wikis und anderen Markdown-Renderern, nicht nur in Obsidian) an
+   die Session-Notiz im Obsidian-Vault (im Canvas-/Word-/Excalidraw-Modus
+   stattdessen als Knoten bzw. Abschnitt, siehe unten)
 
 Konfiguration über das Tray-Menü ("Einstellungen...") oder direkt in
 `%APPDATA%/DocuClick/config.json`.
