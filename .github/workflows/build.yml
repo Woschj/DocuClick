@@ -39,11 +39,24 @@ jobs:
         run: Compress-Archive -Path publish/* -DestinationPath DocuClick-win-x64.zip
         shell: pwsh
 
+      # Separate zip (not merged into the app's own zip) so the app
+      # payload stays just the exe/DLLs — this is a blank Obsidian vault
+      # to copy out and use, not part of the program.
+      - name: Zip vault template
+        run: Compress-Archive -Path VaultTemplate/* -DestinationPath VaultTemplate.zip
+        shell: pwsh
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: DocuClick-win-x64
           path: DocuClick-win-x64.zip
+
+      - name: Upload vault template artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VaultTemplate
+          path: VaultTemplate.zip
 
   release:
     needs: build
@@ -57,8 +70,15 @@ jobs:
           name: DocuClick-win-x64
           path: publish
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: VaultTemplate
+          path: publish
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: publish/DocuClick-win-x64.zip
+          files: |
+            publish/DocuClick-win-x64.zip
+            publish/VaultTemplate.zip
           generate_release_notes: true
