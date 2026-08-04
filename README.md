@@ -160,12 +160,10 @@ UI-Automation-Element (z. B. ein abgeschicktes Formularfeld) statt einer
 Klickposition — ohne Bounding-Box wird der Screenshot unmarkiert
 gespeichert, es gibt keinen "Blindkreis".
 
-Wichtig: Der zugrunde liegende Tastatur-Hook (`WH_KEYBOARD_LL`) vergleicht
-ausschließlich den virtuellen Tastencode gegen Enter (`VK_RETURN`) — jede
-andere Taste läuft unbeachtet durch (`CallNextHookEx`), es wird nie
-gespeichert oder auch nur ausgelesen, *welche* andere Taste gedrückt wurde.
-Das Tool ist damit bewusst kein Keylogger: es kann feststellen, *dass*
-Enter gedrückt wurde, aber nicht, *was* davor getippt wurde.
+Der zugrunde liegende Tastatur-Hook (`WH_KEYBOARD_LL`) vergleicht
+ausschließlich den virtuellen Tastencode gegen Enter (`VK_RETURN`); jede
+andere Taste läuft unbeachtet durch (`CallNextHookEx`) und wird nicht
+ausgelesen.
 
 ## Hotkeys per Tastendruck festlegen
 

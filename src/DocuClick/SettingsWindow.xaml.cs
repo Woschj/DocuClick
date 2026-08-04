@@ -4,6 +4,14 @@ using System.Windows.Input;
 using System.Windows.Media;
 using DocuClick.Services;
 
+// UseWPF + UseWindowsForms together implicitly bring System.Windows.Forms
+// into every file; combined with the WPF namespaces above, Button/TextBox/
+// KeyEventArgs exist in both and become ambiguous. Alias them to the WPF
+// versions here rather than qualifying every call site.
+using Button = System.Windows.Controls.Button;
+using TextBox = System.Windows.Controls.TextBox;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+
 namespace DocuClick;
 
 public partial class SettingsWindow : Window
