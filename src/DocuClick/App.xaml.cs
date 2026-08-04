@@ -1,3 +1,4 @@
+using System.Threading;
 using System.Windows;
 using System.Windows.Input;
 using DocuClick.Services;
@@ -6,6 +7,11 @@ namespace DocuClick;
 
 public partial class App : Application
 {
+    // Fixed GUID (not e.g. the assembly name) so it can never collide with
+    // another vendor's mutex, and survives a rename of the exe/assembly.
+    private const string SingleInstanceMutexName = "DocuClick-9F2B6E7C-9B0B-4C3E-8B7B-6B1E2C6C7B3A";
+
+    private Mutex? _singleInstanceMutex;
     private TrayApp? _trayApp;
     private SessionManager? _sessionManager;
     private AppConfig? _config;
@@ -17,6 +23,18 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        _singleInstanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var createdNew);
+        if (!createdNew)
+        {
+            MessageBox.Show(
+                "DocuClick läuft bereits (siehe Symbol im Infobereich der Taskleiste).",
+                "DocuClick", MessageBoxButton.OK, MessageBoxImage.Information);
+            _singleInstanceMutex.Dispose();
+            _singleInstanceMutex = null;
+            Shutdown();
+            return;
+        }
 
         // The app has no window; it must stay alive until the user picks
         // "Beenden" from the tray menu.
@@ -210,6 +228,8 @@ public partial class App : Application
         _recordingOverlay?.Close();
         _canvasStatusOverlay?.Close();
         _topBar?.Close();
+        _singleInstanceMutex?.ReleaseMutex();
+        _singleInstanceMutex?.Dispose();
         base.OnExit(e);
     }
 }
