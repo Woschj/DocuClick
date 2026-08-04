@@ -75,7 +75,11 @@ Funktional vollständig für den Alltagsgebrauch:
 - Einstellungsfenster mit JSON-Konfiguration, änderbare globale Hotkeys
 - Branch-Logik (Abzweigungen) für Canvas und Word, inkl. "Ablauf
   fortsetzen ab Punkt..."
-- Immer sichtbare Top-Leiste mit Aufnahmestatus + "Neue Session"-Button
+- Session-Start-Dialog: Zieldatei bei jeder Aufnahme explizit wählen
+  (neu anlegen oder bestehende fortsetzen), keine generischen Dateinamen
+- Immer sichtbare, kompakte Top-Leiste (Start/Stop, Branch-Steuerung,
+  "Neue Session") mit Aufnahmestatus
+- Nur eine laufende Instanz gleichzeitig (Mutex-Guard)
 - Akustisches Feedback pro aufgezeichnetem/übersprungenem/fehlgeschlagenem Klick
 
 Offen: Feinschliff bei Multi-Monitor/DPI-Kantenfällen, robustere
@@ -106,17 +110,43 @@ Solange die Aufnahme aktiv ist, löst jeder Linksklick aus:
 Konfiguration über das Tray-Menü ("Einstellungen...") oder direkt in
 `%APPDATA%/DocuClick/config.json`.
 
+### Zieldatei bei jedem Session-Start
+
+Jedes Mal, wenn eine Aufnahme startet (Tray-Menü, Start/Stop-Hotkey,
+Top-Leiste oder "Neue Session"), fragt DocuClick zuerst nach der Zieldatei
+— es gibt keinen automatisch generierten Namen mehr:
+
+- **Neue Datei anlegen**: Name eintippen (Endung ergibt sich aus dem
+  gewählten Ausgabeformat).
+- **Bestehende Datei fortsetzen**: Auswahl aus allen vorhandenen Dateien
+  mit passender Endung im konfigurierten Ordner, neueste zuerst. Neue
+  Klicks werden an diese Datei angehängt (im Canvas-/Word-Modus ab dem
+  bisherigen Cursor-Stand, siehe Branch-Logik unten).
+
+Wird der Dialog abgebrochen, bleibt die Aufnahme aus (bzw. bei "Neue
+Session" während einer laufenden Aufnahme: die laufende Session bleibt
+unverändert bestehen).
+
 ### Top-Leiste, Overlays und "Neue Session"
 
-Eine schmale Leiste am oberen Bildschirmrand ist sichtbar, solange die App
-läuft (nicht nur während einer Aufnahme), und zeigt auf einen Blick den
-Aufnahmestatus (inkl. Branch-Tiefe, falls > 0). Ihr Button **"Neue
-Session"** ist nur aktiv, während eine Aufnahme läuft: Ein Klick beendet
-die laufende Session (Datei wird abgeschlossen) und startet sofort eine
-neue mit garantiert neuer Zieldatei — auch wenn in den Einstellungen eine
-feste Zieldatei konfiguriert ist. Anders als die beiden folgenden Overlays
-ist die Leiste **nicht** klick-durchlässig, da sie einen echten Button
-hostet.
+Eine kleine, mittig oben schwebende Pille (wie die TeamViewer-Session-Leiste
+— nicht bildschirmbreit, sonst würde sie Fenster ziehen/Menüs/Snap-Zonen
+blockieren) ist sichtbar, solange die App läuft, und zeigt auf einen Blick
+den Aufnahmestatus (inkl. Branch-Tiefe, falls > 0). Sie enthält vier
+Buttons:
+
+- **Start/Stop**: entspricht dem Tray-Menüpunkt bzw. dem Start/Stop-Hotkey.
+- **Branch setzen** / **→ Branch**: entsprechen den beiden Branch-Hotkeys
+  (siehe unten), nur aktiv während einer laufenden Aufnahme im Canvas- oder
+  Word-Modus.
+- **Neue Session**: immer klickbar. Läuft gerade keine Aufnahme, verhält es
+  sich wie Start. Läuft eine Aufnahme, schließt es die aktuelle Datei ab
+  und startet direkt danach eine neue Session (wieder mit Dateiauswahl,
+  siehe nächster Abschnitt).
+
+Anders als die beiden folgenden Overlays ist die Leiste **nicht**
+klick-durchlässig, da sie echte Buttons hostet — deshalb ist sie bewusst
+content-groß statt bildschirmbreit.
 
 Zusätzlich, nur während einer laufenden Aufnahme:
 
@@ -180,18 +210,18 @@ in der Top-Leiste sichtbar (z. B. "DocuClick – Aufnahme läuft · Branch-Tiefe
 Änderungen an den Hotkeys gelten sofort nach "Speichern" in den
 Einstellungen (keine Neustart nötig).
 
-### Ablauf nachträglich fortsetzen
+### Ablauf nachträglich fortsetzen (an einem bestimmten Punkt statt am Dateiende)
 
 Über das Tray-Menü "Ablauf fortsetzen ab Punkt..." (nur verfügbar im
 Canvas- oder Word-Modus, bei gestoppter Aufnahme) öffnet sich eine Liste
-aller bereits vorhandenen Knoten/Abschnitte in der aktuellen Datei. Die
-Auswahl legt fest, an welchem Punkt die *nächste* Aufnahme-Session ansetzt
-— neue Klicks werden dann (im Canvas als neue Spalte, in Word als neuer
-Abschnitt mit Rücksprung-Link) mit genau diesem Punkt verbunden,
-unabhängig davon, wie lange die ursprüngliche Aufzeichnung schon
-zurückliegt. Das funktioniert nur zuverlässig, solange "Neue Notiz/Canvas
-pro Aufnahme-Session" deaktiviert ist (eine feste Zieldatei), da sich die
-Auswahl auf die Knoten/Abschnitte in exakt dieser einen Datei bezieht.
+aller bereits vorhandenen Knoten/Abschnitte in der zuletzt bearbeiteten
+Datei. Die Auswahl legt fest, an welchem Punkt die *nächste*
+Aufnahme-Session ansetzt — neue Klicks werden dann (im Canvas als neue
+Spalte, in Word als neuer Abschnitt mit Rücksprung-Link) mit genau diesem
+Punkt verbunden statt an das Dateiende angehängt, unabhängig davon, wie
+lange die ursprüngliche Aufzeichnung schon zurückliegt. Der
+Session-Start-Dialog (siehe oben) wählt danach automatisch dieselbe Datei
+vor.
 
 ## Start/Stopp per Hotkey
 

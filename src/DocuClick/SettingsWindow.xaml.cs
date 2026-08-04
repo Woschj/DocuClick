@@ -50,9 +50,6 @@ public partial class SettingsWindow : Window
         EnableClickSoundBox.IsChecked = _config.EnableClickSound;
         CaptureOnEnterBox.IsChecked = _config.CaptureOnEnter;
         SelectSkipModifier(_config.SkipRecordingModifier);
-        NewNotePerSessionBox.IsChecked = _config.NewNotePerSession;
-        FixedNoteNameBox.Text = _config.FixedNoteName;
-        FixedNoteNameBox.IsEnabled = !_config.NewNotePerSession;
 
         switch (_config.OutputMode)
         {
@@ -93,11 +90,6 @@ public partial class SettingsWindow : Window
         }
 
         SkipModifierBox.SelectedIndex = 0;
-    }
-
-    private void OnNewNotePerSessionChanged(object sender, RoutedEventArgs e)
-    {
-        FixedNoteNameBox.IsEnabled = NewNotePerSessionBox.IsChecked != true;
     }
 
     private void OnOutputModeChanged(object sender, RoutedEventArgs e)
@@ -258,9 +250,6 @@ public partial class SettingsWindow : Window
         _config.SkipRecordingModifier = SkipModifierBox.SelectedItem is ComboBoxItem selected
             ? (string)selected.Tag
             : "None";
-        _config.NewNotePerSession = NewNotePerSessionBox.IsChecked == true;
-        _config.FixedNoteName = FixedNoteNameBox.Text.Trim();
-
         _config.OutputMode = OutputModeCanvasRadio.IsChecked == true
             ? "Canvas"
             : OutputModeWordRadio.IsChecked == true

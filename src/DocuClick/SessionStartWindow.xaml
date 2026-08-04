@@ -1,0 +1,26 @@
+<Window x:Class="DocuClick.SessionStartWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="DocuClick - Session starten" Height="440" Width="480"
+        WindowStartupLocation="CenterScreen">
+    <DockPanel Margin="16">
+        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,12"
+                   Text="Jede Aufnahme-Session braucht eine Zieldatei — neue Datei anlegen oder eine bestehende fortsetzen, statt eines generischen Namens."/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0" DockPanel.Dock="Bottom">
+            <Button Content="Abbrechen" Width="90" Margin="0,0,8,0" Click="OnCancelClicked"/>
+            <Button Content="Starten" Width="90" Click="OnStartClicked"/>
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+            <RadioButton x:Name="NewFileRadio" GroupName="Mode" Content="Neue Datei anlegen" IsChecked="True"
+                         Checked="OnModeChanged" Margin="0,0,0,6"/>
+            <TextBox x:Name="NewFileNameBox" Margin="20,0,0,10"/>
+
+            <RadioButton x:Name="ExistingFileRadio" GroupName="Mode" Content="Bestehende Datei fortsetzen"
+                         Checked="OnModeChanged"/>
+        </StackPanel>
+
+        <ListBox x:Name="ExistingFilesListBox" Margin="20,0,0,0"/>
+    </DockPanel>
+</Window>

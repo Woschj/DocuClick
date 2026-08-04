@@ -14,9 +14,6 @@ public sealed class AppConfig
     /// </summary>
     public string SkipRecordingModifier { get; set; } = "Control";
 
-    public bool NewNotePerSession { get; set; } = true;
-    public string FixedNoteName { get; set; } = string.Empty;
-
     public string HighlightColorHex { get; set; } = "#E63946";
     public int HighlightRadius { get; set; } = 24;
     public int HighlightThickness { get; set; } = 4;

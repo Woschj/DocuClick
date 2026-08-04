@@ -147,10 +147,8 @@
                             <ComboBoxItem Content="Alt" Tag="Alt"/>
                         </ComboBox>
 
-                        <CheckBox x:Name="NewNotePerSessionBox" Content="Neue Notiz/Canvas pro Aufnahme-Session"
-                                  Margin="0,0,0,6" Checked="OnNewNotePerSessionChanged" Unchecked="OnNewNotePerSessionChanged"/>
-                        <TextBlock Text="Feste Zieldatei (Name im Vault-Root, ohne Pfad/Endung)" Style="{StaticResource FieldLabel}"/>
-                        <TextBox x:Name="FixedNoteNameBox" Style="{StaticResource ModernTextBox}"/>
+                        <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0"
+                                   Text="Die Zieldatei wird bei jedem Start der Aufnahme abgefragt (neue Datei anlegen oder eine bestehende fortsetzen) — es gibt keinen automatisch generierten Namen mehr."/>
                     </StackPanel>
                 </Border>
 

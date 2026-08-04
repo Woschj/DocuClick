@@ -69,7 +69,7 @@ public sealed class TopBarWindow : Window
         _jumpBranchButton = CreateButton("→ Branch", "Zu letztem Abzweigungspunkt springen: der nächste Klick beginnt eine neue Abzweigung von dort.");
         _jumpBranchButton.Click += (_, _) => JumpBranchRequested?.Invoke();
 
-        _newSessionButton = CreateButton("Neue Session", "Schließt das aktuelle Diagramm/die aktuelle Notiz ab und startet sofort eine neue Aufnahme-Session.");
+        _newSessionButton = CreateButton("Neue Session", "Startet eine neue Aufnahme-Session (fragt nach Zieldatei) — schließt bei laufender Aufnahme zuerst die aktuelle Datei ab.");
         _newSessionButton.Margin = new Thickness(0, 0, 6, 0);
         _newSessionButton.Click += (_, _) => NewSessionRequested?.Invoke();
 
@@ -121,7 +121,8 @@ public sealed class TopBarWindow : Window
         _toggleRecordingButton.Content = isRecording ? "Stop" : "Start";
         _markBranchButton.IsEnabled = isRecording && supportsBranching;
         _jumpBranchButton.IsEnabled = isRecording && supportsBranching;
-        _newSessionButton.IsEnabled = isRecording;
+        // Always clickable: with no recording running it just behaves like
+        // Start (see App.OnNewSessionRequested).
 
         var baseText = isRecording ? "DocuClick – Aufnahme läuft" : "DocuClick – Aufnahme gestoppt";
         _statusText.Text = detail is null ? baseText : $"{baseText} · {detail}";

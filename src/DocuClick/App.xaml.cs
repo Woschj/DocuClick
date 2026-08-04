@@ -20,6 +20,9 @@ public partial class App : Application
     private CanvasStatusOverlay? _canvasStatusOverlay;
     private TopBarWindow? _topBar;
 
+    /// <summary>Set by "Ablauf fortsetzen ab Punkt...", consumed once by the next session-start file picker.</summary>
+    private string? _pendingResumeFileName;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -151,10 +154,21 @@ public partial class App : Application
             return;
         }
 
-        var nodes = _sessionManager.ListResumableCanvasNodes();
+        var files = _sessionManager.ListExistingFiles();
+        if (files.Count == 0)
+        {
+            _trayApp!.ShowInfo("Noch keine Datei im Zielordner vorhanden.");
+            return;
+        }
+
+        // Newest file first (ListExistingFiles) — good enough default for
+        // this secondary action without a second file-picker dialog just
+        // for it; the session-start dialog is where file choice matters.
+        var fileName = files[0];
+        var nodes = _sessionManager.ListResumableCanvasNodes(fileName);
         if (nodes.Count == 0)
         {
-            _trayApp!.ShowInfo("Noch keine Knoten in der aktuellen Canvas-Datei vorhanden.");
+            _trayApp!.ShowInfo($"Noch keine Knoten in \"{fileName}\" vorhanden.");
             return;
         }
 
@@ -162,17 +176,33 @@ public partial class App : Application
         if (picker.ShowDialog() == true && picker.SelectedNode is not null)
         {
             _sessionManager.SetResumeAnchor(picker.SelectedNode);
-            _trayApp!.ShowInfo($"Nächste Aufnahme wird angehängt an: {picker.SelectedNode.Label}");
+            _pendingResumeFileName = fileName;
+            _trayApp!.ShowInfo($"Nächste Aufnahme wird angehängt an: {picker.SelectedNode.Label} (in {fileName})");
         }
+    }
+
+    /// <summary>Shows the session-start file picker; null means the user cancelled.</summary>
+    private string? PromptForSessionFile()
+    {
+        var window = new SessionStartWindow(_config!, _pendingResumeFileName);
+        _pendingResumeFileName = null;
+        return window.ShowDialog() == true ? window.SelectedFileName : null;
     }
 
     private void OnRecordingStateChanged(bool isRecording)
     {
         if (isRecording)
         {
+            var fileName = PromptForSessionFile();
+            if (fileName is null)
+            {
+                _trayApp!.SetRecording(false);
+                return;
+            }
+
             try
             {
-                _sessionManager!.Start();
+                _sessionManager!.Start(fileName);
                 _recordingOverlay ??= new RecordingIndicatorOverlay();
                 _recordingOverlay.Show();
             }
@@ -197,15 +227,30 @@ public partial class App : Application
 
     private void OnNewSessionRequested()
     {
-        if (_sessionManager is null || !_sessionManager.IsRunning)
+        if (_sessionManager is null)
+        {
+            return;
+        }
+
+        if (!_sessionManager.IsRunning)
+        {
+            // Not recording yet: behaves like a plain Start (single prompt
+            // via OnRecordingStateChanged, no double-prompt risk).
+            _trayApp!.SetRecording(true);
+            return;
+        }
+
+        var fileName = PromptForSessionFile();
+        if (fileName is null)
         {
             return;
         }
 
         try
         {
-            _sessionManager.StartNewSession();
-            _trayApp!.ShowInfo("Neue Session gestartet — vorheriges Diagramm/Notiz abgeschlossen.");
+            _sessionManager.StartNewSession(fileName);
+            _trayApp!.ShowInfo($"Neue Session gestartet: {fileName}");
+            _topBar?.UpdateStatus(true, detail: null, _sessionManager.SupportsBranching);
         }
         catch (Exception ex)
         {

@@ -20,7 +20,6 @@ public sealed class SessionManager : IDisposable
     private readonly WordFlowWriter _wordWriter;
     private string _currentTargetFileName = string.Empty;
     private bool _isRunning;
-    private bool _forceNewTargetFile;
 
     public event Action<string>? ErrorOccurred;
     public event Action<string>? InfoOccurred;
@@ -49,9 +48,39 @@ public sealed class SessionManager : IDisposable
         _keyboardHook.EnterPressed += OnEnterPressed;
     }
 
-    public void Start()
+    /// <summary>Extension for a given <see cref="AppConfig.OutputMode"/> value.</summary>
+    public static string ExtensionForOutputMode(string outputMode) => outputMode switch
     {
-        _currentTargetFileName = ResolveTargetFileName();
+        "Canvas" => ".canvas",
+        "Word" => ".docx",
+        _ => ".md"
+    };
+
+    /// <summary>
+    /// Existing files for the active output mode in the configured
+    /// vault/target folder, newest first — used by the session-start file
+    /// picker and the "Ablauf fortsetzen" tray action. Every session now
+    /// requires an explicit file (chosen or newly named) instead of an
+    /// auto-generated name, so callers always have something to list.
+    /// </summary>
+    public List<string> ListExistingFiles()
+    {
+        if (string.IsNullOrWhiteSpace(_config.VaultPath) || !Directory.Exists(_config.VaultPath))
+        {
+            return new List<string>();
+        }
+
+        var extension = ExtensionForOutputMode(_config.OutputMode);
+        return Directory.GetFiles(_config.VaultPath, "*" + extension)
+            .Select(f => Path.GetFileName(f) ?? f)
+            .OrderByDescending(f => File.GetLastWriteTimeUtc(Path.Combine(_config.VaultPath, f)))
+            .ToList();
+    }
+
+    /// <summary>Starts a session against an explicit target file name (with extension) — see <see cref="ListExistingFiles"/>.</summary>
+    public void Start(string targetFileName)
+    {
+        _currentTargetFileName = targetFileName;
 
         ActiveFlowWriter?.StartSession(_currentTargetFileName);
 
@@ -80,18 +109,11 @@ public sealed class SessionManager : IDisposable
         LogService.Log("Session gestoppt.");
     }
 
-    /// <summary>
-    /// "Neue Session"-Aktion: closes out the current target file (a normal
-    /// Stop) and immediately starts a fresh one with a new, guaranteed-unique
-    /// file name — even when "Neue Notiz/Canvas pro Aufnahme-Session" is
-    /// disabled and a fixed target file is configured, since the whole point
-    /// of this action is to leave the old diagram alone and begin another.
-    /// </summary>
-    public void StartNewSession()
+    /// <summary>"Neue Session"-Aktion: closes out the current target file (a normal Stop) and immediately starts a fresh, explicitly-named one.</summary>
+    public void StartNewSession(string targetFileName)
     {
         Stop();
-        _forceNewTargetFile = true;
-        Start();
+        Start(targetFileName);
     }
 
     private string BuildStatusText()
@@ -147,35 +169,12 @@ public sealed class SessionManager : IDisposable
         }
     }
 
-    /// <summary>For the "Ablauf fortsetzen ab Punkt..." picker: nodes already in the target flow file.</summary>
-    public List<ResumableNode> ListResumableCanvasNodes() =>
-        ActiveFlowWriter?.ListNodesForResume(ResolveTargetFileName()) ?? new List<ResumableNode>();
+    /// <summary>For the "Ablauf fortsetzen ab Punkt..." picker: nodes already in <paramref name="fileName"/>.</summary>
+    public List<ResumableNode> ListResumableCanvasNodes(string fileName) =>
+        ActiveFlowWriter?.ListNodesForResume(fileName) ?? new List<ResumableNode>();
 
     /// <summary>Queues a chosen node as the starting point of the next Start() call.</summary>
     public void SetResumeAnchor(ResumableNode node) => ActiveFlowWriter?.SetResumeAnchor(node);
-
-    private string ResolveTargetFileName()
-    {
-        var extension = _config.OutputMode switch
-        {
-            "Canvas" => ".canvas",
-            "Word" => ".docx",
-            _ => ".md"
-        };
-
-        if (_forceNewTargetFile)
-        {
-            _forceNewTargetFile = false;
-            return $"Screenshots {DateTime.Now:yyyy-MM-dd HHmmss}{extension}";
-        }
-
-        if (!_config.NewNotePerSession && !string.IsNullOrWhiteSpace(_config.FixedNoteName))
-        {
-            return Path.GetFileNameWithoutExtension(_config.FixedNoteName) + extension;
-        }
-
-        return $"Screenshots {DateTime.Now:yyyy-MM-dd}{extension}";
-    }
 
     private void OnLeftButtonDown(object? sender, MouseClickEventArgs e)
     {
