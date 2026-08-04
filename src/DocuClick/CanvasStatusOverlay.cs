@@ -2,6 +2,12 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 
+// UseWindowsForms implicitly brings System.Drawing into every file too;
+// combined with System.Windows.Media above, Color/Brushes exist in both
+// and become ambiguous. This file is WPF-only UI, so alias to those.
+using Color = System.Windows.Media.Color;
+using Brushes = System.Windows.Media.Brushes;
+
 namespace DocuClick;
 
 /// <summary>
@@ -12,8 +18,8 @@ namespace DocuClick;
 public sealed class CanvasStatusOverlay : Window
 {
     private const double PanelWidth = 280;
-    private const double Margin = 8;
-    private const double TopOffset = 14 + Margin + 6; // below the recording dot
+    private const double EdgeMargin = 8;
+    private const double TopOffset = 14 + EdgeMargin + 6; // below the recording dot
 
     private readonly TextBlock _textBlock;
 
@@ -39,7 +45,7 @@ public sealed class CanvasStatusOverlay : Window
         };
 
         var bounds = System.Windows.Forms.Screen.PrimaryScreen!.Bounds;
-        Left = bounds.Left + Margin;
+        Left = bounds.Left + EdgeMargin;
         Top = bounds.Top + TopOffset;
     }
 

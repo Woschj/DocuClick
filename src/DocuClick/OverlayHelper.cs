@@ -2,6 +2,11 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 
+// UseWindowsForms implicitly brings System.Drawing into every file too;
+// combined with System.Windows.Media above, Color/Brushes exist in both
+// and become ambiguous. This file is WPF-only UI, so alias to those.
+using Brushes = System.Windows.Media.Brushes;
+
 namespace DocuClick;
 
 /// <summary>Shared setup for tiny, click-through, always-on-top HUD windows.</summary>
