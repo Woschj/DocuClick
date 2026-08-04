@@ -3,7 +3,18 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="DocuClick - Branch auswählen" Height="360" Width="380"
         WindowStartupLocation="CenterScreen"
-        ShowInTaskbar="False" Topmost="True">
+        ShowInTaskbar="False" Topmost="True"
+        Background="White" Foreground="Black">
+    <!-- See BranchNameWindow.xaml: unstyled controls can render
+         white-on-white in Windows dark mode without this. -->
+    <Window.Resources>
+        <Style TargetType="ListBox">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Foreground" Value="Black"/>
+            <Setter Property="BorderBrush" Value="Gray"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+    </Window.Resources>
     <DockPanel Margin="16">
         <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,8"
                    Text="Branch wählen, zu dem der nächste Klick springen soll."/>

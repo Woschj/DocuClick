@@ -2,7 +2,18 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="DocuClick - Ablauf fortsetzen" Height="420" Width="480"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        Background="White" Foreground="Black">
+    <!-- See BranchNameWindow.xaml: unstyled controls can render
+         white-on-white in Windows dark mode without this. -->
+    <Window.Resources>
+        <Style TargetType="ListBox">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Foreground" Value="Black"/>
+            <Setter Property="BorderBrush" Value="Gray"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+    </Window.Resources>
     <DockPanel Margin="16">
         <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,8"
                    Text="Knoten wählen, an den die nächste Aufnahme angehängt werden soll. Neue Klicks starten dann als eigene Spalte ab diesem Punkt."/>
