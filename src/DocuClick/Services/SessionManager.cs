@@ -57,11 +57,13 @@ public sealed class SessionManager : IDisposable
     };
 
     /// <summary>
-    /// Existing files for the active output mode in the configured
-    /// vault/target folder, newest first — used by the session-start file
-    /// picker and the "Ablauf fortsetzen" tray action. Every session now
-    /// requires an explicit file (chosen or newly named) instead of an
-    /// auto-generated name, so callers always have something to list.
+    /// Existing files for the active output mode anywhere under the
+    /// configured vault/target folder (as paths relative to it, so files
+    /// filed into subfolders stay distinguishable), newest first — used by
+    /// the session-start file picker and the "Ablauf fortsetzen" tray
+    /// action. Every session now requires an explicit file (chosen or
+    /// newly named) instead of an auto-generated name, so callers always
+    /// have something to list.
     /// </summary>
     public List<string> ListExistingFiles()
     {
@@ -71,16 +73,28 @@ public sealed class SessionManager : IDisposable
         }
 
         var extension = ExtensionForOutputMode(_config.OutputMode);
-        return Directory.GetFiles(_config.VaultPath, "*" + extension)
-            .Select(f => Path.GetFileName(f) ?? f)
+        return Directory.GetFiles(_config.VaultPath, "*" + extension, SearchOption.AllDirectories)
+            .Select(f => Path.GetRelativePath(_config.VaultPath, f))
             .OrderByDescending(f => File.GetLastWriteTimeUtc(Path.Combine(_config.VaultPath, f)))
             .ToList();
     }
 
-    /// <summary>Starts a session against an explicit target file name (with extension) — see <see cref="ListExistingFiles"/>.</summary>
+    /// <summary>
+    /// Starts a session against an explicit target file name (with
+    /// extension, optionally prefixed with a subfolder path) — see
+    /// <see cref="ListExistingFiles"/>. The target subfolder is created if
+    /// it doesn't exist yet, so a freshly typed folder name in the
+    /// session-start dialog works immediately.
+    /// </summary>
     public void Start(string targetFileName)
     {
         _currentTargetFileName = targetFileName;
+
+        var targetDirectory = Path.GetDirectoryName(Path.Combine(_config.VaultPath, targetFileName));
+        if (!string.IsNullOrEmpty(targetDirectory))
+        {
+            Directory.CreateDirectory(targetDirectory);
+        }
 
         ActiveFlowWriter?.StartSession(_currentTargetFileName);
 

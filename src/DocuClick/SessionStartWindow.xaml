@@ -15,7 +15,11 @@
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
             <RadioButton x:Name="NewFileRadio" GroupName="Mode" Content="Neue Datei anlegen" IsChecked="True"
                          Checked="OnModeChanged" Margin="0,0,0,6"/>
-            <TextBox x:Name="NewFileNameBox" Margin="20,0,0,10"/>
+            <TextBlock Text="Dateiname" Margin="20,0,0,2" FontSize="11" Foreground="Gray"/>
+            <TextBox x:Name="NewFileNameBox" Margin="20,0,0,8"/>
+            <TextBlock Text="Zielordner (relativ, leer = Vault-Root — Vorschläge aus vorhandenen Ordnern, oder neuen Namen eintippen)"
+                       Margin="20,0,0,2" FontSize="11" Foreground="Gray" TextWrapping="Wrap"/>
+            <ComboBox x:Name="TargetFolderBox" Margin="20,0,0,10" IsEditable="True"/>
 
             <RadioButton x:Name="ExistingFileRadio" GroupName="Mode" Content="Bestehende Datei fortsetzen"
                          Checked="OnModeChanged"/>

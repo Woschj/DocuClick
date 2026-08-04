@@ -117,11 +117,17 @@ Top-Leiste oder "Neue Session"), fragt DocuClick zuerst nach der Zieldatei
 — es gibt keinen automatisch generierten Namen mehr:
 
 - **Neue Datei anlegen**: Name eintippen (Endung ergibt sich aus dem
-  gewählten Ausgabeformat).
+  gewählten Ausgabeformat) und optional einen **Zielordner** (relativ zum
+  Vault-/Zielordner-Pfad) — Vorschläge kommen aus allen bereits
+  vorhandenen Unterordnern, ein neuer Name wird automatisch angelegt. So
+  lassen sich Aufnahmen direkt in eine bestehende Vault-Struktur
+  einsortieren (z. B. `Prozesse/IT-Support`) statt immer im Wurzelordner
+  zu landen.
 - **Bestehende Datei fortsetzen**: Auswahl aus allen vorhandenen Dateien
-  mit passender Endung im konfigurierten Ordner, neueste zuerst. Neue
-  Klicks werden an diese Datei angehängt (im Canvas-/Word-Modus ab dem
-  bisherigen Cursor-Stand, siehe Branch-Logik unten).
+  mit passender Endung im konfigurierten Ordner (inkl. Unterordner),
+  neueste zuerst. Neue Klicks werden an diese Datei angehängt (im
+  Canvas-/Word-Modus ab dem bisherigen Cursor-Stand, siehe Branch-Logik
+  unten).
 
 Wird der Dialog abgebrochen, bleibt die Aufnahme aus (bzw. bei "Neue
 Session" während einer laufenden Aufnahme: die laufende Session bleibt

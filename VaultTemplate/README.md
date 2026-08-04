@@ -1,8 +1,13 @@
 # DocuClick Vault-Template
 
 Blanko-Obsidian-Vault, vorbereitet für die Nutzung mit
-[DocuClick](../README.md) — enthält keine echten Inhalte, nur Struktur und
-Vorlagen für Prozessbeschreibungen/Arbeitsabläufe.
+[DocuClick](../README.md) — enthält keine echten Inhalte und keine
+Community-Plugins, nur Struktur, Theme und Vorlagen für
+Prozessbeschreibungen/Arbeitsabläufe.
+
+Theme: **PLN** (inkl. der darin enthaltenen automatischen
+Regenbogen-Ordnerfärbung im Dateibaum — rein CSS-basiert nach
+Ordner-Position, keine manuelle Konfiguration pro Ordner nötig).
 
 ## Wichtig: erst kopieren, dann benutzen
 
@@ -15,39 +20,50 @@ mitveröffentlicht. Stattdessen:
    (z. B. `%USERPROFILE%\Documents\Prozess-Vault`).
 2. Den kopierten Ordner in Obsidian öffnen ("Ordner als Vault öffnen").
 3. In DocuClick unter Einstellungen → Obsidian-Vault den Vault-Pfad auf
-   `<kopierter Ordner>\Prozesse` setzen (Attachments-Unterordner bleibt
-   auf dem Standard `Attachments`).
+   den kopierten Ordner selbst setzen (Attachments-Unterordner bleibt auf
+   dem Standard `Attachments`, landet also direkt im Vault-Root).
 
-Die mitgelieferte `.gitignore` verhindert zusätzlich, dass in `Prozesse/`
-erzeugte Dateien versehentlich committet werden, falls die Vault doch mal
-in-place benutzt wird — ersetzt aber nicht den Schritt oben.
+Die mitgelieferte `.gitignore` verhindert zusätzlich, dass in den
+Arbeitsordnern erzeugte Dateien versehentlich committet werden, falls die
+Vault doch mal in-place benutzt wird — ersetzt aber nicht den Schritt oben.
 
 ## Struktur
 
 ```
 VaultTemplate/
-├── Prozesse/                        <- DocuClick "Vault-Pfad" zeigt hierher
-│   └── Attachments/                 <- Screenshots (Notiz-/Canvas-Modus)
-├── Vorlagen/
-│   ├── Prozess-Notiz-Vorlage.md     Blanko-Notiz zum manuellen Vorbereiten
-│   └── Leere-Canvas-Vorlage.canvas  Blanko-Canvas mit Titel-Karte
-└── Index.md                         Startseite mit Links zu allen Prozessen
+├── .obsidian/
+│   ├── appearance.json          Theme + Akzentfarbe (PLN, lila)
+│   └── themes/PLN/               Theme-CSS (Regenbogen-Ordnerfärbung inklusive)
+├── 00 Start.md                  Startseite / Übersicht
+├── 00 Inbox/                    Standard-Zielordner für neue Aufnahmen
+├── 01 Prozesse/                 fertig einsortierte Prozessdokumentation
+├── 02 Vorlagen/
+│   ├── Prozess-Notiz-Vorlage.md
+│   └── Leere-Canvas-Vorlage.canvas
+├── 03 MOCs/                     Übersichtsseiten (Map of Content)
+├── 99 Archiv/                   abgelöste/alte Prozesse
+└── Attachments/                 Screenshots (Notiz-/Canvas-Modus)
 ```
+
+## Workflow: Zielordner beim Aufnahme-Start wählen
+
+Der Session-Start-Dialog fragt bei jeder Aufnahme neben dem Dateinamen
+auch nach dem **Zielordner** (relativ zum Vault-Pfad) — Vorschläge kommen
+aus allen bereits vorhandenen Unterordnern. So landen neue Aufnahmen
+direkt dort, wo sie hingehören (z. B. `01 Prozesse/IT-Support`), statt
+immer im Vault-Root. Leer lassen = Vault-Root; `00 Inbox` eignet sich für
+noch nicht einsortierte Aufnahmen.
 
 ## Workflow: Vorlage nutzen und DocuClick daran fortsetzen lassen
 
-1. Eine Vorlage aus `Vorlagen/` nach `Prozesse/` kopieren, umbenennen und
-   Metadaten (Zweck, Verantwortlich, Status, ...) ausfüllen.
+1. Eine Vorlage aus `02 Vorlagen/` in den gewünschten Zielordner kopieren,
+   umbenennen und Metadaten (Zweck, Verantwortlich, Status, ...) ausfüllen.
 2. In DocuClick eine Aufnahme starten → im Session-Start-Dialog
    **"Bestehende Datei fortsetzen"** wählen → die vorbereitete Datei
-   auswählen.
+   auswählen (Liste zeigt auch den Unterordner mit an).
 3. Jeder Klick wird automatisch an die vorbereitete Datei angehängt
    (Notiz) bzw. dort verankert (Canvas) — die von Hand eingetragenen
    Metadaten am Dateianfang bleiben erhalten.
-
-Alternativ direkt "Neue Datei anlegen" wählen, wenn keine Vorbereitung
-nötig ist — der Dialog fragt bei jeder Aufnahme danach, es gibt keinen
-automatisch generierten Namen.
 
 Für den Word-Modus (`.docx`) gibt es keine Vorlage hier, da Word-Dateien
 ein Binärformat sind. Im Session-Start-Dialog einfach "Neue Datei
