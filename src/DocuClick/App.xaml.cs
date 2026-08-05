@@ -65,7 +65,10 @@ public partial class App : Application
         _topBar.MarkBranchRequested += OnMarkBranchRequested;
         _topBar.JumpBranchRequested += OnSelectBranchRequested;
         _topBar.NewSessionRequested += OnNewSessionRequested;
+        _topBar.ZoomToCursorToggleRequested += () => _sessionManager?.ToggleZoomToCursor();
         _topBar.Show();
+
+        _sessionManager.ZoomToCursorChanged += active => Dispatcher.Invoke(() => _topBar?.UpdateZoomToCursorState(active));
 
         // Clicks on any of DocuClick's own interactive windows (top bar,
         // branch dialogs, session-start picker, settings, ...) or the tray

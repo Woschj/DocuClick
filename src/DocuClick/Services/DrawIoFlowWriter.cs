@@ -341,7 +341,7 @@ public sealed class DrawIoFlowWriter : IFlowWriter
             .Where(e => e.FromId.Length > 0 && e.ToId.Length > 0)
             .ToList();
 
-        return new FlowPreview(nodes, edges);
+        return FlowPreviewBranching.TagBranches(new FlowPreview(nodes, edges));
     }
 
     /// <summary>Jumps the cursor to an arbitrary existing card/marker cell, opening a new column — same mechanics as <see cref="JumpToAnchor"/>, just not limited to named branch markers.</summary>

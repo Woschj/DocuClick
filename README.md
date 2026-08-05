@@ -155,7 +155,7 @@ Eine kleine, mittig oben schwebende Pille (wie die TeamViewer-Session-Leiste
 — nicht bildschirmbreit, sonst würde sie Fenster ziehen/Menüs/Snap-Zonen
 blockieren) ist sichtbar, solange die App läuft, und zeigt auf einen Blick
 den Aufnahmestatus (inkl. aktuellem Branch-Namen, falls einer aktiv ist).
-Frei verschiebbar per Ziehen. Sie enthält vier Buttons:
+Frei verschiebbar per Ziehen. Sie enthält fünf Buttons:
 
 - **Start/Stop**: entspricht dem Tray-Menüpunkt bzw. dem Start/Stop-Hotkey
   — setzt die zuletzt verwendete Datei ohne Rückfrage fort.
@@ -166,6 +166,19 @@ Frei verschiebbar per Ziehen. Sie enthält vier Buttons:
   (anders als Start). Läuft gerade keine Aufnahme, startet sie damit neu.
   Läuft eine Aufnahme, schließt es die aktuelle Datei ab und startet
   direkt danach die neue (siehe vorheriger Abschnitt).
+- **Zoom: Aus/An**: schaltet "Zoom-auf-Cursor" um (entspricht dem
+  gleichnamigen Hotkey, siehe unten) — bei "An" erfassen die nächsten
+  Screenshots nur den Bereich um den Mauszeiger statt des ganzen Fensters,
+  direkt hier pro Screenshot umschaltbar statt nur global über die
+  Einstellungen.
+
+Im Canvas-, draw.io- oder Excalidraw-Modus zeigt zusätzlich ein
+verschiebbares "Ablauf-Übersicht"-Overlay eine Miniatur-Karte des gesamten
+Ablaufs: der aktuelle Knoten ist rot hervorgehoben, jede Abzweigung (Marker
+plus alle nachfolgenden Knoten) bekommt ihre eigene Farbe aus einer festen
+Palette, und ein Klick auf einen beliebigen Knoten springt die Aufnahme
+dorthin — praktisch, um in einem langen, verzweigten Ablauf schnell zu
+sehen und zu wechseln, ohne die eigentliche Datei zu öffnen.
 
 Anders als die beiden folgenden Overlays ist die Leiste **nicht**
 klick-durchlässig, da sie echte Buttons hostet — deshalb ist sie bewusst

@@ -40,6 +40,18 @@ public sealed class FlowPreviewOverlay : Window
     private const double NodeSize = 14;
     private const double CurrentNodeSize = 20;
 
+    // Same accent palette as DrawIoFlowWriter's branch colors, reused here
+    // so a branch's minimap dot and its actual card color line up in
+    // draw.io mode. A stable (non-randomized) hash of the branch name
+    // picks the color deterministically, so it never flickers between
+    // redraws or picks up .NET's per-process string-hash randomization.
+    private static readonly Color[] BranchPalette =
+    {
+        Color.FromRgb(0xD9, 0x77, 0x06), Color.FromRgb(0x05, 0x96, 0x69),
+        Color.FromRgb(0xDB, 0x27, 0x76), Color.FromRgb(0x7C, 0x3A, 0xED),
+        Color.FromRgb(0xDC, 0x26, 0x26), Color.FromRgb(0x08, 0x91, 0xB2)
+    };
+
     private readonly Canvas _canvas;
     private readonly TextBlock _emptyHint;
 
@@ -194,21 +206,23 @@ public sealed class FlowPreviewOverlay : Window
             var center = centers[node.Id];
             var size = node.IsCurrent ? CurrentNodeSize : NodeSize;
 
+            // Branch-marker nodes render as circles (RadiusX/Y = half the
+            // size) instead of squares, so the waypoint itself stays
+            // visually distinct even when its color matches every other
+            // node further down that same branch.
+            var radius = node.IsBranchMarker ? size / 2 : 3;
+
             var square = new Rectangle
             {
                 Width = size,
                 Height = size,
-                RadiusX = 3,
-                RadiusY = 3,
-                Fill = node.IsCurrent
-                    ? new SolidColorBrush(Color.FromRgb(0xE6, 0x39, 0x46))
-                    : node.IsBranchMarker
-                        ? new SolidColorBrush(Color.FromRgb(0x7C, 0x3A, 0xED))
-                        : new SolidColorBrush(Color.FromArgb(230, 0x4C, 0xAF, 0xE8)),
+                RadiusX = radius,
+                RadiusY = radius,
+                Fill = new SolidColorBrush(GetNodeColor(node)),
                 Stroke = Brushes.White,
                 StrokeThickness = node.IsCurrent ? 2 : 1,
                 Cursor = Cursors.Hand,
-                ToolTip = node.Label
+                ToolTip = node.BranchName is { } b ? $"{node.Label} · Branch: {b}" : node.Label
             };
             Canvas.SetLeft(square, center.X - size / 2);
             Canvas.SetTop(square, center.Y - size / 2);
@@ -223,6 +237,37 @@ public sealed class FlowPreviewOverlay : Window
             };
 
             _canvas.Children.Add(square);
+        }
+    }
+
+    private static Color GetNodeColor(PreviewNode node)
+    {
+        if (node.IsCurrent)
+        {
+            return Color.FromRgb(0xE6, 0x39, 0x46);
+        }
+
+        if (node.BranchName is { } branch)
+        {
+            return BranchPalette[StableHash(branch) % BranchPalette.Length];
+        }
+
+        return node.IsBranchMarker
+            ? Color.FromRgb(0x7C, 0x3A, 0xED)
+            : Color.FromArgb(230, 0x4C, 0xAF, 0xE8);
+    }
+
+    private static int StableHash(string value)
+    {
+        unchecked
+        {
+            var hash = 17;
+            foreach (var c in value)
+            {
+                hash = hash * 31 + c;
+            }
+
+            return hash & 0x7FFFFFFF;
         }
     }
 }

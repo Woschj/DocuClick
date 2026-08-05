@@ -285,7 +285,7 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
             .Select(e => new PreviewEdge(e.StartBinding!.ElementId, e.EndBinding!.ElementId))
             .ToList();
 
-        return new FlowPreview(nodes, edges);
+        return FlowPreviewBranching.TagBranches(new FlowPreview(nodes, edges));
     }
 
     /// <summary>Jumps the cursor to an arbitrary existing rectangle/marker node, opening a new column — same mechanics as <see cref="JumpToAnchor"/>, just not limited to named branch markers.</summary>

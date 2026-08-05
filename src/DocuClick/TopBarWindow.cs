@@ -37,11 +37,13 @@ public sealed class TopBarWindow : Window
     private readonly Button _markBranchButton;
     private readonly Button _jumpBranchButton;
     private readonly Button _newSessionButton;
+    private readonly Button _zoomToCursorButton;
 
     public event Action? ToggleRecordingRequested;
     public event Action? MarkBranchRequested;
     public event Action? JumpBranchRequested;
     public event Action? NewSessionRequested;
+    public event Action? ZoomToCursorToggleRequested;
 
     public TopBarWindow()
     {
@@ -80,8 +82,14 @@ public sealed class TopBarWindow : Window
         _jumpBranchButton.Click += (_, _) => JumpBranchRequested?.Invoke();
 
         _newSessionButton = CreateButton(buttonStyle, "Neue Session", "Startet eine neue Aufnahme-Session (fragt nach Zieldatei) — schließt bei laufender Aufnahme zuerst die aktuelle Datei ab.");
-        _newSessionButton.Margin = new Thickness(0, 0, 8, 0);
         _newSessionButton.Click += (_, _) => NewSessionRequested?.Invoke();
+
+        // Toggled per-screenshot from here instead of only via the global
+        // hotkey/Settings, so switching between "whole window" and "just
+        // around the cursor" doesn't require leaving the flow to open a menu.
+        _zoomToCursorButton = CreateButton(buttonStyle, "Zoom: Aus", "Zoom-auf-Cursor umschalten: die nächsten Screenshots erfassen nur den Bereich um den Mauszeiger statt des ganzen Fensters (auch per Hotkey möglich, siehe Einstellungen).");
+        _zoomToCursorButton.Margin = new Thickness(0, 0, 8, 0);
+        _zoomToCursorButton.Click += (_, _) => ZoomToCursorToggleRequested?.Invoke();
 
         var panel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         panel.Children.Add(_statusText);
@@ -89,6 +97,7 @@ public sealed class TopBarWindow : Window
         panel.Children.Add(_markBranchButton);
         panel.Children.Add(_jumpBranchButton);
         panel.Children.Add(_newSessionButton);
+        panel.Children.Add(_zoomToCursorButton);
 
         // Solid, saturated blue (TeamViewer-toolbar style) instead of the
         // previous near-black bar, which blended into dark taskbars/title
@@ -105,6 +114,7 @@ public sealed class TopBarWindow : Window
         Content = border;
 
         UpdateStatus(isRecording: false, detail: null, supportsBranching: false);
+        UpdateZoomToCursorState(active: false);
 
         // Draggable, but not when the click originates on one of the
         // buttons — otherwise a button press would also start a drag and
@@ -220,5 +230,17 @@ public sealed class TopBarWindow : Window
 
         var baseText = isRecording ? "DocuClick – Aufnahme läuft" : "DocuClick – Aufnahme gestoppt";
         _statusText.Text = detail is null ? baseText : $"{baseText} · {detail}";
+    }
+
+    /// <summary>Reflects "Zoom-auf-Cursor" on/off — driven by <see cref="SessionManager.ZoomToCursorChanged"/>, whether toggled from here, the hotkey, or Settings.</summary>
+    public void UpdateZoomToCursorState(bool active)
+    {
+        _zoomToCursorButton.Content = active ? "Zoom: An" : "Zoom: Aus";
+        // A local Background value (not a style setter) so it still shows
+        // through everywhere except the hover/pressed triggers, which take
+        // precedence over it as usual.
+        _zoomToCursorButton.Background = active
+            ? new SolidColorBrush(Color.FromArgb(160, 0x22, 0xC5, 0x5E))
+            : new SolidColorBrush(Color.FromArgb(40, 255, 255, 255));
     }
 }

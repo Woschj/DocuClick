@@ -293,7 +293,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
                 n.Text?.StartsWith(BranchMarkerPrefix, StringComparison.Ordinal) ?? false))
             .ToList();
         var edges = _doc.Edges.Select(e => new PreviewEdge(e.FromNode, e.ToNode)).ToList();
-        return new FlowPreview(nodes, edges);
+        return FlowPreviewBranching.TagBranches(new FlowPreview(nodes, edges));
     }
 
     /// <summary>Jumps the cursor to an arbitrary existing text/marker node, opening a new column so the new content doesn't overlap the existing flow — same mechanics as <see cref="JumpToAnchor"/>, just not limited to named branch markers.</summary>
