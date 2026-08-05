@@ -290,6 +290,32 @@ public sealed class FlowPreviewOverlay : Window
             };
 
             _canvas.Children.Add(square);
+
+            // Hovering shows the full label for any node, but branch
+            // markers and "you are here" are what people actually need to
+            // spot at a glance — so those two get a permanent text label
+            // instead of requiring a hover, unlike the many identical-
+            // looking regular nodes in between.
+            if (node.IsBranchMarker || node.IsCurrent)
+            {
+                var labelText = node.IsBranchMarker && node.BranchName is { } branchName
+                    ? $"↳ {branchName}"
+                    : "● hier";
+
+                var label = new TextBlock
+                {
+                    Text = labelText,
+                    FontSize = 10,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = Brushes.White,
+                    Background = new SolidColorBrush(Color.FromArgb(190, 0, 0, 0)),
+                    Padding = new Thickness(3, 1, 3, 1),
+                    IsHitTestVisible = false
+                };
+                Canvas.SetLeft(label, center.X + size / 2 + 4);
+                Canvas.SetTop(label, center.Y - 8);
+                _canvas.Children.Add(label);
+            }
         }
     }
 
