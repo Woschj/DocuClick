@@ -246,43 +246,70 @@ public sealed class FlowPreviewOverlay : Window
 
         var drawableWidth = canvasWidth - tentativeHalfExtent * 2;
         var drawableHeight = canvasHeight - tentativeHalfExtent * 2;
-        var scale = Math.Min(drawableWidth / spanX, drawableHeight / spanY);
+
+        // Separate X/Y scale factors instead of one shared "min of both"
+        // factor: with many branch columns, horizontal span grows a lot
+        // (each branch is its own column), which used to force the
+        // *vertical* spacing down too even though the sequential main flow
+        // had plenty of vertical room — branching sideways no longer
+        // squeezes the unrelated vertical layout.
+        var scaleX = drawableWidth / spanX;
+        var scaleY = drawableHeight / spanY;
 
         (double X, double Y) ToCanvas(double x, double y) => (
-            tentativeHalfExtent + (x - minX) * scale,
-            tentativeHalfExtent + (y - minY) * scale);
+            tentativeHalfExtent + (x - minX) * scaleX,
+            tentativeHalfExtent + (y - minY) * scaleY);
 
         var centers = preview.Nodes.ToDictionary(n => n.Id, n => ToCanvas(n.X + n.Width / 2, n.Y + n.Height / 2));
 
         // Nodes must never collide, however tight the flow's real layout
-        // is — cap the rendered size (never its position) so that even the
-        // biggest possible node (the current-node box) fits within the
-        // closest pair of node centers on screen, treating each box as its
-        // circumscribed circle (direction-agnostic, so it's safe whichever
-        // way two nodes happen to sit relative to each other).
-        var minCenterDistance = double.PositiveInfinity;
-        var centerList = centers.Values.ToList();
-        for (var i = 0; i < centerList.Count; i++)
+        // is — cap the rendered size (never the position) so every pair of
+        // nodes fits within its own on-screen distance. Per-pair (not one
+        // global worst case using the biggest possible node size): most
+        // nodes are the small regular kind, so a tight regular/regular pair
+        // shouldn't be constrained as if it were the much bigger
+        // current-node box — that was massively over-shrinking everything
+        // for the sake of the one node that's actually bigger.
+        double HalfDiagonal(PreviewNode n)
         {
-            for (var j = i + 1; j < centerList.Count; j++)
+            var w = n.IsCurrent ? CurrentNodeWidth : NodeWidth;
+            var h = n.IsCurrent ? CurrentNodeHeight : NodeHeight;
+            return Math.Sqrt(w * w + h * h) / 2;
+        }
+
+        const double CollisionMargin = 0.85; // leave a visible gap, not just "not touching"
+        var nodeList = preview.Nodes;
+        var collisionSafeScale = double.PositiveInfinity;
+        for (var i = 0; i < nodeList.Count; i++)
+        {
+            var centerI = centers[nodeList[i].Id];
+            var halfDiagonalI = HalfDiagonal(nodeList[i]);
+            for (var j = i + 1; j < nodeList.Count; j++)
             {
-                var dx = centerList[i].X - centerList[j].X;
-                var dy = centerList[i].Y - centerList[j].Y;
+                var centerJ = centers[nodeList[j].Id];
+                var dx = centerI.X - centerJ.X;
+                var dy = centerI.Y - centerJ.Y;
                 var distance = Math.Sqrt(dx * dx + dy * dy);
-                if (distance < minCenterDistance)
+                var sumHalfDiagonals = halfDiagonalI + HalfDiagonal(nodeList[j]);
+                if (sumHalfDiagonals <= 0)
                 {
-                    minCenterDistance = distance;
+                    continue;
+                }
+
+                var pairSafeScale = distance * CollisionMargin / sumHalfDiagonals;
+                if (pairSafeScale < collisionSafeScale)
+                {
+                    collisionSafeScale = pairSafeScale;
                 }
             }
         }
 
-        const double CollisionMargin = 0.9; // leave a visible gap, not just "not touching"
-        var maxDiagonal = Math.Sqrt(CurrentNodeWidth * CurrentNodeWidth + CurrentNodeHeight * CurrentNodeHeight);
-        var collisionSafeScale = double.IsPositiveInfinity(minCenterDistance)
-            ? tentativeSizeScale
-            : minCenterDistance * CollisionMargin / maxDiagonal;
+        if (double.IsPositiveInfinity(collisionSafeScale))
+        {
+            collisionSafeScale = tentativeSizeScale; // nothing to collide with (0 or 1 node)
+        }
 
-        var sizeScale = Math.Clamp(Math.Min(tentativeSizeScale, collisionSafeScale), 0.15, MaxSizeScale);
+        var sizeScale = Math.Clamp(Math.Min(tentativeSizeScale, collisionSafeScale), 0.4, MaxSizeScale);
         var nodeWidth = NodeWidth * sizeScale;
         var nodeHeight = NodeHeight * sizeScale;
         var currentNodeWidth = CurrentNodeWidth * sizeScale;
