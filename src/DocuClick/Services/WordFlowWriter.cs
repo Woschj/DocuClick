@@ -11,7 +11,7 @@ using W = DocumentFormat.OpenXml.Wordprocessing;
 namespace DocuClick.Services;
 
 /// <summary>
-/// Writes clicks as a sequential Word document (.docx) — one heading +
+/// Writes clicks as a sequential Word document (.docx) — one Heading3 +
 /// screenshot per click, appended top-to-bottom, instead of a spatial
 /// diagram canvas. This is deliberately NOT a diagram layout (no columns,
 /// no boxes-and-arrows positioning): long flows are the exact case where a
@@ -19,12 +19,16 @@ namespace DocuClick.Services;
 /// plain scrolling document handles any length gracefully and stays fully
 /// editable in Word/SharePoint.
 ///
-/// Branches and "resume from point" don't reposition content (Word has no
-/// spatial coordinates) — instead a small heading with an internal
-/// hyperlink back to the anchor is appended, and new clicks continue
-/// sequentially from there. Each click's heading+image block is wrapped in
-/// a Word bookmark (named by node id) so later branch/resume actions can
-/// link back to it.
+/// Branches and "resume from point" can't reposition content (Word has no
+/// spatial coordinates), so they're made navigable instead: every click is
+/// a Heading3 under a Heading1 ("Hauptablauf") or Heading2 ("Abzweigung:
+/// &lt;name&gt;") section, which turns Word's own Navigation Pane into a
+/// working outline of the flow. A branch point also gets a forward
+/// reference inserted right where it happens (see
+/// <see cref="InsertForwardReferenceAfterAnchor"/>), and the branch's new
+/// section links back to it — both directions are one click away, not
+/// just discoverable by scrolling. Each click's heading+image block is
+/// wrapped in a Word bookmark (named by node id) so these links can target it.
 /// </summary>
 public sealed class WordFlowWriter : IFlowWriter
 {
@@ -243,6 +247,18 @@ public sealed class WordFlowWriter : IFlowWriter
         }
     }
 
+    /// <summary>
+    /// Word can't reposition content spatially like Canvas, so a branch is
+    /// represented by two structural cues instead: a forward-reference
+    /// inserted right at the anchor point (so a reader passing through the
+    /// main flow sees "a branch happens here" immediately, not just a bare
+    /// marker), and a new Heading2 section — appended at the current end of
+    /// the document, since Word has no way to grow an earlier section
+    /// in-place — with a backward link to where it started. Both, plus the
+    /// Heading1/2/3 outline, make Word's Navigation Pane a substitute for a
+    /// spatial diagram: branches are distinguishable, and both directions
+    /// are one click away instead of only the anchor being linkable.
+    /// </summary>
     public BranchActionResult JumpToAnchor(string branchName)
     {
         var anchor = _branchAnchors.FirstOrDefault(a => a.Name == branchName);
@@ -251,12 +267,54 @@ public sealed class WordFlowWriter : IFlowWriter
             return new BranchActionResult(false, _branchAnchors.Count, null);
         }
 
-        AppendJumpMarker(anchor.NodeId, $"Abzweigung '{branchName}' von");
+        InsertForwardReferenceAfterAnchor(anchor.NodeId, branchName);
+
+        GetBody().Append(BuildSectionHeading($"Abzweigung: {branchName}", "Heading2"));
+        AppendJumpMarker(anchor.NodeId, "Ausgangspunkt");
+
         _cursorNodeId = anchor.NodeId;
         _currentBranchName = branchName;
         Save();
 
         return new BranchActionResult(true, _branchAnchors.Count, branchName);
+    }
+
+    /// <summary>
+    /// Inserts "→ siehe Abzweigung '&lt;name&gt;'" directly after the
+    /// anchor's bookmark, in place — the one spot in this writer that
+    /// isn't a plain append, so the branch point itself stays discoverable
+    /// while reading straight through instead of only showing up if you
+    /// already know to look for it further down. Idempotent per branch
+    /// name; stacks additional lines if the same point branches more than
+    /// once, in the order each branch was created.
+    /// </summary>
+    private void InsertForwardReferenceAfterAnchor(string anchorNodeId, string branchName)
+    {
+        var body = GetBody();
+        var bookmarkStart = body.Elements<W.BookmarkStart>().FirstOrDefault(b => b.Name == anchorNodeId);
+        if (bookmarkStart is null)
+        {
+            return;
+        }
+
+        OpenXmlElement insertAfterTarget = body.Elements<W.BookmarkEnd>().FirstOrDefault(b => b.Id == bookmarkStart.Id) ?? bookmarkStart;
+        var referenceText = $"→ siehe Abzweigung „{branchName}“";
+
+        while (insertAfterTarget.NextSibling() is W.Paragraph sibling && sibling.InnerText.StartsWith("→ siehe Abzweigung ", StringComparison.Ordinal))
+        {
+            if (sibling.InnerText == referenceText)
+            {
+                return; // already referenced from here
+            }
+
+            insertAfterTarget = sibling;
+        }
+
+        insertAfterTarget.InsertAfterSelf(new W.Paragraph(
+            new W.ParagraphProperties(new W.SpacingBetweenLines { Before = "80", After = "160" }),
+            new W.Run(
+                new W.RunProperties(new W.Italic(), new W.Color { Val = "7C3AED" }),
+                new W.Text(referenceText) { Space = SpaceProcessingModeValues.Preserve })));
     }
 
     private void AppendJumpMarker(string anchorNodeId, string verb)
@@ -286,12 +344,10 @@ public sealed class WordFlowWriter : IFlowWriter
                 new W.RunProperties(new W.Bold(), new W.Italic(), new W.Color { Val = "7C3AED" }),
                 new W.Text($"{BranchMarkerPrefix}{branchName}") { Space = SpaceProcessingModeValues.Preserve }));
 
+    // Each click's step is itself a (Heading3) node in the Navigation Pane
+    // outline, one level below "Hauptablauf"/branch section headings.
     private static W.Paragraph BuildHeadingParagraph(string text) =>
-        new(
-            new W.ParagraphProperties(new W.SpacingBetweenLines { Before = "240", After = "80" }),
-            new W.Run(
-                new W.RunProperties(new W.Bold(), new W.FontSize { Val = "26" }),
-                new W.Text(text) { Space = SpaceProcessingModeValues.Preserve }));
+        BuildSectionHeading(text, "Heading3");
 
     private W.Paragraph BuildImageParagraph(Bitmap screenshot)
     {
@@ -374,6 +430,7 @@ public sealed class WordFlowWriter : IFlowWriter
                 if (opened.MainDocumentPart?.Document?.Body is not null)
                 {
                     _wordDoc = opened;
+                    EnsureStylesPart();
                     return;
                 }
 
@@ -390,7 +447,53 @@ public sealed class WordFlowWriter : IFlowWriter
         _wordDoc = WordprocessingDocument.Create(_stream, WordprocessingDocumentType.Document, autoSave: true);
         var mainPart = _wordDoc.AddMainDocumentPart();
         mainPart.Document = new W.Document(new W.Body());
+        EnsureStylesPart();
+        GetBody().Append(BuildSectionHeading("Hauptablauf", "Heading1"));
     }
+
+    /// <summary>
+    /// Defines Heading1/2/3 (main flow / branch section / click step) so
+    /// Word's own Navigation Pane becomes a working outline of the flow —
+    /// the closest a linear document gets to the box-and-column diagrams
+    /// Canvas/draw.io use. No-op if already present (existing files).
+    /// </summary>
+    private void EnsureStylesPart()
+    {
+        if (_wordDoc!.MainDocumentPart!.StyleDefinitionsPart is not null)
+        {
+            return;
+        }
+
+        var stylesPart = _wordDoc.MainDocumentPart.AddNewPart<StyleDefinitionsPart>();
+        stylesPart.Styles = new W.Styles(
+            new W.Style(new W.StyleName { Val = "Normal" }) { Type = W.StyleValues.Paragraph, StyleId = "Normal", Default = true },
+            BuildHeadingStyle("Heading1", "heading 1", outlineLevel: 0, fontSizeHalfPoints: "32", color: "1F1F23"),
+            BuildHeadingStyle("Heading2", "heading 2", outlineLevel: 1, fontSizeHalfPoints: "26", color: "7C3AED"),
+            BuildHeadingStyle("Heading3", "heading 3", outlineLevel: 2, fontSizeHalfPoints: "24", color: "1F1F23"));
+    }
+
+    private static W.Style BuildHeadingStyle(string styleId, string name, int outlineLevel, string fontSizeHalfPoints, string color) =>
+        new(
+            new W.StyleName { Val = name },
+            new W.BasedOn { Val = "Normal" },
+            new W.NextParagraphStyle { Val = "Normal" },
+            new W.StyleParagraphProperties(
+                new W.KeepNext(),
+                new W.SpacingBetweenLines { Before = "240", After = "80" },
+                new W.OutlineLevel { Val = outlineLevel }),
+            new W.StyleRunProperties(
+                new W.Bold(),
+                new W.Color { Val = color },
+                new W.FontSize { Val = fontSizeHalfPoints }))
+        {
+            Type = W.StyleValues.Paragraph,
+            StyleId = styleId
+        };
+
+    private static W.Paragraph BuildSectionHeading(string text, string styleId) =>
+        new(
+            new W.ParagraphProperties(new W.ParagraphStyleId { Val = styleId }),
+            new W.Run(new W.Text(text) { Space = SpaceProcessingModeValues.Preserve }));
 
     private void Save()
     {

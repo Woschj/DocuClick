@@ -200,13 +200,21 @@ In den Einstellungen lässt sich eines von vier Formaten wählen:
   weshalb Bilder beim Export in andere Formate sonst fehlten. Betrifft nur
   neu aufgezeichnete Klicks; bereits bestehende `.canvas`-Dateien werden
   nicht automatisch migriert.
-- **Word**: jeder Klick wird ein eigener Abschnitt (Überschrift +
-  Screenshot), fortlaufend an eine `.docx`-Datei angehängt — kein
-  Canvas-Größenlimit, beliebig lange Abläufe bleiben lesbar. Abzweigungen
-  werden als Rücksprung-Link im Dokument dargestellt statt als eigene
-  Spalte. Screenshots werden direkt eingebettet (kein separater
-  Attachments-Ordner nötig). Voll editierbar in Microsoft Word, SharePoint
-  zeigt/bearbeitet `.docx` nativ ohne zusätzliches Plugin.
+- **Word**: jeder Klick wird eine Heading3-Überschrift + Screenshot,
+  fortlaufend an eine `.docx`-Datei angehängt — kein Canvas-Größenlimit,
+  beliebig lange Abläufe bleiben lesbar. Da ein Word-Dokument keine
+  räumlichen Koordinaten kennt, macht die Gliederung die Abzweigungen
+  navigierbar statt sie räumlich zu platzieren: Hauptablauf = Heading1,
+  jede Abzweigung ein eigenes Heading2-„Abzweigung: Name“, jeder Klick
+  darunter ein Heading3 — Words eigener Navigationsbereich (Ansicht →
+  Navigationsbereich) wird dadurch zur klickbaren Gliederung des ganzen
+  Ablaufs. Zusätzlich steht direkt an der Abzweigungsstelle selbst ein
+  „→ siehe Abzweigung 'Name'“-Verweis (nicht erst am Dokumentende), und
+  der neue Abschnitt verlinkt mit „Ausgangspunkt: ...“ zurück — beide
+  Richtungen sind einen Klick entfernt. Screenshots werden direkt
+  eingebettet (kein separater Attachments-Ordner nötig). Voll editierbar
+  in Microsoft Word, SharePoint zeigt/bearbeitet `.docx` nativ ohne
+  zusätzliches Plugin.
 - **Excalidraw** *(experimentell)*: funktioniert wie Canvas (Knoten +
   Abzweigungen als neue Spalte), aber im freien Skizzen-Look statt fester
   Boxen — jeder Klick wird eine abgerundete Karte (Beschreibung +
@@ -228,8 +236,9 @@ SharePoint-Sync-Ordner).
 Canvas, Word und Excalidraw unterstützen dieselbe Branch-Logik, nur mit
 unterschiedlicher Darstellung: Canvas und Excalidraw legen Abzweigungen
 als neue Spalte rechts neben dem Hauptablauf an; Word hängt sie
-stattdessen als neuen Abschnitt mit Rücksprung-Link ans Dokumentende an,
-da ein Word-Dokument keine räumlichen Koordinaten kennt.
+stattdessen als neuen Heading2-Abschnitt ans Dokumentende an (siehe oben) —
+neuer Inhalt kann in einem Word-Dokument nur angehängt, nicht räumlich
+platziert werden.
 
 Abzweigungen werden benannt und über zwei globale Hotkeys gesteuert
 (Standard: `F9` / `F10`, änderbar in den Einstellungen):
