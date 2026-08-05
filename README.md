@@ -119,7 +119,7 @@ einer anderen bzw. neuen Datei zu wechseln:
 
 - **Neue Datei anlegen**: Ein Name wird automatisch vorgeschlagen
   (**Zielordner-Name + Datum + laufende Nummer**, z. B.
-  `IT-Support 2026-08-04 #1`, statt eines generischen "Screenshots"), lässt
+  `IT-Support 2026-08-04 (1)`, statt eines generischen "Screenshots"), lässt
   sich aber frei überschreiben. Endung ergibt sich aus dem gewählten
   Ausgabeformat. Optional ein **Zielordner** wählen (relativ zum
   Vault-/Zielordner-Pfad) — Vorschläge kommen aus allen bereits
@@ -356,6 +356,25 @@ erscheint zusätzlich ein Balloon-Tip am Tray-Icon. Wenn nach einem Klick
 weder im Log noch als Notiz etwas ankommt, wurde der Klick vom Mouse-Hook gar
 nicht erst erkannt (Session nicht gestartet, oder der Hook konnte nicht
 registriert werden — siehe Log-Zeile "Session gestartet").
+
+### Bilder fehlen in einer bestehenden Notiz/Canvas ("... konnte nicht gefunden werden")
+
+Bis zur entsprechenden Fix-Version enthielt der automatische Namensvorschlag
+beim Session-Start ein `#` (z. B. `IT-Support 2026-08-04 #1`). Da dieser Name
+auch als Attachments-Unterordner verwendet wird, das `#` in Obsidian-Links
+aber als Trenner für Überschriften-/Block-Anker gilt, wurde alles nach dem
+`#` als Anker statt als Teil des Pfads interpretiert — die Bild-Referenz
+zeigt dann ins Leere, obwohl die Datei tatsächlich am angezeigten Ort liegt.
+Ab der Fix-Version wird `(1)` statt `#1` vorgeschlagen und ein manuell
+eingegebenes `#` zusätzlich automatisch ersetzt; **bereits erzeugte Dateien
+und Ordner mit `#` im Namen bleiben davon unberührt** und müssen händisch
+repariert werden:
+
+1. Den betroffenen Attachments-Unterordner (z. B.
+   `Attachments/Mein Vault 2026-08-05 #1`) umbenennen — `#` durch z. B. `(1)`
+   ersetzen.
+2. Die zugehörige `.canvas`- bzw. `.md`-Datei in einem Texteditor öffnen und
+   den alten Ordnernamen per Suchen-und-Ersetzen durch den neuen ersetzen.
 
 ---
 

@@ -92,10 +92,16 @@ public partial class SessionStartWindow : Window
     }
 
     /// <summary>
-    /// Suggests "&lt;Zielordner-Name&gt; yyyy-MM-dd #N" (folder name of
+    /// Suggests "&lt;Zielordner-Name&gt; yyyy-MM-dd (N)" (folder name of
     /// wherever the file is about to be created, today's date, and a
     /// running number that skips names already taken in that folder) —
     /// never overwrites a name the user already typed themselves.
+    /// "(N)" rather than "#N": this name also becomes the Attachments
+    /// subfolder for every screenshot in Canvas/Word/PowerPoint mode, and
+    /// "#" is Obsidian's link-anchor delimiter — a literal "#" in a file
+    /// or folder name breaks every embed that references it, since
+    /// everything after it gets parsed as a heading/block reference
+    /// instead of part of the path.
     /// </summary>
     private void SetSuggestedFileName()
     {
@@ -119,7 +125,7 @@ public partial class SessionStartWindow : Window
         string candidate;
         do
         {
-            candidate = $"{folderLabel} {datePart} #{n}";
+            candidate = $"{folderLabel} {datePart} ({n})";
             n++;
         } while (existingNames.Contains(candidate));
 
