@@ -244,7 +244,7 @@ public partial class App : Application
 
         if (!_sessionManager.SupportsBranching)
         {
-            _trayApp!.ShowInfo("Nur im Canvas-, Word- oder Excalidraw-Modus verfügbar (siehe Einstellungen).");
+            _trayApp!.ShowInfo("Nur im Canvas-, Word-, PowerPoint- oder Excalidraw-Modus verfügbar (siehe Einstellungen).");
             return;
         }
 

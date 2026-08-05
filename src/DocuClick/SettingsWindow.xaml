@@ -107,12 +107,15 @@
                         <RadioButton x:Name="OutputModeWordRadio" GroupName="OutputMode" Margin="0,0,0,8"
                                      Content="Word (.docx, ein Schritt = ein Abschnitt, für Office/SharePoint)"
                                      Checked="OnOutputModeChanged"/>
+                        <RadioButton x:Name="OutputModePowerPointRadio" GroupName="OutputMode" Margin="0,0,0,8"
+                                     Content="PowerPoint (.pptx, echtes Flowchart: eine Folie pro Abzweigung)"
+                                     Checked="OnOutputModeChanged"/>
                         <RadioButton x:Name="OutputModeExcalidrawRadio" GroupName="OutputMode" Margin="0,0,0,4"
                                      Content="Excalidraw (.excalidraw, Skizzen-Look, experimentell — benötigt das Excalidraw-Plugin)"
                                      Checked="OnOutputModeChanged"/>
 
                         <TextBlock Style="{StaticResource HintText}"
-                                   Text="Canvas schreibt jeden Klick als verbundenen Knoten auf einer Fläche (vertikaler Hauptfluss, Abzweigungen als neue Spalten über die Hotkeys unten) — gut für kurze Abläufe, wird bei sehr langen Abläufen aber schnell unübersichtlich. Word hängt stattdessen jeden Klick als eigenen Abschnitt fortlaufend ans Dokumentende an (kein Größenlimit), Abzweigungen werden als Rücksprung-Link dargestellt. Excalidraw funktioniert wie Canvas (Knoten + Abzweigungen), aber im freien Skizzen-Look statt fester Boxen — experimentell, benötigt zusätzlich das kostenlose Excalidraw-Community-Plugin (anders als Canvas, das in Obsidian bereits eingebaut ist). Canvas/Word/Excalidraw betten Screenshots direkt in die Datei ein — kein separater Attachments-Ordner nötig — und sind voll editierbar."/>
+                                   Text="Canvas schreibt jeden Klick als verbundenen Knoten auf einer Fläche (vertikaler Hauptfluss, Abzweigungen als neue Spalten über die Hotkeys unten) — gut für kurze Abläufe, wird bei sehr langen Abläufen aber schnell unübersichtlich. Word hängt stattdessen jeden Klick als eigenen Abschnitt fortlaufend ans Dokumentende an (kein Größenlimit), Abzweigungen werden über Words Navigationsbereich und Sprung-Links dargestellt statt räumlich. PowerPoint zeichnet ein echtes Kästchen-und-Pfeile-Flowchart mit Bildern — jede Abzweigung bekommt ihre eigene Folie, verlinkt über klickbare Foliensprünge. Excalidraw funktioniert wie Canvas (Knoten + Abzweigungen), aber im freien Skizzen-Look statt fester Boxen — experimentell, benötigt zusätzlich das kostenlose Excalidraw-Community-Plugin (anders als Canvas, das in Obsidian bereits eingebaut ist). Canvas/Word/PowerPoint/Excalidraw betten Screenshots direkt in die Datei ein — kein separater Attachments-Ordner nötig — und sind voll editierbar."/>
                     </StackPanel>
                 </Border>
 

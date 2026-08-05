@@ -60,6 +60,9 @@ public partial class SettingsWindow : Window
             case "Word":
                 OutputModeWordRadio.IsChecked = true;
                 break;
+            case "PowerPoint":
+                OutputModePowerPointRadio.IsChecked = true;
+                break;
             case "Excalidraw":
                 OutputModeExcalidrawRadio.IsChecked = true;
                 break;
@@ -98,15 +101,22 @@ public partial class SettingsWindow : Window
 
     private void OnOutputModeChanged(object sender, RoutedEventArgs e)
     {
-        // Word embeds screenshots directly and isn't tied to an Obsidian
-        // vault at all — just any target folder. Excalidraw also embeds
-        // directly but (unlike Word) still needs an actual Obsidian vault
-        // (plus its plugin) to open, so it keeps the "Obsidian-Vault" wording.
+        // Word/PowerPoint embed screenshots directly and aren't tied to an
+        // Obsidian vault at all — just any target folder. Excalidraw also
+        // embeds directly but (unlike Word/PowerPoint) still needs an
+        // actual Obsidian vault (plus its plugin) to open, so it keeps the
+        // "Obsidian-Vault" wording.
         var isWord = OutputModeWordRadio.IsChecked == true;
-        var embedsScreenshotsDirectly = isWord || OutputModeExcalidrawRadio.IsChecked == true;
+        var isPowerPoint = OutputModePowerPointRadio.IsChecked == true;
+        var needsNoVault = isWord || isPowerPoint;
+        var embedsScreenshotsDirectly = needsNoVault || OutputModeExcalidrawRadio.IsChecked == true;
 
-        VaultCardHeader.Text = isWord ? "Zielordner" : "Obsidian-Vault";
-        VaultPathLabel.Text = isWord ? "Zielordner-Pfad (für die .docx-Datei)" : "Vault-Pfad";
+        VaultCardHeader.Text = needsNoVault ? "Zielordner" : "Obsidian-Vault";
+        VaultPathLabel.Text = isWord
+            ? "Zielordner-Pfad (für die .docx-Datei)"
+            : isPowerPoint
+                ? "Zielordner-Pfad (für die .pptx-Datei)"
+                : "Vault-Pfad";
         AttachmentsRow.Visibility = embedsScreenshotsDirectly ? Visibility.Collapsed : Visibility.Visible;
     }
 
@@ -262,9 +272,11 @@ public partial class SettingsWindow : Window
             ? "Canvas"
             : OutputModeWordRadio.IsChecked == true
                 ? "Word"
-                : OutputModeExcalidrawRadio.IsChecked == true
-                    ? "Excalidraw"
-                    : "Note";
+                : OutputModePowerPointRadio.IsChecked == true
+                    ? "PowerPoint"
+                    : OutputModeExcalidrawRadio.IsChecked == true
+                        ? "Excalidraw"
+                        : "Note";
 
         _config.StartStopModifiers = _startStopModifiers;
         _config.StartStopKey = _startStopKey;

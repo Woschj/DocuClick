@@ -23,10 +23,13 @@ public sealed class AppConfig
     /// (Obsidian .canvas flow diagram), "Word" (.docx, one heading +
     /// screenshot per click, appended sequentially — handles long flows
     /// better than a fixed canvas, and stays fully editable in
-    /// Word/SharePoint), or "Excalidraw" (.excalidraw sketch-style
-    /// diagram, experimental — needs the free Excalidraw Obsidian
-    /// plugin). Canvas, Word, and Excalidraw all support branching via
-    /// the hotkeys below.
+    /// Word/SharePoint), "PowerPoint" (.pptx, a real spatial flowchart —
+    /// one slide per branch column, boxes/images/connector lines with
+    /// actual coordinates, branch navigation via slide-jump hyperlinks),
+    /// or "Excalidraw" (.excalidraw sketch-style diagram, experimental —
+    /// needs the free Excalidraw Obsidian plugin). Canvas, Word,
+    /// PowerPoint, and Excalidraw all support branching via the hotkeys
+    /// below.
     /// </summary>
     public string OutputMode { get; set; } = "Note";
 

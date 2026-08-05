@@ -7,8 +7,8 @@ namespace DocuClick.Services;
 /// Glues the mouse/keyboard hooks to the capture pipeline (UI Automation
 /// lookup -> screenshot -> highlight -> write) and owns the current
 /// session's target file. Writes either a linear note (ObsidianWriter) or
-/// a branching flow (<see cref="IFlowWriter"/>: Obsidian Canvas, Word, or
-/// the experimental Excalidraw mode), depending on
+/// a branching flow (<see cref="IFlowWriter"/>: Obsidian Canvas, Word,
+/// PowerPoint, or the experimental Excalidraw mode), depending on
 /// <see cref="AppConfig.OutputMode"/>.
 /// </summary>
 public sealed class SessionManager : IDisposable
@@ -19,6 +19,7 @@ public sealed class SessionManager : IDisposable
     private readonly ObsidianWriter _noteWriter;
     private readonly CanvasFlowWriter _canvasWriter;
     private readonly WordFlowWriter _wordWriter;
+    private readonly PowerPointFlowWriter _powerPointWriter;
     private readonly ExcalidrawFlowWriter _excalidrawWriter;
     private string _currentTargetFileName = string.Empty;
     private bool _isRunning;
@@ -39,13 +40,14 @@ public sealed class SessionManager : IDisposable
 
     public bool IsRunning => _isRunning;
 
-    /// <summary>Whether the active output mode supports branching (Canvas/Word/Excalidraw vs. plain Note).</summary>
+    /// <summary>Whether the active output mode supports branching (Canvas/Word/PowerPoint/Excalidraw vs. plain Note).</summary>
     public bool SupportsBranching => ActiveFlowWriter is not null;
 
     private IFlowWriter? ActiveFlowWriter => _config.OutputMode switch
     {
         "Canvas" => _canvasWriter,
         "Word" => _wordWriter,
+        "PowerPoint" => _powerPointWriter,
         "Excalidraw" => _excalidrawWriter,
         _ => null
     };
@@ -56,6 +58,7 @@ public sealed class SessionManager : IDisposable
         _noteWriter = new ObsidianWriter(config);
         _canvasWriter = new CanvasFlowWriter(config);
         _wordWriter = new WordFlowWriter(config);
+        _powerPointWriter = new PowerPointFlowWriter(config);
         _excalidrawWriter = new ExcalidrawFlowWriter(config);
         _mouseHook.LeftButtonDown += OnLeftButtonDown;
         _mouseHook.RightButtonDown += OnRightButtonDown;
@@ -67,6 +70,7 @@ public sealed class SessionManager : IDisposable
     {
         "Canvas" => ".canvas",
         "Word" => ".docx",
+        "PowerPoint" => ".pptx",
         "Excalidraw" => ".excalidraw",
         _ => ".md"
     };
