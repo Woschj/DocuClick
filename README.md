@@ -3,9 +3,8 @@
 Windows-Screenshot-Tool, das bei jedem Mausklick (optional auch bei Enter)
 automatisch einen Screenshot mit Klick-Markierung erstellt und samt
 Beschreibungstext in eine Obsidian-Notiz, ein Obsidian-Canvas, ein
-Word-Dokument, eine PowerPoint-Folie, ein draw.io-Flowchart oder
-(experimentell) ein Excalidraw-Sketch einfügt. Details zu allen sechs
-Ausgabeformaten weiter unten.
+draw.io-Flowchart oder (experimentell) ein Excalidraw-Sketch einfügt.
+Details zu allen vier Ausgabeformaten weiter unten.
 
 App-Icon: [Assets/app.ico](src/DocuClick/Assets/app.ico) (im selben
 Rot-auf-Dunkel-Stil wie das Tray-Icon).
@@ -28,13 +27,13 @@ für die Bedienung.
 
 ## Obsidian einrichten und den Vault nutzen
 
-Für die Notiz-, Canvas- und Excalidraw-Ausgabeformate (nicht für
-Word/PowerPoint/draw.io) wird [Obsidian](https://obsidian.md) empfohlen —
+Für die Notiz-, Canvas- und Excalidraw-Ausgabeformate (nicht für draw.io)
+wird [Obsidian](https://obsidian.md) empfohlen —
 kostenlos, kein Account nötig, öffnet einfach einen lokalen Ordner als
 "Vault". Für Notiz/Canvas ist kein Plugin erforderlich, DocuClick schreibt
 reine Markdown-/JSON-Dateien direkt auf die Festplatte; für Excalidraw wird
 zusätzlich das kostenlose Excalidraw-Community-Plugin gebraucht (siehe
-[Ausgabeformat](#ausgabeformat-notiz-canvas-word-powerpoint-drawio-oder-excalidraw)).
+[Ausgabeformat](#ausgabeformat-notiz-canvas-drawio-oder-excalidraw)).
 
 1. **Obsidian installieren**: Installer von [obsidian.md](https://obsidian.md/download)
    herunterladen und ausführen.
@@ -69,7 +68,7 @@ Alltags-Workflow:
 - Verzweigt sich ein Ablauf (z. B. Fehlerfall vs. Erfolgsfall), mit
   "Branch setzen" einen Namen vergeben und später über "Branch
   auswählen" gezielt dorthin zurückspringen (siehe
-  [Ausgabeformat](#ausgabeformat-notiz-canvas-word-powerpoint-drawio-oder-excalidraw)).
+  [Ausgabeformat](#ausgabeformat-notiz-canvas-drawio-oder-excalidraw)).
 
 ## Funktionsumfang
 
@@ -99,8 +98,8 @@ auf ..."):
    `![bild.png](relativer/Pfad.png)` (Standard-Markdown, kein
    Obsidian-spezifisches Wikilink — funktioniert daher auch in GitHub-/
    GitLab-Wikis und anderen Markdown-Renderern, nicht nur in Obsidian) an
-   die Session-Notiz im Obsidian-Vault (im Canvas-/Word-/PowerPoint-/draw.io-/Excalidraw-Modus
-   stattdessen als Knoten bzw. Abschnitt, siehe unten)
+   die Session-Notiz im Obsidian-Vault (im Canvas-/draw.io-/Excalidraw-Modus
+   stattdessen als Knoten, siehe unten)
 
 Klicks auf DocuClicks eigene Fenster (Top-Leiste, Branch-Dialoge,
 Session-Start, Einstellungen, ...) sowie auf das Tray-Icon selbst zählen
@@ -132,7 +131,7 @@ einer anderen bzw. neuen Datei zu wechseln:
 - **Bestehende Datei fortsetzen**: Auswahl aus allen vorhandenen Dateien
   mit passender Endung im konfigurierten Ordner (inkl. Unterordner),
   neueste zuerst. Neue Klicks werden an diese Datei angehängt (im
-  Canvas-/Word-/PowerPoint-/draw.io-/Excalidraw-Modus ab dem bisherigen Cursor-Stand, siehe
+  Canvas-/draw.io-/Excalidraw-Modus ab dem bisherigen Cursor-Stand, siehe
   Branch-Logik unten).
 
 Der Dialog erscheint außerdem beim allerersten "Start" nach Installation
@@ -162,7 +161,7 @@ Frei verschiebbar per Ziehen. Sie enthält vier Buttons:
   — setzt die zuletzt verwendete Datei ohne Rückfrage fort.
 - **Branch setzen** / **Branch auswählen**: entsprechen den beiden
   Branch-Hotkeys (siehe unten), nur aktiv während einer laufenden Aufnahme
-  im Canvas-, Word-, PowerPoint-, draw.io- oder Excalidraw-Modus.
+  im Canvas-, draw.io- oder Excalidraw-Modus.
 - **Neue Session**: immer klickbar, fragt **immer** nach der Zieldatei
   (anders als Start). Läuft gerade keine Aufnahme, startet sie damit neu.
   Läuft eine Aufnahme, schließt es die aktuelle Datei ab und startet
@@ -178,7 +177,7 @@ Zusätzlich, nur während einer laufenden Aufnahme:
 
 - Ein kleiner roter Punkt (unterhalb der Top-Leiste) zeigt an, dass die
   Aufnahme läuft.
-- Im Canvas-/Word-/PowerPoint-/draw.io-Modus zeigt ein zweites, kleines Overlay direkt darunter
+- Im Canvas-/draw.io-Modus zeigt ein zweites, kleines Overlay direkt darunter
   die aktuelle Position im Ablauf (aktueller Branch, alle gesetzten
   Branches, letzter Knoten).
 
@@ -186,9 +185,9 @@ Diese beiden Overlays sind klick-durchlässig (stören keine Bedienung) und
 werden wie die Top-Leiste aktiv aus Screenshots ausgeschlossen, tauchen
 also nie selbst im aufgenommenen Bild auf.
 
-## Ausgabeformat: Notiz, Canvas, Word, PowerPoint, draw.io oder Excalidraw
+## Ausgabeformat: Notiz, Canvas, draw.io oder Excalidraw
 
-In den Einstellungen lässt sich eines von sechs Formaten wählen:
+In den Einstellungen lässt sich eines von vier Formaten wählen:
 
 - **Notiz**: linearer Markdown-Text + Bild-Link, an eine `.md`-Datei angehängt (Standard).
 - **Obsidian-Canvas**: jeder Klick wird ein verbundener Knoten auf einer
@@ -201,34 +200,6 @@ In den Einstellungen lässt sich eines von sechs Formaten wählen:
   weshalb Bilder beim Export in andere Formate sonst fehlten. Betrifft nur
   neu aufgezeichnete Klicks; bereits bestehende `.canvas`-Dateien werden
   nicht automatisch migriert.
-- **Word**: jeder Klick wird eine Heading3-Überschrift + Screenshot,
-  fortlaufend an eine `.docx`-Datei angehängt — kein Canvas-Größenlimit,
-  beliebig lange Abläufe bleiben lesbar. Da ein Word-Dokument keine
-  räumlichen Koordinaten kennt, macht die Gliederung die Abzweigungen
-  navigierbar statt sie räumlich zu platzieren: Hauptablauf = Heading1,
-  jede Abzweigung ein eigenes Heading2-„Abzweigung: Name“, jeder Klick
-  darunter ein Heading3 — Words eigener Navigationsbereich (Ansicht →
-  Navigationsbereich) wird dadurch zur klickbaren Gliederung des ganzen
-  Ablaufs. Zusätzlich steht direkt an der Abzweigungsstelle selbst ein
-  „→ siehe Abzweigung 'Name'“-Verweis (nicht erst am Dokumentende), und
-  der neue Abschnitt verlinkt mit „Ausgangspunkt: ...“ zurück — beide
-  Richtungen sind einen Klick entfernt. Screenshots werden direkt
-  eingebettet (kein separater Attachments-Ordner nötig). Voll editierbar
-  in Microsoft Word, SharePoint zeigt/bearbeitet `.docx` nativ ohne
-  zusätzliches Plugin.
-- **PowerPoint**: ein echtes Kästchen-und-Pfeile-Flowchart statt nur einer
-  Gliederung — anders als Word kennt eine `.pptx`-Folie tatsächliche
-  x/y-Koordinaten. Da eine einzelne Folie aber eine feste Größe hat (keine
-  unendliche Fläche wie Canvas), bekommt jede Spalte ihre eigene Folie: der
-  Hauptablauf eine Folie „Hauptablauf“, jede Abzweigung eine eigene Folie
-  „Abzweigung: Name“ (erst beim ersten Sprung dorthin angelegt). Navigation
-  zwischen Folien läuft über anklickbare Foliensprung-Links (PowerPoint
-  kann nur auf eine ganze Folie verlinken, nicht auf eine Position
-  innerhalb einer Folie): am Abzweigungspunkt selbst erscheint ein „→ siehe
-  Folie ‚Abzweigung: Name'“-Verweis, die neue Folie verlinkt mit „↩
-  Ausgangspunkt: ...“ zurück. Screenshots werden direkt eingebettet (kein
-  separater Attachments-Ordner nötig). Voll editierbar in PowerPoint,
-  SharePoint zeigt/bearbeitet `.pptx` nativ ohne zusätzliches Plugin.
 - **draw.io** (`.drawio`): wie Canvas ein echtes Flussdiagramm auf einer
   freien Fläche (vertikaler Hauptablauf, Abzweigungen als eigene Spalte),
   aber ohne Obsidian-Abhängigkeit und mit deutlich aufgewertetem Layout —
@@ -263,26 +234,22 @@ In den Einstellungen lässt sich eines von sechs Formaten wählen:
 
 Das Pfad-Feld in den Einstellungen passt sich dem gewählten Format an: bei
 Notiz/Canvas/Excalidraw heißt es "Obsidian-Vault" (Attachments-Unterordner
-nur bei Notiz/Canvas sichtbar, da Word/PowerPoint/draw.io/Excalidraw Bilder
-direkt einbetten); bei Word, PowerPoint und draw.io heißt es "Zielordner"
+nur bei Notiz/Canvas sichtbar, da draw.io/Excalidraw Bilder
+direkt einbetten); bei draw.io heißt es "Zielordner"
 und ist nicht an einen Obsidian-Vault gebunden — es kann jeder beliebige
 Ordner sein (z. B. ein SharePoint-Sync-Ordner).
 
-Canvas, Word, PowerPoint, draw.io und Excalidraw unterstützen dieselbe
-Branch-Logik, nur mit unterschiedlicher Darstellung: Canvas, draw.io und
-Excalidraw legen Abzweigungen als neue Spalte rechts neben dem Hauptablauf
-an; Word hängt sie als neuen Heading2-Abschnitt ans Dokumentende an;
-PowerPoint legt eine neue Folie an. Word/PowerPoint können neuen Inhalt nur
-anhängen bzw. nur ganze Folien verlinken, nicht frei räumlich platzieren
-wie Canvas/draw.io.
+Canvas, draw.io und Excalidraw unterstützen dieselbe
+Branch-Logik, nur mit unterschiedlicher Darstellung: alle drei legen
+Abzweigungen als neue Spalte rechts neben dem Hauptablauf an.
 
 Abzweigungen werden benannt und über zwei globale Hotkeys gesteuert
 (Standard: `F9` / `F10`, änderbar in den Einstellungen):
 
 - **Branch setzen** (`F9`): fragt nach einem Namen (z. B. "Login-Fehler")
   und legt dafür ein eigenes, sichtbares **"Branch: Login-Fehler"**-Objekt
-  an (Knoten in Canvas/draw.io/Excalidraw, Absatz in Word), verbunden mit dem
-  zuletzt erstellten Knoten/Abschnitt — kein verstecktes Metadatenfeld,
+  an (Knoten in Canvas/draw.io/Excalidraw), verbunden mit dem
+  zuletzt erstellten Knoten — kein verstecktes Metadatenfeld,
   sondern ein normales Element in der Datei. Der laufende Ablauf wird dabei
   nicht unterbrochen, der nächste Klick hängt sich weiterhin ganz normal an
   den zuletzt aufgezeichneten Punkt. Ein bereits vergebener Name bekommt
@@ -292,9 +259,8 @@ Abzweigungen werden benannt und über zwei globale Hotkeys gesteuert
   Branches — die Auswahl setzt den "Cursor" auf das Marker-Objekt zurück
   (beliebig oft wiederholbar, auch nachdem bereits andere Klicks
   dazwischen aufgezeichnet wurden). Der nächste Klick beginnt dann eine
-  neue Spalte (Canvas/draw.io/Excalidraw) bzw. einen neuen Abschnitt mit
-  Rücksprung-Link (Word), verbunden mit dem gewählten Branch statt mit dem
-  zuletzt aufgezeichneten Klick.
+  neue Spalte (Canvas/draw.io/Excalidraw), verbunden mit dem gewählten
+  Branch statt mit dem zuletzt aufgezeichneten Klick.
 
 Da Branches als echte, sichtbare Objekte in der Datei stehen, übersteht die
 Liste der verfügbaren Branches auch ein Stoppen und erneutes Starten der
@@ -314,12 +280,11 @@ Einstellungen (keine Neustart nötig).
 ### Ablauf nachträglich fortsetzen (an einem bestimmten Punkt statt am Dateiende)
 
 Über das Tray-Menü "Ablauf fortsetzen ab Punkt..." (nur verfügbar im
-Canvas-, Word-, PowerPoint- oder draw.io-Modus, bei gestoppter Aufnahme) öffnet sich eine Liste
-aller bereits vorhandenen Knoten/Abschnitte in der zuletzt bearbeiteten
+Canvas-, draw.io- oder Excalidraw-Modus, bei gestoppter Aufnahme) öffnet sich eine Liste
+aller bereits vorhandenen Knoten in der zuletzt bearbeiteten
 Datei. Die Auswahl legt fest, an welchem Punkt die *nächste*
-Aufnahme-Session ansetzt — neue Klicks werden dann (im Canvas als neue
-Spalte, in Word als neuer Abschnitt mit Rücksprung-Link) mit genau diesem
-Punkt verbunden statt an das Dateiende angehängt, unabhängig davon, wie
+Aufnahme-Session ansetzt — neue Klicks werden dann als neue
+Spalte mit genau diesem Punkt verbunden statt an das Dateiende angehängt, unabhängig davon, wie
 lange die ursprüngliche Aufzeichnung schon zurückliegt. Der
 Session-Start-Dialog (siehe oben) wählt danach automatisch dieselbe Datei
 vor.
@@ -427,16 +392,3 @@ git push origin v1.0.0
 
 Offene Punkte: Feinschliff bei Multi-Monitor/DPI-Kantenfällen, robustere
 Fehlerbehandlung in Randfällen.
-
-### Hinweis zu PowerPointFlowWriter
-
-Der PowerPoint-Writer wurde ohne Zugriff auf echtes PowerPoint entwickelt
-(macOS-Entwicklungsumgebung). Zur Absicherung wurde die komplette
-OOXML-Struktur (Theme, Slide-Master/-Layout, Shapes, Bilder,
-foliensprung-Hyperlinks, nachträgliches Wachstum der Foliengröße über
-mehrere Sessions) lokal per `dotnet` + `DocumentFormat.OpenXml`s
-`OpenXmlValidator` gegen einen End-to-End-Testlauf (3 Sessions, Branch
-setzen/springen/zweimal besuchen, Fortsetzen ab einem früheren Punkt)
-geprüft — alle Durchläufe fehlerfrei. Das bestätigt Schema-Validität,
-ersetzt aber keinen echten Test in PowerPoint selbst (Layout-Feinheiten,
-Hyperlink-Klickverhalten). Bitte beim ersten echten Einsatz kurz prüfen.

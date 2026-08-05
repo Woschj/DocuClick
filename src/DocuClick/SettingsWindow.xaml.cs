@@ -18,7 +18,7 @@ namespace DocuClick;
 
 public partial class SettingsWindow : Window
 {
-    private enum HotkeyTarget { None, StartStop, BranchMark, BranchJump }
+    private enum HotkeyTarget { None, StartStop, BranchMark, BranchJump, ZoomToCursor }
 
     private readonly AppConfig _config;
 
@@ -30,6 +30,8 @@ public partial class SettingsWindow : Window
     private string _branchMarkKey = "F9";
     private string _branchJumpModifiers = "";
     private string _branchJumpKey = "F10";
+    private string _zoomToCursorModifiers = "";
+    private string _zoomToCursorKey = "F11";
 
     private HotkeyTarget _capturingTarget = HotkeyTarget.None;
 
@@ -57,12 +59,6 @@ public partial class SettingsWindow : Window
             case "Canvas":
                 OutputModeCanvasRadio.IsChecked = true;
                 break;
-            case "Word":
-                OutputModeWordRadio.IsChecked = true;
-                break;
-            case "PowerPoint":
-                OutputModePowerPointRadio.IsChecked = true;
-                break;
             case "Excalidraw":
                 OutputModeExcalidrawRadio.IsChecked = true;
                 break;
@@ -80,7 +76,11 @@ public partial class SettingsWindow : Window
         _branchMarkKey = _config.BranchMarkKey;
         _branchJumpModifiers = _config.BranchJumpModifiers;
         _branchJumpKey = _config.BranchJumpKey;
+        _zoomToCursorModifiers = _config.ZoomToCursorModifiers;
+        _zoomToCursorKey = _config.ZoomToCursorKey;
         RefreshHotkeyDisplays();
+
+        ZoomToCursorRadiusBox.Text = _config.ZoomToCursorRadius.ToString();
 
         _selectedHighlightColorHex = _config.HighlightColorHex;
         RefreshSwatchSelection();
@@ -104,25 +104,19 @@ public partial class SettingsWindow : Window
 
     private void OnOutputModeChanged(object sender, RoutedEventArgs e)
     {
-        // Word/PowerPoint/draw.io embed screenshots directly and aren't
-        // tied to an Obsidian vault at all — just any target folder.
-        // Excalidraw also embeds directly but (unlike those three) still
-        // needs an actual Obsidian vault (plus its plugin) to open, so it
-        // keeps the "Obsidian-Vault" wording.
-        var isWord = OutputModeWordRadio.IsChecked == true;
-        var isPowerPoint = OutputModePowerPointRadio.IsChecked == true;
+        // draw.io embeds screenshots directly and isn't tied to an Obsidian
+        // vault at all — just any target folder. Excalidraw also embeds
+        // directly but (unlike draw.io) still needs an actual Obsidian
+        // vault (plus its plugin) to open, so it keeps the
+        // "Obsidian-Vault" wording.
         var isDrawIo = OutputModeDrawIoRadio.IsChecked == true;
-        var needsNoVault = isWord || isPowerPoint || isDrawIo;
+        var needsNoVault = isDrawIo;
         var embedsScreenshotsDirectly = needsNoVault || OutputModeExcalidrawRadio.IsChecked == true;
 
         VaultCardHeader.Text = needsNoVault ? "Zielordner" : "Obsidian-Vault";
-        VaultPathLabel.Text = isWord
-            ? "Zielordner-Pfad (für die .docx-Datei)"
-            : isPowerPoint
-                ? "Zielordner-Pfad (für die .pptx-Datei)"
-                : isDrawIo
-                    ? "Zielordner-Pfad (für die .drawio-Datei)"
-                    : "Vault-Pfad";
+        VaultPathLabel.Text = isDrawIo
+            ? "Zielordner-Pfad (für die .drawio-Datei)"
+            : "Vault-Pfad";
         AttachmentsRow.Visibility = embedsScreenshotsDirectly ? Visibility.Collapsed : Visibility.Visible;
     }
 
@@ -161,6 +155,8 @@ public partial class SettingsWindow : Window
     private void OnRecordBranchMarkClicked(object sender, RoutedEventArgs e) => BeginCapture(HotkeyTarget.BranchMark, BranchMarkDisplayBox);
 
     private void OnRecordBranchJumpClicked(object sender, RoutedEventArgs e) => BeginCapture(HotkeyTarget.BranchJump, BranchJumpDisplayBox);
+
+    private void OnRecordZoomToCursorClicked(object sender, RoutedEventArgs e) => BeginCapture(HotkeyTarget.ZoomToCursor, ZoomToCursorDisplayBox);
 
     private void BeginCapture(HotkeyTarget target, TextBox displayBox)
     {
@@ -207,6 +203,10 @@ public partial class SettingsWindow : Window
                 _branchJumpModifiers = modifiersText;
                 _branchJumpKey = keyText;
                 break;
+            case HotkeyTarget.ZoomToCursor:
+                _zoomToCursorModifiers = modifiersText;
+                _zoomToCursorKey = keyText;
+                break;
         }
 
         EndCapture();
@@ -224,6 +224,7 @@ public partial class SettingsWindow : Window
         StartStopDisplayBox.Text = FormatHotkey(_startStopModifiers, _startStopKey);
         BranchMarkDisplayBox.Text = FormatHotkey(_branchMarkModifiers, _branchMarkKey);
         BranchJumpDisplayBox.Text = FormatHotkey(_branchJumpModifiers, _branchJumpKey);
+        ZoomToCursorDisplayBox.Text = FormatHotkey(_zoomToCursorModifiers, _zoomToCursorKey);
     }
 
     private static string FormatHotkey(string modifiers, string key) =>
@@ -276,15 +277,11 @@ public partial class SettingsWindow : Window
             : "None";
         _config.OutputMode = OutputModeCanvasRadio.IsChecked == true
             ? "Canvas"
-            : OutputModeWordRadio.IsChecked == true
-                ? "Word"
-                : OutputModePowerPointRadio.IsChecked == true
-                    ? "PowerPoint"
-                    : OutputModeExcalidrawRadio.IsChecked == true
-                        ? "Excalidraw"
-                        : OutputModeDrawIoRadio.IsChecked == true
-                            ? "DrawIo"
-                            : "Note";
+            : OutputModeExcalidrawRadio.IsChecked == true
+                ? "Excalidraw"
+                : OutputModeDrawIoRadio.IsChecked == true
+                    ? "DrawIo"
+                    : "Note";
 
         _config.StartStopModifiers = _startStopModifiers;
         _config.StartStopKey = _startStopKey;
@@ -292,6 +289,9 @@ public partial class SettingsWindow : Window
         _config.BranchMarkKey = _branchMarkKey;
         _config.BranchJumpModifiers = _branchJumpModifiers;
         _config.BranchJumpKey = _branchJumpKey;
+        _config.ZoomToCursorModifiers = _zoomToCursorModifiers;
+        _config.ZoomToCursorKey = _zoomToCursorKey;
+        _config.ZoomToCursorRadius = int.TryParse(ZoomToCursorRadiusBox.Text, out var zoomRadius) ? zoomRadius : _config.ZoomToCursorRadius;
 
         _config.HighlightColorHex = _selectedHighlightColorHex;
         _config.HighlightRadius = int.TryParse(HighlightRadiusBox.Text, out var radius) ? radius : _config.HighlightRadius;

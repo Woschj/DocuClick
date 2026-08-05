@@ -266,6 +266,48 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
         return new BranchActionResult(true, _branchAnchors.Count, branchName);
     }
 
+    public FlowPreview GetPreview()
+    {
+        var nodes = new List<PreviewNode>();
+        foreach (var el in _doc.Elements.Where(e => e.Type == "rectangle"))
+        {
+            nodes.Add(new PreviewNode(el.Id, GetNodeLabel(_doc, el.Id), el.X, el.Y, el.Width, el.Height, el.Id == _cursorNodeId, false));
+        }
+
+        foreach (var el in _doc.Elements.Where(e =>
+            e.Type == "text" && e.OriginalText is not null && e.OriginalText.StartsWith(BranchMarkerPrefix, StringComparison.Ordinal)))
+        {
+            nodes.Add(new PreviewNode(el.Id, el.OriginalText!, el.X, el.Y, el.Width, el.Height, el.Id == _cursorNodeId, true));
+        }
+
+        var edges = _doc.Elements
+            .Where(e => e.Type == "arrow" && e.StartBinding is not null && e.EndBinding is not null)
+            .Select(e => new PreviewEdge(e.StartBinding!.ElementId, e.EndBinding!.ElementId))
+            .ToList();
+
+        return new FlowPreview(nodes, edges);
+    }
+
+    /// <summary>Jumps the cursor to an arbitrary existing rectangle/marker node, opening a new column — same mechanics as <see cref="JumpToAnchor"/>, just not limited to named branch markers.</summary>
+    public BranchActionResult JumpToNode(string nodeId)
+    {
+        var target = _doc.Elements.FirstOrDefault(e =>
+            e.Id == nodeId && (e.Type == "rectangle" ||
+                (e.Type == "text" && e.OriginalText is not null && e.OriginalText.StartsWith(BranchMarkerPrefix, StringComparison.Ordinal))));
+        if (target is null)
+        {
+            return new BranchActionResult(false, _branchAnchors.Count, null);
+        }
+
+        _nextColumnX += NodeWidth + BranchColumnSpacing;
+        _cursorNodeId = nodeId;
+        _cursorX = _nextColumnX;
+        _cursorY = target.Y;
+        _currentBranchName = _branchAnchors.FirstOrDefault(a => a.NodeId == nodeId)?.Name;
+
+        return new BranchActionResult(true, _branchAnchors.Count, _currentBranchName);
+    }
+
     private ExcalidrawElement BuildArrow(string fromRectangleId, string toRectangleId)
     {
         var fromRect = _doc.Elements.First(e => e.Id == fromRectangleId);

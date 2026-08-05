@@ -97,7 +97,7 @@ public partial class SessionStartWindow : Window
     /// running number that skips names already taken in that folder) —
     /// never overwrites a name the user already typed themselves.
     /// "(N)" rather than "#N": this name also becomes the Attachments
-    /// subfolder for every screenshot in Canvas/Word/PowerPoint mode, and
+    /// subfolder for every screenshot in Canvas mode, and
     /// "#" is Obsidian's link-anchor delimiter — a literal "#" in a file
     /// or folder name breaks every embed that references it, since
     /// everything after it gets parsed as a heading/block reference

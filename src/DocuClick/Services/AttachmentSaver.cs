@@ -31,9 +31,9 @@ public static class AttachmentSaver
     }
 
     // Beyond filesystem-invalid characters, this subfolder name ends up
-    // embedded as a literal path segment in Canvas file-nodes and
-    // Word/PowerPoint attachment paths — "#" (heading/block anchor) and
-    // "^" (block reference) are valid on-disk but have special meaning in
+    // embedded as a literal path segment in Canvas file-nodes — "#"
+    // (heading/block anchor) and "^" (block reference) are valid on-disk
+    // but have special meaning in
     // Obsidian's own link syntax, and silently break the reference if left
     // in (everything after "#" gets parsed as an anchor, not a path).
     private static readonly char[] ObsidianLinkSpecialChars = { '#', '^' };

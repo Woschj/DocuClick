@@ -64,8 +64,3 @@ noch nicht einsortierte Aufnahmen.
 3. Jeder Klick wird automatisch an die vorbereitete Datei angehängt
    (Notiz) bzw. dort verankert (Canvas) — die von Hand eingetragenen
    Metadaten am Dateianfang bleiben erhalten.
-
-Für den Word-Modus (`.docx`) gibt es keine Vorlage hier, da Word-Dateien
-ein Binärformat sind. Im Session-Start-Dialog einfach "Neue Datei
-anlegen" wählen; Titel/Formatierung lassen sich danach direkt in Word
-ergänzen.

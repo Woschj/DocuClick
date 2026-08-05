@@ -104,12 +104,6 @@
                         <RadioButton x:Name="OutputModeCanvasRadio" GroupName="OutputMode" Margin="0,0,0,8"
                                      Content="Obsidian-Canvas (.canvas, Ablaufdiagramm mit Abzweigungen)"
                                      Checked="OnOutputModeChanged"/>
-                        <RadioButton x:Name="OutputModeWordRadio" GroupName="OutputMode" Margin="0,0,0,8"
-                                     Content="Word (.docx, ein Schritt = ein Abschnitt, für Office/SharePoint)"
-                                     Checked="OnOutputModeChanged"/>
-                        <RadioButton x:Name="OutputModePowerPointRadio" GroupName="OutputMode" Margin="0,0,0,8"
-                                     Content="PowerPoint (.pptx, echtes Flowchart: eine Folie pro Abzweigung)"
-                                     Checked="OnOutputModeChanged"/>
                         <RadioButton x:Name="OutputModeExcalidrawRadio" GroupName="OutputMode" Margin="0,0,0,8"
                                      Content="Excalidraw (.excalidraw, Skizzen-Look, experimentell — benötigt das Excalidraw-Plugin)"
                                      Checked="OnOutputModeChanged"/>
@@ -118,7 +112,7 @@
                                      Checked="OnOutputModeChanged"/>
 
                         <TextBlock Style="{StaticResource HintText}"
-                                   Text="Canvas schreibt jeden Klick als verbundenen Knoten auf einer Fläche (vertikaler Hauptfluss, Abzweigungen als neue Spalten über die Hotkeys unten) — gut für kurze Abläufe, wird bei sehr langen Abläufen aber schnell unübersichtlich. Word hängt stattdessen jeden Klick als eigenen Abschnitt fortlaufend ans Dokumentende an (kein Größenlimit), Abzweigungen werden über Words Navigationsbereich und Sprung-Links dargestellt statt räumlich. PowerPoint zeichnet ein echtes Kästchen-und-Pfeile-Flowchart mit Bildern — jede Abzweigung bekommt ihre eigene Folie, verlinkt über klickbare Foliensprünge. Excalidraw funktioniert wie Canvas (Knoten + Abzweigungen), aber im freien Skizzen-Look statt fester Boxen — experimentell, benötigt zusätzlich das kostenlose Excalidraw-Community-Plugin (anders als Canvas, das in Obsidian bereits eingebaut ist). draw.io zeichnet wie Canvas ein Flussdiagramm (Hauptfluss + Abzweigungen als Spalten), aber als echte Karten mit Nummer-Badge, Beschriftung und Screenshot als eine verschiebbare Einheit, mit farbigen Pfeilen je Abzweigung — öffnet in der kostenlosen draw.io/diagrams.net-App, ganz ohne Obsidian. Canvas/Word/PowerPoint/Excalidraw/draw.io betten Screenshots direkt in die Datei ein — kein separater Attachments-Ordner nötig — und sind voll editierbar."/>
+                                   Text="Canvas schreibt jeden Klick als verbundenen Knoten auf einer Fläche (vertikaler Hauptfluss, Abzweigungen als neue Spalten über die Hotkeys unten) — gut für kurze Abläufe, wird bei sehr langen Abläufen aber schnell unübersichtlich. Excalidraw funktioniert wie Canvas (Knoten + Abzweigungen), aber im freien Skizzen-Look statt fester Boxen — experimentell, benötigt zusätzlich das kostenlose Excalidraw-Community-Plugin (anders als Canvas, das in Obsidian bereits eingebaut ist). draw.io zeichnet wie Canvas ein Flussdiagramm (Hauptfluss + Abzweigungen als Spalten), aber als echte Karten mit Nummer-Badge, Beschriftung und Screenshot als eine verschiebbare Einheit, mit farbigen Pfeilen je Abzweigung — öffnet in der kostenlosen draw.io/diagrams.net-App, ganz ohne Obsidian. Canvas/Excalidraw/draw.io betten Screenshots direkt in die Datei ein — kein separater Attachments-Ordner nötig — und sind voll editierbar."/>
                     </StackPanel>
                 </Border>
 
@@ -159,6 +153,11 @@
 
                         <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0"
                                    Text="Die Zieldatei wird bei jedem Start der Aufnahme abgefragt (neue Datei anlegen oder eine bestehende fortsetzen) — es gibt keinen automatisch generierten Namen mehr."/>
+
+                        <TextBlock Text="Zoom-auf-Cursor: Radius in Pixeln" Style="{StaticResource FieldLabel}" Margin="0,12,0,0"/>
+                        <TextBox x:Name="ZoomToCursorRadiusBox" Style="{StaticResource ModernTextBox}"/>
+                        <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0"
+                                   Text="Per Hotkey umschaltbar (siehe unten): erfasst statt des ganzen geklickten Fensters nur ein Quadrat mit diesem Radius rund um den Mauszeiger — nützlich, um kleine Bedienelemente größer sichtbar zu machen."/>
                     </StackPanel>
                 </Border>
 
@@ -187,13 +186,23 @@
                         </Grid>
 
                         <TextBlock Text="Branch auswählen" Style="{StaticResource FieldLabel}"/>
-                        <Grid Margin="0,0,0,4">
+                        <Grid Margin="0,0,0,12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="110"/>
                             </Grid.ColumnDefinitions>
                             <TextBox x:Name="BranchJumpDisplayBox" Grid.Column="0" Margin="0,0,8,0" IsReadOnly="True" Style="{StaticResource ModernTextBox}"/>
                             <Button Grid.Column="1" Content="Ändern" Style="{StaticResource ModernButton}" Click="OnRecordBranchJumpClicked"/>
+                        </Grid>
+
+                        <TextBlock Text="Zoom-auf-Cursor umschalten" Style="{StaticResource FieldLabel}"/>
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="110"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="ZoomToCursorDisplayBox" Grid.Column="0" Margin="0,0,8,0" IsReadOnly="True" Style="{StaticResource ModernTextBox}"/>
+                            <Button Grid.Column="1" Content="Ändern" Style="{StaticResource ModernButton}" Click="OnRecordZoomToCursorClicked"/>
                         </Grid>
                         <TextBlock Style="{StaticResource HintText}" Text="Auf „Ändern” klicken und die gewünschte Tastenkombination drücken. Esc bricht ab. Änderungen gelten sofort nach „Speichern”."/>
                     </StackPanel>

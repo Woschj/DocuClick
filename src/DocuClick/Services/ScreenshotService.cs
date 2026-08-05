@@ -26,6 +26,26 @@ public static class ScreenshotService
     }
 
     /// <summary>
+    /// Captures a tight square crop centered on <paramref name="screenPoint"/>
+    /// instead of the whole clicked window — used when "Zoom-auf-Cursor" is
+    /// active, for zooming in on small UI details. Clamped to the bounds of
+    /// the screen the point is on so a click near the edge doesn't try to
+    /// copy from off-screen.
+    /// </summary>
+    public static CapturedWindow CaptureAroundPoint(Point screenPoint, int radius)
+    {
+        var screen = ScreenAt(screenPoint);
+        var side = radius * 2;
+        var bounds = new Rectangle(screenPoint.X - radius, screenPoint.Y - radius, side, side);
+        bounds.Intersect(screen.Bounds);
+
+        var bitmap = new Bitmap(bounds.Width, bounds.Height);
+        using var g = Graphics.FromImage(bitmap);
+        g.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size);
+        return new CapturedWindow(bitmap, bounds);
+    }
+
+    /// <summary>
     /// Captures the currently active window — used by the Enter-key trigger,
     /// which has no click point to resolve a window from.
     /// </summary>

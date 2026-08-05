@@ -281,6 +281,39 @@ public sealed class CanvasFlowWriter : IFlowWriter
         return new BranchActionResult(true, _branchAnchors.Count, branchName);
     }
 
+    public FlowPreview GetPreview()
+    {
+        var nodes = _doc.Nodes
+            .Where(n => n.Type == "text")
+            .Select(n => new PreviewNode(
+                n.Id,
+                BuildLabel(n.Text),
+                n.X, n.Y, n.Width, n.Height,
+                n.Id == _cursorNodeId,
+                n.Text?.StartsWith(BranchMarkerPrefix, StringComparison.Ordinal) ?? false))
+            .ToList();
+        var edges = _doc.Edges.Select(e => new PreviewEdge(e.FromNode, e.ToNode)).ToList();
+        return new FlowPreview(nodes, edges);
+    }
+
+    /// <summary>Jumps the cursor to an arbitrary existing text/marker node, opening a new column so the new content doesn't overlap the existing flow — same mechanics as <see cref="JumpToAnchor"/>, just not limited to named branch markers.</summary>
+    public BranchActionResult JumpToNode(string nodeId)
+    {
+        var node = _doc.Nodes.FirstOrDefault(n => n.Id == nodeId && n.Type == "text");
+        if (node is null)
+        {
+            return new BranchActionResult(false, _branchAnchors.Count, null);
+        }
+
+        _nextColumnX += NodeWidth + BranchColumnSpacing;
+        _cursorNodeId = node.Id;
+        _cursorX = _nextColumnX;
+        _cursorY = node.Y;
+        _currentBranchName = _branchAnchors.FirstOrDefault(a => a.NodeId == node.Id)?.Name;
+
+        return new BranchActionResult(true, _branchAnchors.Count, _currentBranchName);
+    }
+
     private void AddOrReplaceAnchor(BranchAnchor anchor)
     {
         var existingIndex = _branchAnchors.FindIndex(a => a.Name == anchor.Name);

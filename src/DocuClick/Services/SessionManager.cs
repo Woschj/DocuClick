@@ -7,8 +7,8 @@ namespace DocuClick.Services;
 /// Glues the mouse/keyboard hooks to the capture pipeline (UI Automation
 /// lookup -> screenshot -> highlight -> write) and owns the current
 /// session's target file. Writes either a linear note (ObsidianWriter) or
-/// a branching flow (<see cref="IFlowWriter"/>: Obsidian Canvas, Word,
-/// PowerPoint, draw.io, or the experimental Excalidraw mode), depending on
+/// a branching flow (<see cref="IFlowWriter"/>: Obsidian Canvas, draw.io,
+/// or the experimental Excalidraw mode), depending on
 /// <see cref="AppConfig.OutputMode"/>.
 /// </summary>
 public sealed class SessionManager : IDisposable
@@ -18,17 +18,23 @@ public sealed class SessionManager : IDisposable
     private readonly AppConfig _config;
     private readonly ObsidianWriter _noteWriter;
     private readonly CanvasFlowWriter _canvasWriter;
-    private readonly WordFlowWriter _wordWriter;
-    private readonly PowerPointFlowWriter _powerPointWriter;
     private readonly ExcalidrawFlowWriter _excalidrawWriter;
     private readonly DrawIoFlowWriter _drawIoWriter;
     private string _currentTargetFileName = string.Empty;
     private bool _isRunning;
+    private bool _zoomToCursorActive;
 
     public event Action<string>? ErrorOccurred;
     public event Action<string>? InfoOccurred;
     public event Action<int>? BranchDepthChanged;
     public event Action<string?>? CanvasStatusChanged;
+    public event Action<bool>? ZoomToCursorChanged;
+
+    /// <summary>Fired whenever the flow's nodes/current-position change (session start/stop, every click, branch actions, node jumps) — for the tree-preview overlay. Null means "hide the overlay" (stopped, or the active mode doesn't support branching).</summary>
+    public event Action<FlowPreview?>? FlowPreviewChanged;
+
+    /// <summary>PNG-encoded bytes of the most recently captured screenshot, fired after a successful capture — for the status overlay's thumbnail preview.</summary>
+    public event Action<byte[]>? LastScreenshotCaptured;
 
     /// <summary>
     /// Set once by App.xaml.cs to answer "is this screen point over
@@ -41,14 +47,25 @@ public sealed class SessionManager : IDisposable
 
     public bool IsRunning => _isRunning;
 
-    /// <summary>Whether the active output mode supports branching (Canvas/Word/PowerPoint/Excalidraw vs. plain Note).</summary>
+    /// <summary>Whether "Zoom-auf-Cursor" is currently active (see <see cref="ToggleZoomToCursor"/>).</summary>
+    public bool IsZoomToCursorActive => _zoomToCursorActive;
+
+    /// <summary>Hotkey action: toggles "Zoom-auf-Cursor" on/off — crops the next captures tightly around the cursor instead of the whole clicked window.</summary>
+    public void ToggleZoomToCursor()
+    {
+        _zoomToCursorActive = !_zoomToCursorActive;
+        ZoomToCursorChanged?.Invoke(_zoomToCursorActive);
+        InfoOccurred?.Invoke(_zoomToCursorActive
+            ? $"Zoom-auf-Cursor aktiviert (Radius {_config.ZoomToCursorRadius}px) — nächste Screenshots erfassen nur den Bereich um den Mauszeiger."
+            : "Zoom-auf-Cursor deaktiviert — Screenshots erfassen wieder das ganze Fenster.");
+    }
+
+    /// <summary>Whether the active output mode supports branching (Canvas/Excalidraw/DrawIo vs. plain Note).</summary>
     public bool SupportsBranching => ActiveFlowWriter is not null;
 
     private IFlowWriter? ActiveFlowWriter => _config.OutputMode switch
     {
         "Canvas" => _canvasWriter,
-        "Word" => _wordWriter,
-        "PowerPoint" => _powerPointWriter,
         "Excalidraw" => _excalidrawWriter,
         "DrawIo" => _drawIoWriter,
         _ => null
@@ -59,8 +76,6 @@ public sealed class SessionManager : IDisposable
         _config = config;
         _noteWriter = new ObsidianWriter(config);
         _canvasWriter = new CanvasFlowWriter(config);
-        _wordWriter = new WordFlowWriter(config);
-        _powerPointWriter = new PowerPointFlowWriter(config);
         _excalidrawWriter = new ExcalidrawFlowWriter(config);
         _drawIoWriter = new DrawIoFlowWriter(config);
         _mouseHook.LeftButtonDown += OnLeftButtonDown;
@@ -72,8 +87,6 @@ public sealed class SessionManager : IDisposable
     public static string ExtensionForOutputMode(string outputMode) => outputMode switch
     {
         "Canvas" => ".canvas",
-        "Word" => ".docx",
-        "PowerPoint" => ".pptx",
         "Excalidraw" => ".excalidraw",
         "DrawIo" => ".drawio",
         _ => ".md"
@@ -128,9 +141,10 @@ public sealed class SessionManager : IDisposable
         }
 
         _isRunning = true;
-        if (ActiveFlowWriter is not null)
+        if (ActiveFlowWriter is { } writer)
         {
             CanvasStatusChanged?.Invoke(BuildStatusText());
+            FlowPreviewChanged?.Invoke(writer.GetPreview());
         }
         LogService.Log($"Session gestartet. Ziel: {_currentTargetFileName} (Modus: {_config.OutputMode}), Vault: '{_config.VaultPath}'");
     }
@@ -143,6 +157,7 @@ public sealed class SessionManager : IDisposable
         _isRunning = false;
         BranchDepthChanged?.Invoke(0);
         CanvasStatusChanged?.Invoke(null);
+        FlowPreviewChanged?.Invoke(null);
         LogService.Log("Session gestoppt.");
     }
 
@@ -183,6 +198,7 @@ public sealed class SessionManager : IDisposable
         {
             BranchDepthChanged?.Invoke(result.Depth);
             CanvasStatusChanged?.Invoke(BuildStatusText());
+            FlowPreviewChanged?.Invoke(writer.GetPreview());
             InfoOccurred?.Invoke($"Branch \"{branchName}\" gesetzt bei: {writer.CurrentNodeLabel ?? "(ohne Beschreibung)"}");
         }
         else
@@ -205,11 +221,35 @@ public sealed class SessionManager : IDisposable
         {
             BranchDepthChanged?.Invoke(result.Depth);
             CanvasStatusChanged?.Invoke(BuildStatusText());
+            FlowPreviewChanged?.Invoke(writer.GetPreview());
             InfoOccurred?.Invoke($"Zu Branch \"{branchName}\" gesprungen — nächster Klick beginnt dort eine neue Spalte/einen neuen Abschnitt.");
         }
         else
         {
             InfoOccurred?.Invoke($"Branch \"{branchName}\" nicht gefunden.");
+        }
+    }
+
+    /// <summary>Tree-preview overlay's click-to-navigate: jumps the cursor to an arbitrary existing node (not just a named branch anchor).</summary>
+    public void JumpToNode(string nodeId)
+    {
+        if (!_isRunning || ActiveFlowWriter is not { } writer)
+        {
+            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Navigation.");
+            return;
+        }
+
+        var result = writer.JumpToNode(nodeId);
+        if (result.Success)
+        {
+            BranchDepthChanged?.Invoke(result.Depth);
+            CanvasStatusChanged?.Invoke(BuildStatusText());
+            FlowPreviewChanged?.Invoke(writer.GetPreview());
+            InfoOccurred?.Invoke($"Zu \"{writer.CurrentNodeLabel ?? "(ohne Beschreibung)"}\" gesprungen — nächster Klick knüpft hier an.");
+        }
+        else
+        {
+            InfoOccurred?.Invoke("Knoten nicht gefunden.");
         }
     }
 
@@ -298,7 +338,11 @@ public sealed class SessionManager : IDisposable
         var action = isRightClick ? InputAction.RightClick : InputAction.Click;
         var description = DescriptionGenerator.Describe(element, fallbackWindowTitle, timestamp, action);
 
-        FinalizeCapture(description, timestamp, () => ScreenshotService.CaptureWindowAt(point), element, point, targetFileName);
+        Func<CapturedWindow> captureFunc = _zoomToCursorActive
+            ? () => ScreenshotService.CaptureAroundPoint(point, _config.ZoomToCursorRadius)
+            : () => ScreenshotService.CaptureWindowAt(point);
+
+        FinalizeCapture(description, timestamp, captureFunc, element, point, targetFileName);
     }
 
     private void ProcessEnterPress(DateTime timestamp, string targetFileName)
@@ -352,6 +396,7 @@ public sealed class SessionManager : IDisposable
             if (ActiveFlowWriter is { } writer)
             {
                 writer.AddClickNode(description, screenshot, timestamp);
+                FlowPreviewChanged?.Invoke(writer.GetPreview());
             }
             else
             {
@@ -359,6 +404,13 @@ public sealed class SessionManager : IDisposable
             }
 
             LogService.Log($"Eintrag geschrieben: \"{description}\" -> {targetFileName}");
+
+            if (LastScreenshotCaptured is not null)
+            {
+                using var thumbnailStream = new MemoryStream();
+                screenshot.Save(thumbnailStream, System.Drawing.Imaging.ImageFormat.Png);
+                LastScreenshotCaptured.Invoke(thumbnailStream.ToArray());
+            }
 
             if (_config.EnableClickSound)
             {

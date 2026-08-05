@@ -307,6 +307,67 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         return new BranchActionResult(true, _branchAnchors.Count, branchName);
     }
 
+    public FlowPreview GetPreview()
+    {
+        var nodes = new List<PreviewNode>();
+        foreach (var cell in _root.Elements("mxCell"))
+        {
+            var id = (string?)cell.Attribute("id");
+            if (id is null)
+            {
+                continue;
+            }
+
+            var isMarker = id.StartsWith(MarkerIdPrefix, StringComparison.Ordinal);
+            var isCard = IsCardCell(cell);
+            if (!isMarker && !isCard)
+            {
+                continue;
+            }
+
+            var geometry = cell.Element("mxGeometry");
+            var x = ParseDouble(geometry?.Attribute("x"));
+            var y = ParseDouble(geometry?.Attribute("y"));
+            var w = ParseDouble(geometry?.Attribute("width"));
+            var h = ParseDouble(geometry?.Attribute("height"));
+            var label = _labels.GetValueOrDefault(id) ?? "(ohne Beschreibung)";
+
+            nodes.Add(new PreviewNode(id, label, x, y, w, h, id == _cursorNodeId, isMarker));
+        }
+
+        var edges = _root.Elements("mxCell")
+            .Where(c => (string?)c.Attribute("edge") == "1")
+            .Select(c => new PreviewEdge((string?)c.Attribute("source") ?? "", (string?)c.Attribute("target") ?? ""))
+            .Where(e => e.FromId.Length > 0 && e.ToId.Length > 0)
+            .ToList();
+
+        return new FlowPreview(nodes, edges);
+    }
+
+    /// <summary>Jumps the cursor to an arbitrary existing card/marker cell, opening a new column — same mechanics as <see cref="JumpToAnchor"/>, just not limited to named branch markers.</summary>
+    public BranchActionResult JumpToNode(string nodeId)
+    {
+        var cell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == nodeId);
+        var isMarker = nodeId.StartsWith(MarkerIdPrefix, StringComparison.Ordinal);
+        if (cell is null || !(isMarker || IsCardCell(cell)))
+        {
+            return new BranchActionResult(false, _branchAnchors.Count, null);
+        }
+
+        var geometry = cell.Element("mxGeometry");
+        var y = ParseDouble(geometry?.Attribute("y"));
+        var height = ParseDouble(geometry?.Attribute("height"));
+
+        _nextColumnX += CardWidth + BranchColumnSpacing;
+        _cursorNodeId = nodeId;
+        _cursorX = _nextColumnX;
+        _cursorY = y;
+        _currentBranchName = _branchAnchors.FirstOrDefault(a => a.NodeId == nodeId)?.Name;
+        _lastCardHeight = isMarker ? MarkerHeight : height;
+
+        return new BranchActionResult(true, _branchAnchors.Count, _currentBranchName);
+    }
+
     private string GetAccentColor(string? branchName)
     {
         if (branchName is null)

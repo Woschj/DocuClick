@@ -18,6 +18,7 @@ public partial class App : Application
     private HotkeyService? _hotkeyService;
     private RecordingIndicatorOverlay? _recordingOverlay;
     private CanvasStatusOverlay? _canvasStatusOverlay;
+    private FlowPreviewOverlay? _flowPreviewOverlay;
     private TopBarWindow? _topBar;
 
     /// <summary>Set by "Ablauf fortsetzen ab Punkt...", consumed once by the next session-start file picker.</summary>
@@ -49,6 +50,8 @@ public partial class App : Application
         _sessionManager.InfoOccurred += OnSessionInfo;
         _sessionManager.BranchDepthChanged += OnBranchDepthChanged;
         _sessionManager.CanvasStatusChanged += OnCanvasStatusChanged;
+        _sessionManager.LastScreenshotCaptured += OnLastScreenshotCaptured;
+        _sessionManager.FlowPreviewChanged += OnFlowPreviewChanged;
 
         _trayApp = new TrayApp();
         _trayApp.RecordingStateChanged += OnRecordingStateChanged;
@@ -114,6 +117,8 @@ public partial class App : Application
             OnSelectBranchRequested);
         RegisterHotkey(_config.StartStopModifiers, _config.StartStopKey, "Aufnahme starten/stoppen",
             () => _trayApp?.ToggleRecording());
+        RegisterHotkey(_config.ZoomToCursorModifiers, _config.ZoomToCursorKey, "Zoom-auf-Cursor umschalten",
+            () => _sessionManager?.ToggleZoomToCursor());
     }
 
     private void RegisterHotkey(string modifiersSpec, string keySpec, string label, Action action)
@@ -234,6 +239,47 @@ public partial class App : Application
         });
     }
 
+    private void OnLastScreenshotCaptured(byte[] pngBytes)
+    {
+        // This event fires from a background Task (see SessionManager);
+        // the overlay is WPF UI and must only be touched from its own
+        // thread. Only relevant to modes that show the status overlay in
+        // the first place (see OnCanvasStatusChanged) — for plain Note
+        // mode the overlay is never shown, so updating a hidden thumbnail
+        // would be pointless work on every single click.
+        Dispatcher.Invoke(() =>
+        {
+            if (_canvasStatusOverlay is { IsVisible: true })
+            {
+                _canvasStatusOverlay.UpdateThumbnail(pngBytes);
+            }
+        });
+    }
+
+    private void OnFlowPreviewChanged(FlowPreview? preview)
+    {
+        // Fires from a background Task for every click (see SessionManager)
+        // — the overlay is WPF UI and must only be touched from its own
+        // thread.
+        Dispatcher.Invoke(() =>
+        {
+            if (preview is null)
+            {
+                _flowPreviewOverlay?.Hide();
+                return;
+            }
+
+            if (_flowPreviewOverlay is null)
+            {
+                _flowPreviewOverlay = new FlowPreviewOverlay();
+                _flowPreviewOverlay.NodeClicked += nodeId => _sessionManager?.JumpToNode(nodeId);
+            }
+
+            _flowPreviewOverlay.UpdatePreview(preview);
+            _flowPreviewOverlay.Show();
+        });
+    }
+
     private void OnResumeFromPointRequested()
     {
         if (_sessionManager!.IsRunning)
@@ -244,7 +290,7 @@ public partial class App : Application
 
         if (!_sessionManager.SupportsBranching)
         {
-            _trayApp!.ShowInfo("Nur im Canvas-, Word-, PowerPoint- oder Excalidraw-Modus verfügbar (siehe Einstellungen).");
+            _trayApp!.ShowInfo("Nur im Canvas-, draw.io- oder Excalidraw-Modus verfügbar (siehe Einstellungen).");
             return;
         }
 

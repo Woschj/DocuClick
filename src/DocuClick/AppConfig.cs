@@ -20,19 +20,13 @@ public sealed class AppConfig
 
     /// <summary>
     /// Where clicks get written to: "Note" (linear Markdown), "Canvas"
-    /// (Obsidian .canvas flow diagram), "Word" (.docx, one heading +
-    /// screenshot per click, appended sequentially — handles long flows
-    /// better than a fixed canvas, and stays fully editable in
-    /// Word/SharePoint), "PowerPoint" (.pptx, a real spatial flowchart —
-    /// one slide per branch column, boxes/images/connector lines with
-    /// actual coordinates, branch navigation via slide-jump hyperlinks),
-    /// "Excalidraw" (.excalidraw sketch-style diagram, experimental —
-    /// needs the free Excalidraw Obsidian plugin), or "DrawIo" (.drawio,
-    /// a real editable flowchart: card-shaped nodes with numbered badges,
-    /// per-branch accent colors, and arrowed connectors — opens in the
-    /// free draw.io/diagrams.net app, no Obsidian needed). Canvas, Word,
-    /// PowerPoint, Excalidraw, and DrawIo all support branching via the
-    /// hotkeys below.
+    /// (Obsidian .canvas flow diagram), "Excalidraw" (.excalidraw
+    /// sketch-style diagram, experimental — needs the free Excalidraw
+    /// Obsidian plugin), or "DrawIo" (.drawio, a real editable flowchart:
+    /// card-shaped nodes with numbered badges, per-branch accent colors,
+    /// and arrowed connectors — opens in the free draw.io/diagrams.net
+    /// app, no Obsidian needed). Canvas, Excalidraw, and DrawIo all
+    /// support branching via the hotkeys below.
     /// </summary>
     public string OutputMode { get; set; } = "Note";
 
@@ -47,6 +41,18 @@ public sealed class AppConfig
     /// <summary>Global hotkey: toggle recording on/off (same as clicking the tray icon).</summary>
     public string StartStopModifiers { get; set; } = "Control+Alt";
     public string StartStopKey { get; set; } = "R";
+
+    /// <summary>
+    /// Global hotkey: toggle "Zoom-auf-Cursor" on/off. While active, a
+    /// captured click crops tightly around the cursor (see
+    /// <see cref="ZoomToCursorRadius"/>) instead of grabbing the whole
+    /// clicked window — useful for zooming in on small UI details.
+    /// </summary>
+    public string ZoomToCursorModifiers { get; set; } = "";
+    public string ZoomToCursorKey { get; set; } = "F11";
+
+    /// <summary>Half-width/height in pixels of the square cropped around the cursor when "Zoom-auf-Cursor" is active.</summary>
+    public int ZoomToCursorRadius { get; set; } = 200;
 
     /// <summary>Short system sound on every successfully captured click.</summary>
     public bool EnableClickSound { get; set; } = true;
@@ -67,7 +73,7 @@ public sealed class AppConfig
     /// (tray/hotkey/top-bar) can resume it directly without prompting.
     /// "Neue Session" always prompts regardless of this. Ignored if its
     /// extension no longer matches the current OutputMode (e.g. after
-    /// switching from Canvas to Word).
+    /// switching from Canvas to DrawIo).
     /// </summary>
     public string? LastSessionFileName { get; set; }
 }
