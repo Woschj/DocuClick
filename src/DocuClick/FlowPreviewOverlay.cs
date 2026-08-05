@@ -39,8 +39,18 @@ public sealed class FlowPreviewOverlay : Window
     private const double PanelWidth = 260;
     private const double PanelHeight = 190;
     private const double Padding = 12;
-    private const double NodeSize = 14;
-    private const double CurrentNodeSize = 20;
+
+    // Node dimensions at the default (un-resized) panel size — wider than
+    // tall (real content nodes are cards, not squares) and, per node size,
+    // scaled up together with the window in UpdatePreview so enlarging the
+    // minimap via the resize grip actually gives bigger, easier-to-click
+    // targets instead of only spreading them further apart.
+    private const double NodeWidth = 22;
+    private const double NodeHeight = 14;
+    private const double CurrentNodeWidth = 32;
+    private const double CurrentNodeHeight = 20;
+    private const double MinSizeScale = 0.8;
+    private const double MaxSizeScale = 2.5;
 
     // Same accent palette as DrawIoFlowWriter's branch colors, reused here
     // so a branch's minimap dot and its actual card color line up in
@@ -226,13 +236,23 @@ public sealed class FlowPreviewOverlay : Window
         var spanX = Math.Max(maxX - minX, 1);
         var spanY = Math.Max(maxY - minY, 1);
 
-        var drawableWidth = canvasWidth - CurrentNodeSize;
-        var drawableHeight = canvasHeight - CurrentNodeSize;
+        // Grows node size together with the panel (not just the spacing
+        // between them) — clamped so a tiny window doesn't shrink nodes to
+        // illegibility and a huge one doesn't blow them up absurdly.
+        var sizeScale = Math.Clamp(Math.Min(canvasWidth / PanelWidth, canvasHeight / PanelHeight), MinSizeScale, MaxSizeScale);
+        var nodeWidth = NodeWidth * sizeScale;
+        var nodeHeight = NodeHeight * sizeScale;
+        var currentNodeWidth = CurrentNodeWidth * sizeScale;
+        var currentNodeHeight = CurrentNodeHeight * sizeScale;
+        var halfExtent = Math.Max(currentNodeWidth, currentNodeHeight) / 2;
+
+        var drawableWidth = canvasWidth - halfExtent * 2;
+        var drawableHeight = canvasHeight - halfExtent * 2;
         var scale = Math.Min(drawableWidth / spanX, drawableHeight / spanY);
 
         (double X, double Y) ToCanvas(double x, double y) => (
-            CurrentNodeSize / 2 + (x - minX) * scale,
-            CurrentNodeSize / 2 + (y - minY) * scale);
+            halfExtent + (x - minX) * scale,
+            halfExtent + (y - minY) * scale);
 
         var centers = preview.Nodes.ToDictionary(n => n.Id, n => ToCanvas(n.X + n.Width / 2, n.Y + n.Height / 2));
 
@@ -257,18 +277,20 @@ public sealed class FlowPreviewOverlay : Window
         foreach (var node in preview.Nodes)
         {
             var center = centers[node.Id];
-            var size = node.IsCurrent ? CurrentNodeSize : NodeSize;
+            var width = node.IsCurrent ? currentNodeWidth : nodeWidth;
+            var height = node.IsCurrent ? currentNodeHeight : nodeHeight;
 
-            // Branch-marker nodes render as circles (RadiusX/Y = half the
-            // size) instead of squares, so the waypoint itself stays
-            // visually distinct even when its color matches every other
-            // node further down that same branch.
-            var radius = node.IsBranchMarker ? size / 2 : 3;
+            // Branch-marker nodes render as pill/oval shapes (RadiusX/Y =
+            // half the dimension) instead of the sharper-cornered rectangle
+            // used for regular nodes, so the waypoint itself stays visually
+            // distinct even when its color matches every other node
+            // further down that same branch.
+            var radius = node.IsBranchMarker ? Math.Min(width, height) / 2 : 4;
 
             var square = new Rectangle
             {
-                Width = size,
-                Height = size,
+                Width = width,
+                Height = height,
                 RadiusX = radius,
                 RadiusY = radius,
                 Fill = new SolidColorBrush(GetNodeColor(node)),
@@ -277,8 +299,8 @@ public sealed class FlowPreviewOverlay : Window
                 Cursor = Cursors.Hand,
                 ToolTip = node.BranchName is { } b ? $"{node.Label} · Branch: {b}" : node.Label
             };
-            Canvas.SetLeft(square, center.X - size / 2);
-            Canvas.SetTop(square, center.Y - size / 2);
+            Canvas.SetLeft(square, center.X - width / 2);
+            Canvas.SetTop(square, center.Y - height / 2);
 
             var nodeId = node.Id;
             square.MouseLeftButtonDown += (_, e) =>
@@ -312,7 +334,7 @@ public sealed class FlowPreviewOverlay : Window
                     Padding = new Thickness(3, 1, 3, 1),
                     IsHitTestVisible = false
                 };
-                Canvas.SetLeft(label, center.X + size / 2 + 4);
+                Canvas.SetLeft(label, center.X + width / 2 + 4);
                 Canvas.SetTop(label, center.Y - 8);
                 _canvas.Children.Add(label);
             }

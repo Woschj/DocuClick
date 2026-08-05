@@ -30,13 +30,32 @@ public static class FlowPreviewBranching
         var forward = preview.Edges
             .GroupBy(e => e.FromId)
             .ToDictionary(g => g.Key, g => g.Select(e => e.ToId).ToList());
+        var markerIds = preview.Nodes.Where(n => n.IsBranchMarker).Select(n => n.Id).ToHashSet();
 
         var branchNameOf = new Dictionary<string, string>();
 
+        // Pass 1: every marker owns its own name, taken directly from its
+        // own label. This must happen before any propagation below —
+        // branching off from *within* another branch (a nested branch
+        // marker sitting downstream of an earlier one) is a normal thing
+        // to do, and the nested marker's own identity must never be
+        // clobbered by the outer branch's name reaching it first.
         foreach (var marker in preview.Nodes.Where(n => n.IsBranchMarker))
         {
             var branchName = ExtractBranchName(marker.Label);
-            if (branchName is null || branchNameOf.ContainsKey(marker.Id))
+            if (branchName is not null)
+            {
+                branchNameOf[marker.Id] = branchName;
+            }
+        }
+
+        // Pass 2: propagate each branch's name forward through its
+        // descendants, but stop at any *other* marker — that's where a
+        // different (possibly nested) branch starts, and its own name
+        // from pass 1 already stands there.
+        foreach (var marker in preview.Nodes.Where(n => n.IsBranchMarker))
+        {
+            if (!branchNameOf.TryGetValue(marker.Id, out var branchName))
             {
                 continue;
             }
@@ -47,7 +66,6 @@ public static class FlowPreviewBranching
             while (queue.Count > 0)
             {
                 var id = queue.Dequeue();
-                branchNameOf.TryAdd(id, branchName);
 
                 if (!forward.TryGetValue(id, out var children))
                 {
@@ -56,10 +74,18 @@ public static class FlowPreviewBranching
 
                 foreach (var child in children)
                 {
-                    if (visited.Add(child))
+                    if (!visited.Add(child))
                     {
-                        queue.Enqueue(child);
+                        continue;
                     }
+
+                    if (markerIds.Contains(child) && child != marker.Id)
+                    {
+                        continue; // boundary: a different branch starts here
+                    }
+
+                    branchNameOf.TryAdd(child, branchName);
+                    queue.Enqueue(child);
                 }
             }
         }
