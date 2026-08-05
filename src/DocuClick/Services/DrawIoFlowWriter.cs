@@ -2,6 +2,8 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
+using System.Text;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace DocuClick.Services;
@@ -496,5 +498,20 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         return (new XDocument(mxfile), root);
     }
 
-    private void Save() => _doc.Save(_filePath!);
+    // XDocument.Save(path) defaults to UTF-8 *with* a BOM. draw.io's file
+    // loader apparently doesn't strip a leading BOM before checking for
+    // "<mxfile"/"<mxGraphModel", so a BOM-prefixed file fails to open with
+    // "Invalid file data" even though the XML itself is perfectly
+    // well-formed — write UTF-8 without a BOM explicitly instead.
+    private static readonly XmlWriterSettings SaveSettings = new()
+    {
+        Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+        Indent = false
+    };
+
+    private void Save()
+    {
+        using var writer = XmlWriter.Create(_filePath!, SaveSettings);
+        _doc.Save(writer);
+    }
 }
