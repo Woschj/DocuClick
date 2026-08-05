@@ -8,7 +8,7 @@ namespace DocuClick.Services;
 /// lookup -> screenshot -> highlight -> write) and owns the current
 /// session's target file. Writes either a linear note (ObsidianWriter) or
 /// a branching flow (<see cref="IFlowWriter"/>: Obsidian Canvas, Word,
-/// PowerPoint, or the experimental Excalidraw mode), depending on
+/// PowerPoint, draw.io, or the experimental Excalidraw mode), depending on
 /// <see cref="AppConfig.OutputMode"/>.
 /// </summary>
 public sealed class SessionManager : IDisposable
@@ -21,6 +21,7 @@ public sealed class SessionManager : IDisposable
     private readonly WordFlowWriter _wordWriter;
     private readonly PowerPointFlowWriter _powerPointWriter;
     private readonly ExcalidrawFlowWriter _excalidrawWriter;
+    private readonly DrawIoFlowWriter _drawIoWriter;
     private string _currentTargetFileName = string.Empty;
     private bool _isRunning;
 
@@ -49,6 +50,7 @@ public sealed class SessionManager : IDisposable
         "Word" => _wordWriter,
         "PowerPoint" => _powerPointWriter,
         "Excalidraw" => _excalidrawWriter,
+        "DrawIo" => _drawIoWriter,
         _ => null
     };
 
@@ -60,6 +62,7 @@ public sealed class SessionManager : IDisposable
         _wordWriter = new WordFlowWriter(config);
         _powerPointWriter = new PowerPointFlowWriter(config);
         _excalidrawWriter = new ExcalidrawFlowWriter(config);
+        _drawIoWriter = new DrawIoFlowWriter(config);
         _mouseHook.LeftButtonDown += OnLeftButtonDown;
         _mouseHook.RightButtonDown += OnRightButtonDown;
         _keyboardHook.EnterPressed += OnEnterPressed;
@@ -72,6 +75,7 @@ public sealed class SessionManager : IDisposable
         "Word" => ".docx",
         "PowerPoint" => ".pptx",
         "Excalidraw" => ".excalidraw",
+        "DrawIo" => ".drawio",
         _ => ".md"
     };
 

@@ -66,6 +66,9 @@ public partial class SettingsWindow : Window
             case "Excalidraw":
                 OutputModeExcalidrawRadio.IsChecked = true;
                 break;
+            case "DrawIo":
+                OutputModeDrawIoRadio.IsChecked = true;
+                break;
             default:
                 OutputModeNoteRadio.IsChecked = true;
                 break;
@@ -101,14 +104,15 @@ public partial class SettingsWindow : Window
 
     private void OnOutputModeChanged(object sender, RoutedEventArgs e)
     {
-        // Word/PowerPoint embed screenshots directly and aren't tied to an
-        // Obsidian vault at all — just any target folder. Excalidraw also
-        // embeds directly but (unlike Word/PowerPoint) still needs an
-        // actual Obsidian vault (plus its plugin) to open, so it keeps the
-        // "Obsidian-Vault" wording.
+        // Word/PowerPoint/draw.io embed screenshots directly and aren't
+        // tied to an Obsidian vault at all — just any target folder.
+        // Excalidraw also embeds directly but (unlike those three) still
+        // needs an actual Obsidian vault (plus its plugin) to open, so it
+        // keeps the "Obsidian-Vault" wording.
         var isWord = OutputModeWordRadio.IsChecked == true;
         var isPowerPoint = OutputModePowerPointRadio.IsChecked == true;
-        var needsNoVault = isWord || isPowerPoint;
+        var isDrawIo = OutputModeDrawIoRadio.IsChecked == true;
+        var needsNoVault = isWord || isPowerPoint || isDrawIo;
         var embedsScreenshotsDirectly = needsNoVault || OutputModeExcalidrawRadio.IsChecked == true;
 
         VaultCardHeader.Text = needsNoVault ? "Zielordner" : "Obsidian-Vault";
@@ -116,7 +120,9 @@ public partial class SettingsWindow : Window
             ? "Zielordner-Pfad (für die .docx-Datei)"
             : isPowerPoint
                 ? "Zielordner-Pfad (für die .pptx-Datei)"
-                : "Vault-Pfad";
+                : isDrawIo
+                    ? "Zielordner-Pfad (für die .drawio-Datei)"
+                    : "Vault-Pfad";
         AttachmentsRow.Visibility = embedsScreenshotsDirectly ? Visibility.Collapsed : Visibility.Visible;
     }
 
@@ -276,7 +282,9 @@ public partial class SettingsWindow : Window
                     ? "PowerPoint"
                     : OutputModeExcalidrawRadio.IsChecked == true
                         ? "Excalidraw"
-                        : "Note";
+                        : OutputModeDrawIoRadio.IsChecked == true
+                            ? "DrawIo"
+                            : "Note";
 
         _config.StartStopModifiers = _startStopModifiers;
         _config.StartStopKey = _startStopKey;

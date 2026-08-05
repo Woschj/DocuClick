@@ -26,10 +26,13 @@ public sealed class AppConfig
     /// Word/SharePoint), "PowerPoint" (.pptx, a real spatial flowchart —
     /// one slide per branch column, boxes/images/connector lines with
     /// actual coordinates, branch navigation via slide-jump hyperlinks),
-    /// or "Excalidraw" (.excalidraw sketch-style diagram, experimental —
-    /// needs the free Excalidraw Obsidian plugin). Canvas, Word,
-    /// PowerPoint, and Excalidraw all support branching via the hotkeys
-    /// below.
+    /// "Excalidraw" (.excalidraw sketch-style diagram, experimental —
+    /// needs the free Excalidraw Obsidian plugin), or "DrawIo" (.drawio,
+    /// a real editable flowchart: card-shaped nodes with numbered badges,
+    /// per-branch accent colors, and arrowed connectors — opens in the
+    /// free draw.io/diagrams.net app, no Obsidian needed). Canvas, Word,
+    /// PowerPoint, Excalidraw, and DrawIo all support branching via the
+    /// hotkeys below.
     /// </summary>
     public string OutputMode { get; set; } = "Note";
 
