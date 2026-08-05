@@ -394,16 +394,32 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         var imgX = (CardWidth - imgWidth) / 2;
         var imgY = headerHeight + CardMargin + (ImageAreaHeight - imgHeight) / 2;
 
-        var imageCell = new XElement("mxCell",
-            new XAttribute("id", cardId + "_img"),
-            new XAttribute("value", ""),
-            new XAttribute("style", $"shape=image;imageAspect=1;image=data:image/png,{ToBase64Png(screenshot)};"),
+        var base64 = ToBase64Png(screenshot);
+
+        // The card only ever shows the screenshot shrunk to fit — far too
+        // small to read text/UI details in. The embedded image data is
+        // still the original full resolution, so wrapping the image cell
+        // in a UserObject with a "link" pointing at that same data (as a
+        // *proper* "data:image/png;base64,..." URI this time — unlike the
+        // comma form used in the style attribute above, this one is parsed
+        // by the browser/OS as a real URL, not mxGraph's style splitter)
+        // lets a click open it at full native resolution in a new tab/
+        // viewer — "zoom in" without bloating the diagram's default view.
+        var imageMxCell = new XElement("mxCell",
+            new XAttribute("style", $"shape=image;imageAspect=1;image=data:image/png,{base64};"),
             new XAttribute("vertex", "1"),
             new XAttribute("parent", cardId),
             new XElement("mxGeometry",
                 new XAttribute("x", Fmt(imgX)), new XAttribute("y", Fmt(imgY)),
                 new XAttribute("width", Fmt(imgWidth)), new XAttribute("height", Fmt(imgHeight)),
                 new XAttribute("as", "geometry")));
+
+        var imageCell = new XElement("UserObject",
+            new XAttribute("id", cardId + "_img"),
+            new XAttribute("label", ""),
+            new XAttribute("link", $"data:image/png;base64,{base64}"),
+            new XAttribute("tooltip", "Klicken zum Vergrößern (Screenshot in Originalgröße)"),
+            imageMxCell);
         _root.Add(imageCell);
 
         return cardHeight;

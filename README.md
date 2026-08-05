@@ -238,7 +238,11 @@ In den Einstellungen lässt sich eines von sechs Formaten wählen:
   eine eigene Akzentfarbe (Rahmen, Nummer-Badge und Pfeile), der
   Verzweigungspunkt selbst wird als Raute markiert. Pfeile mit echten
   Pfeilspitzen verbinden die Karten. Screenshots werden direkt als Base64
-  eingebettet (kein separater Attachments-Ordner nötig). Öffnet in der
+  eingebettet (kein separater Attachments-Ordner nötig) und im Kartenlayout
+  klein dargestellt, damit die Übersicht nicht ausufert — ein Klick auf den
+  Screenshot öffnet ihn in Originalgröße in einem neuen Tab/Fenster (die
+  Karte verlinkt auf dieselben eingebetteten Bilddaten in voller Auflösung).
+  Öffnet in der
   kostenlosen [draw.io-/diagrams.net-App](https://www.drawio.com/) (Desktop,
   Web oder VS-Code-Extension) — kein Obsidian nötig, voll editierbar
   (Karten frei verschiebbar, Farben/Text anpassbar). Eine `.drawio`-Datei
