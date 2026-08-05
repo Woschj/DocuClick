@@ -297,7 +297,7 @@ public sealed class WordFlowWriter : IFlowWriter
             return;
         }
 
-        OpenXmlElement insertAfterTarget = body.Elements<W.BookmarkEnd>().FirstOrDefault(b => b.Id == bookmarkStart.Id) ?? bookmarkStart;
+        OpenXmlElement insertAfterTarget = (OpenXmlElement?)body.Elements<W.BookmarkEnd>().FirstOrDefault(b => b.Id == bookmarkStart.Id) ?? bookmarkStart;
         var referenceText = $"→ siehe Abzweigung „{branchName}“";
 
         while (insertAfterTarget.NextSibling() is W.Paragraph sibling && sibling.InnerText.StartsWith("→ siehe Abzweigung ", StringComparison.Ordinal))
