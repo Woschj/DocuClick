@@ -193,7 +193,13 @@ In den Einstellungen lässt sich eines von vier Formaten wählen:
 - **Obsidian-Canvas**: jeder Klick wird ein verbundener Knoten auf einer
   Fläche in einer `.canvas`-Datei (reines JSON, kein Obsidian-Plugin
   nötig). Gut für kurze bis mittlere Abläufe; bei sehr langen Abläufen wird
-  eine feste Fläche schnell unübersichtlich.
+  eine feste Fläche schnell unübersichtlich. Screenshots werden als
+  eigener Datei-Node (Canvas' natives Embed-Format) statt als
+  `![[wikilink]]` im Text abgelegt — Drittanbieter-Exporttools für Canvas
+  kennen diesen Node-Typ meist, Obsidians Wikilink-Auflösung dagegen nicht,
+  weshalb Bilder beim Export in andere Formate sonst fehlten. Betrifft nur
+  neu aufgezeichnete Klicks; bereits bestehende `.canvas`-Dateien werden
+  nicht automatisch migriert.
 - **Word**: jeder Klick wird ein eigener Abschnitt (Überschrift +
   Screenshot), fortlaufend an eine `.docx`-Datei angehängt — kein
   Canvas-Größenlimit, beliebig lange Abläufe bleiben lesbar. Abzweigungen

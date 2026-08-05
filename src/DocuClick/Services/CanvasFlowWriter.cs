@@ -13,7 +13,9 @@ public sealed record ResumableNode(string Id, string Label, double X, double Y);
 /// <summary>
 /// Writes clicks as connected nodes into an Obsidian .canvas file (plain
 /// JSON — no plugin needed) instead of a linear note. Each click becomes a
-/// text node embedding the screenshot, linked from the previous node.
+/// text node (the description) with a sibling "file" node (the screenshot,
+/// Canvas's native embed type) directly beneath it; the text nodes form the
+/// linked spine, linked from the previous click's text node.
 ///
 /// Layout is vertical: the main line runs top-to-bottom in one column.
 ///
@@ -31,6 +33,9 @@ public sealed class CanvasFlowWriter : IFlowWriter
 {
     private const double NodeWidth = 380;
     private const double NodeHeight = 340;
+    private const double TextNodeHeight = 60;
+    private const double TextToImageGap = 10;
+    private const double ImageNodeHeight = NodeHeight - TextNodeHeight - TextToImageGap;
     private const double MarkerHeight = 60;
     private const double SequentialSpacing = 60; // gap between consecutive nodes along the main (vertical) flow
     private const double BranchColumnSpacing = 80; // gap between branch columns
@@ -73,7 +78,10 @@ public sealed class CanvasFlowWriter : IFlowWriter
         var path = Path.Combine(_config.VaultPath, canvasFileName);
         var doc = LoadOrCreate(path);
 
+        // Only offer the description/text nodes as resume points — not
+        // their sibling image nodes (no Text to show) or branch markers.
         return doc.Nodes
+            .Where(n => n.Type == "text" && !(n.Text?.StartsWith(BranchMarkerPrefix, StringComparison.Ordinal) ?? false))
             .OrderBy(n => n.Y).ThenBy(n => n.X)
             .Select(n => new ResumableNode(n.Id, BuildLabel(n.Text), n.X, n.Y))
             .ToList();
@@ -161,24 +169,38 @@ public sealed class CanvasFlowWriter : IFlowWriter
         }
 
         // Screenshots land in Attachments/<session>/ instead of flat in
-        // Attachments/. The wikilink embed only needs the bare filename —
-        // it's timestamp-based and thus unique vault-wide, so Obsidian
-        // resolves it regardless of which subfolder it's actually in.
+        // Attachments/.
         var imageRelativeToAttachments = AttachmentSaver.SaveScreenshot(_config, screenshot, timestamp, _sessionName);
-        var imageFileName = Path.GetFileName(imageRelativeToAttachments);
+        var imageVaultPath = Path.Combine(_config.AttachmentsFolder, imageRelativeToAttachments).Replace('\\', '/');
 
         var newY = _cursorNodeId is null ? _cursorY : _cursorY + NodeHeight + SequentialSpacing;
-        var node = new CanvasNode
+
+        var textNode = new CanvasNode
         {
             Id = Guid.NewGuid().ToString("N"),
             Type = "text",
-            Text = $"{description}\n\n![[{imageFileName}]]",
+            Text = description,
             X = _cursorX,
             Y = newY,
             Width = NodeWidth,
-            Height = NodeHeight
+            Height = TextNodeHeight
         };
-        _doc.Nodes.Add(node);
+        _doc.Nodes.Add(textNode);
+
+        // A dedicated "file" node instead of a "![[filename]]" wikilink
+        // buried in the text node — see the File property's doc comment
+        // in CanvasModels.cs for why.
+        var imageNode = new CanvasNode
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Type = "file",
+            File = imageVaultPath,
+            X = _cursorX,
+            Y = newY + TextNodeHeight + TextToImageGap,
+            Width = NodeWidth,
+            Height = ImageNodeHeight
+        };
+        _doc.Nodes.Add(imageNode);
 
         if (_cursorNodeId is not null)
         {
@@ -186,11 +208,11 @@ public sealed class CanvasFlowWriter : IFlowWriter
             {
                 Id = Guid.NewGuid().ToString("N"),
                 FromNode = _cursorNodeId,
-                ToNode = node.Id
+                ToNode = textNode.Id
             });
         }
 
-        _cursorNodeId = node.Id;
+        _cursorNodeId = textNode.Id;
         _cursorY = newY;
 
         Save();
