@@ -398,13 +398,17 @@ public sealed class DrawIoFlowWriter : IFlowWriter
 
         // The card only ever shows the screenshot shrunk to fit — far too
         // small to read text/UI details in. The embedded image data is
-        // still the original full resolution, so wrapping the image cell
-        // in a UserObject with a "link" pointing at that same data (as a
-        // *proper* "data:image/png;base64,..." URI this time — unlike the
-        // comma form used in the style attribute above, this one is parsed
-        // by the browser/OS as a real URL, not mxGraph's style splitter)
-        // lets a click open it at full native resolution in a new tab/
-        // viewer — "zoom in" without bloating the diagram's default view.
+        // still the original full resolution. A "link" (see below) needs a
+        // non-obvious click on a small hover icon to follow in draw.io, so
+        // the *primary* zoom mechanism is a plain hover: draw.io renders a
+        // cell's "tooltip" attribute as HTML, so an <img> tag in there
+        // shows a much larger rendition immediately on mouseover — no
+        // click, nothing to discover. The link is kept as a secondary path
+        // to the truly full-resolution image in a new tab, for the rare
+        // case even the tooltip-sized preview isn't big enough.
+        var tooltipImgWidth = Math.Min(screenshot.Width, 640);
+        var tooltipHtml = $"<img src=\"data:image/png;base64,{base64}\" width=\"{Fmt(tooltipImgWidth)}\">";
+
         var imageMxCell = new XElement("mxCell",
             new XAttribute("style", $"shape=image;imageAspect=1;image=data:image/png,{base64};"),
             new XAttribute("vertex", "1"),
@@ -418,7 +422,7 @@ public sealed class DrawIoFlowWriter : IFlowWriter
             new XAttribute("id", cardId + "_img"),
             new XAttribute("label", ""),
             new XAttribute("link", $"data:image/png;base64,{base64}"),
-            new XAttribute("tooltip", "Klicken zum Vergrößern (Screenshot in Originalgröße)"),
+            new XAttribute("tooltip", tooltipHtml),
             imageMxCell);
         _root.Add(imageCell);
 
