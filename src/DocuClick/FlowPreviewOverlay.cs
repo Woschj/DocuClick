@@ -238,23 +238,55 @@ public sealed class FlowPreviewOverlay : Window
 
         // Grows node size together with the panel (not just the spacing
         // between them) — clamped so a tiny window doesn't shrink nodes to
-        // illegibility and a huge one doesn't blow them up absurdly.
-        var sizeScale = Math.Clamp(Math.Min(canvasWidth / PanelWidth, canvasHeight / PanelHeight), MinSizeScale, MaxSizeScale);
+        // illegibility and a huge one doesn't blow them up absurdly. This is
+        // only a starting point for the layout margin below; the actual
+        // rendered size gets capped further down so nodes can never overlap.
+        var tentativeSizeScale = Math.Clamp(Math.Min(canvasWidth / PanelWidth, canvasHeight / PanelHeight), MinSizeScale, MaxSizeScale);
+        var tentativeHalfExtent = Math.Max(CurrentNodeWidth, CurrentNodeHeight) * tentativeSizeScale / 2;
+
+        var drawableWidth = canvasWidth - tentativeHalfExtent * 2;
+        var drawableHeight = canvasHeight - tentativeHalfExtent * 2;
+        var scale = Math.Min(drawableWidth / spanX, drawableHeight / spanY);
+
+        (double X, double Y) ToCanvas(double x, double y) => (
+            tentativeHalfExtent + (x - minX) * scale,
+            tentativeHalfExtent + (y - minY) * scale);
+
+        var centers = preview.Nodes.ToDictionary(n => n.Id, n => ToCanvas(n.X + n.Width / 2, n.Y + n.Height / 2));
+
+        // Nodes must never collide, however tight the flow's real layout
+        // is — cap the rendered size (never its position) so that even the
+        // biggest possible node (the current-node box) fits within the
+        // closest pair of node centers on screen, treating each box as its
+        // circumscribed circle (direction-agnostic, so it's safe whichever
+        // way two nodes happen to sit relative to each other).
+        var minCenterDistance = double.PositiveInfinity;
+        var centerList = centers.Values.ToList();
+        for (var i = 0; i < centerList.Count; i++)
+        {
+            for (var j = i + 1; j < centerList.Count; j++)
+            {
+                var dx = centerList[i].X - centerList[j].X;
+                var dy = centerList[i].Y - centerList[j].Y;
+                var distance = Math.Sqrt(dx * dx + dy * dy);
+                if (distance < minCenterDistance)
+                {
+                    minCenterDistance = distance;
+                }
+            }
+        }
+
+        const double CollisionMargin = 0.9; // leave a visible gap, not just "not touching"
+        var maxDiagonal = Math.Sqrt(CurrentNodeWidth * CurrentNodeWidth + CurrentNodeHeight * CurrentNodeHeight);
+        var collisionSafeScale = double.IsPositiveInfinity(minCenterDistance)
+            ? tentativeSizeScale
+            : minCenterDistance * CollisionMargin / maxDiagonal;
+
+        var sizeScale = Math.Clamp(Math.Min(tentativeSizeScale, collisionSafeScale), 0.15, MaxSizeScale);
         var nodeWidth = NodeWidth * sizeScale;
         var nodeHeight = NodeHeight * sizeScale;
         var currentNodeWidth = CurrentNodeWidth * sizeScale;
         var currentNodeHeight = CurrentNodeHeight * sizeScale;
-        var halfExtent = Math.Max(currentNodeWidth, currentNodeHeight) / 2;
-
-        var drawableWidth = canvasWidth - halfExtent * 2;
-        var drawableHeight = canvasHeight - halfExtent * 2;
-        var scale = Math.Min(drawableWidth / spanX, drawableHeight / spanY);
-
-        (double X, double Y) ToCanvas(double x, double y) => (
-            halfExtent + (x - minX) * scale,
-            halfExtent + (y - minY) * scale);
-
-        var centers = preview.Nodes.ToDictionary(n => n.Id, n => ToCanvas(n.X + n.Width / 2, n.Y + n.Height / 2));
 
         foreach (var edge in preview.Edges)
         {
