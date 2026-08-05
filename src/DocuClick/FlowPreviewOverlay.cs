@@ -17,6 +17,8 @@ using Rectangle = System.Windows.Shapes.Rectangle;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
 using VerticalAlignment = System.Windows.VerticalAlignment;
 using TextAlignment = System.Windows.TextAlignment;
+using Point = System.Windows.Point;
+using Size = System.Windows.Size;
 
 namespace DocuClick;
 
@@ -54,6 +56,9 @@ public sealed class FlowPreviewOverlay : Window
 
     private readonly Canvas _canvas;
     private readonly TextBlock _emptyHint;
+    private FlowPreview _lastPreview = new(new List<PreviewNode>(), new List<PreviewEdge>());
+    private Point _resizeStartMouse;
+    private Size _resizeStartSize;
 
     public event Action<string>? NodeClicked;
 
@@ -64,22 +69,29 @@ public sealed class FlowPreviewOverlay : Window
         Background = Brushes.Transparent;
         ShowInTaskbar = false;
         Topmost = true;
+        // Borderless windows get no OS edge/corner resize handling for
+        // free (that comes from WindowStyle chrome, which is off here) —
+        // resizing is done manually via the grip below instead.
         ResizeMode = ResizeMode.NoResize;
         ShowActivated = false;
-        SizeToContent = SizeToContent.WidthAndHeight;
+        SizeToContent = SizeToContent.Manual;
+        Width = PanelWidth + Padding * 2;
+        Height = PanelHeight + 34 + Padding;
+        MinWidth = 160;
+        MinHeight = 110;
 
         var header = new TextBlock
         {
-            Text = "Ablauf-Übersicht — ziehbar, Knoten anklicken zum Springen",
+            Text = "Ablauf-Übersicht — ziehbar/größenverstellbar, Knoten anklicken zum Springen",
             Foreground = Brushes.White,
             FontSize = 10,
             Opacity = 0.8,
             TextWrapping = TextWrapping.Wrap,
-            Width = PanelWidth,
             Margin = new Thickness(Padding, 6, Padding, 4)
         };
+        DockPanel.SetDock(header, Dock.Top);
 
-        _canvas = new Canvas { Width = PanelWidth, Height = PanelHeight };
+        _canvas = new Canvas();
 
         _emptyHint = new TextBlock
         {
@@ -88,25 +100,60 @@ public sealed class FlowPreviewOverlay : Window
             Opacity = 0.6,
             FontSize = 11,
             TextWrapping = TextWrapping.Wrap,
-            Width = PanelWidth,
             TextAlignment = TextAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center
         };
 
-        var canvasArea = new Grid { Width = PanelWidth, Height = PanelHeight, ClipToBounds = true };
+        var canvasArea = new Grid { ClipToBounds = true };
         canvasArea.Children.Add(_canvas);
         canvasArea.Children.Add(_emptyHint);
 
+        // Node positions are normalized against the canvas's actual
+        // current size, so growing the window via the resize grip spreads
+        // the same nodes across more space instead of leaving them
+        // clustered in a corner.
+        _canvas.SizeChanged += (_, _) => UpdatePreview(_lastPreview);
+
         var canvasHost = new Border
         {
-            Width = PanelWidth,
-            Height = PanelHeight,
             Margin = new Thickness(Padding, 0, Padding, Padding),
             Child = canvasArea
         };
 
-        var content = new StackPanel();
+        var resizeGrip = new Rectangle
+        {
+            Width = 14,
+            Height = 14,
+            Fill = new SolidColorBrush(Color.FromArgb(90, 255, 255, 255)),
+            Cursor = Cursors.SizeNWSE,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, 2, 2),
+            ToolTip = "Ziehen zum Verändern der Größe"
+        };
+        resizeGrip.MouseLeftButtonDown += (_, e) =>
+        {
+            e.Handled = true; // don't also start a window-drag via the border handler below
+            resizeGrip.CaptureMouse();
+            _resizeStartMouse = PointToScreen(e.GetPosition(this));
+            _resizeStartSize = new Size(ActualWidth, ActualHeight);
+        };
+        resizeGrip.MouseMove += (_, e) =>
+        {
+            if (!resizeGrip.IsMouseCaptured)
+            {
+                return;
+            }
+
+            var current = PointToScreen(e.GetPosition(this));
+            Width = Math.Max(MinWidth, _resizeStartSize.Width + (current.X - _resizeStartMouse.X));
+            Height = Math.Max(MinHeight, _resizeStartSize.Height + (current.Y - _resizeStartMouse.Y));
+        };
+        resizeGrip.MouseLeftButtonUp += (_, _) => resizeGrip.ReleaseMouseCapture();
+        canvasArea.Children.Add(resizeGrip);
+
+        var content = new DockPanel();
         content.Children.Add(header);
         content.Children.Add(canvasHost);
 
@@ -120,8 +167,8 @@ public sealed class FlowPreviewOverlay : Window
         };
         Content = border;
 
-        // Drag the whole panel from anywhere except a node square — those
-        // mark the event Handled in UpdatePreview before it bubbles here.
+        // Drag the whole panel from anywhere except a node square/the
+        // resize grip — those mark the event Handled before it bubbles here.
         border.MouseLeftButtonDown += (_, e) =>
         {
             if (!e.Handled)
@@ -144,7 +191,7 @@ public sealed class FlowPreviewOverlay : Window
             NativeMethods.ExcludeFromScreenCapture(hwnd);
         };
 
-        UpdatePreview(new FlowPreview(new List<PreviewNode>(), new List<PreviewEdge>()));
+        UpdatePreview(_lastPreview);
     }
 
     /// <summary>
@@ -156,6 +203,7 @@ public sealed class FlowPreviewOverlay : Window
     /// </summary>
     public void UpdatePreview(FlowPreview preview)
     {
+        _lastPreview = preview;
         _canvas.Children.Clear();
 
         if (preview.Nodes.Count == 0)
@@ -166,6 +214,11 @@ public sealed class FlowPreviewOverlay : Window
 
         _emptyHint.Visibility = Visibility.Collapsed;
 
+        // Falls back to the initial content size before the first layout
+        // pass has run (ActualWidth/Height are still 0 at that point).
+        var canvasWidth = _canvas.ActualWidth > 0 ? _canvas.ActualWidth : PanelWidth;
+        var canvasHeight = _canvas.ActualHeight > 0 ? _canvas.ActualHeight : PanelHeight;
+
         var minX = preview.Nodes.Min(n => n.X);
         var minY = preview.Nodes.Min(n => n.Y);
         var maxX = preview.Nodes.Max(n => n.X + n.Width);
@@ -173,8 +226,8 @@ public sealed class FlowPreviewOverlay : Window
         var spanX = Math.Max(maxX - minX, 1);
         var spanY = Math.Max(maxY - minY, 1);
 
-        var drawableWidth = PanelWidth - CurrentNodeSize;
-        var drawableHeight = PanelHeight - CurrentNodeSize;
+        var drawableWidth = canvasWidth - CurrentNodeSize;
+        var drawableHeight = canvasHeight - CurrentNodeSize;
         var scale = Math.Min(drawableWidth / spanX, drawableHeight / spanY);
 
         (double X, double Y) ToCanvas(double x, double y) => (
