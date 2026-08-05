@@ -9,49 +9,46 @@ using A = DocumentFormat.OpenXml.Drawing;
 namespace DocuClick.Services;
 
 /// <summary>
-/// Writes clicks as a real spatial flowchart in a PowerPoint (.pptx) deck —
-/// boxes, images, and connector lines with actual x/y coordinates, unlike
-/// Word which has none. A single PPTX slide has fixed dimensions though (no
-/// infinite canvas like Canvas/Excalidraw/draw.io), so the mapping used here
-/// is one slide per "column": the main flow is one slide ("Hauptablauf"),
-/// and each named branch gets its own slide ("Abzweigung: &lt;name&gt;"),
-/// created lazily on first <see cref="JumpToAnchor"/>. All slides share one
-/// presentation-wide width/height (PPTX has no per-slide size), so the
-/// height is grown as needed and never shrunk.
+/// Writes clicks as a PowerPoint (.pptx) walkthrough deck: one slide per
+/// click (caption + screenshot, scaled to fit a fixed standard 16:9 slide),
+/// the way a person would actually build a click-through tutorial by hand —
+/// not a single ever-growing "canvas" slide, which PowerPoint slides were
+/// never meant to be (no in-slide scrolling, no meaningful thumbnail, and a
+/// custom-grown slide size read back oddly in real PowerPoint).
 ///
-/// Branch navigation is two hyperlinks, both jumping to a slide (PPTX
-/// hyperlinks can't target a position within a slide, only the slide
-/// itself): a forward reference appended into the *existing* branch-marker
-/// shape's text (so marking a branch doesn't reserve dead space for a link
-/// that might never be added, and appending later doesn't disturb any other
-/// shape's fixed position), and a backward link on the branch's own slide
-/// pointing back to the marker's slide.
+/// Branches don't reposition anything (every column just runs top-to-bottom
+/// through the slide deck) — instead, jumping to a branch inserts a small
+/// "junction" slide (title + a link back to the anchor) and continues the
+/// one-slide-per-click sequence from there; the anchor's own slide gets a
+/// forward-reference line pointing at that junction. Because every jump
+/// creates a *new* junction slide, the same anchor can be revisited any
+/// number of times without ever re-linking to an existing target — each
+/// slide-to-slide relationship is created exactly once.
 /// </summary>
 public sealed class PowerPointFlowWriter : IFlowWriter
 {
     private const long EmuPerPixel = 9525; // OOXML drawing units at 96 DPI
-    private const double NodeWidthPx = 380;
-    private const double MarginPx = 60;
-    private const double TitleHeightPx = 50;
-    private const double LabelHeightPx = 50;
-    private const double LabelGapPx = 8;
-    private const double SequentialSpacingPx = 50;
-    private const double InitialSlideHeightPx = 800;
+    private const double SlideWidthPx = 1280; // 13.333in — standard PowerPoint widescreen
+    private const double SlideHeightPx = 720; // 7.5in
+    private const double MarginPx = 40;
+    private const double TitleHeightPx = 110;
+    private const double NoteHeightPx = 40;
+    private const double ImageTopPx = MarginPx + TitleHeightPx + 10;
+    private const double ImageAreaHeightPx = SlideHeightPx - ImageTopPx - MarginPx - NoteHeightPx - 10;
+    private const double ImageAreaWidthPx = SlideWidthPx - 2 * MarginPx;
     private const string BranchMarkerPrefix = "Branch: ";
-    private const string MainColumnKey = "";
     private const string StepNamePrefix = "step_";
     private const string BranchMarkerNamePrefix = "branch_";
+    private const string MainColumnKey = "";
+    private const string MainEyebrow = "HAUPTABLAUF";
+    private const string BranchEyebrowPrefix = "ABZWEIGUNG: ";
 
     private sealed class ColumnState
     {
-        public required SlidePart Part;
-        public required P.ShapeTree Tree;
-        public double NextY;
-        public string? LastShapeName;
-        public bool HasBackLink;
+        public SlidePart? LastSlidePart;
     }
 
-    private sealed record BranchAnchor(string Name, string NodeId, string ColumnKey);
+    private sealed record BranchAnchor(string Name, string NodeId, SlidePart Slide);
 
     private readonly AppConfig _config;
 
@@ -61,10 +58,10 @@ public sealed class PowerPointFlowWriter : IFlowWriter
     private SlideLayoutPart? _slideLayoutPart;
     private uint _nextShapeId = 10;
     private uint _nextSlideId = 256;
-    private double _slideHeightPx = InitialSlideHeightPx;
 
     private readonly Dictionary<string, ColumnState> _columns = new();
     private readonly Dictionary<string, string> _labels = new();
+    private readonly Dictionary<string, SlidePart> _nodeSlide = new();
     private readonly Dictionary<string, string> _nodeColumn = new();
     private readonly List<BranchAnchor> _branchAnchors = new();
     private string? _currentBranchName;
@@ -79,10 +76,19 @@ public sealed class PowerPointFlowWriter : IFlowWriter
 
     public string? CurrentBranchName => _currentBranchName;
 
-    public string? CurrentNodeLabel =>
-        _columns.TryGetValue(ColumnKey(_currentBranchName), out var column) && column.LastShapeName is not null
-            ? _labels.GetValueOrDefault(column.LastShapeName)
-            : null;
+    public string? CurrentNodeLabel
+    {
+        get
+        {
+            if (!_columns.TryGetValue(ColumnKey(_currentBranchName), out var column) || column.LastSlidePart is null)
+            {
+                return null;
+            }
+
+            var name = FindStepOrMarkerName(column.LastSlidePart);
+            return name is null ? null : _labels.GetValueOrDefault(name);
+        }
+    }
 
     private static string ColumnKey(string? branchName) => branchName ?? MainColumnKey;
 
@@ -126,8 +132,9 @@ public sealed class PowerPointFlowWriter : IFlowWriter
                         continue;
                     }
 
-                    var text = ExtractShapeText(shape);
-                    result.Add(new ResumableNode(name, string.IsNullOrEmpty(text) ? "(ohne Beschreibung)" : TruncateLabel(text), 0, order++));
+                    var lines = ExtractShapeText(shape).Split('\n', 2);
+                    var caption = lines.Length > 1 ? lines[1] : "";
+                    result.Add(new ResumableNode(name, string.IsNullOrEmpty(caption) ? "(ohne Beschreibung)" : TruncateLabel(caption), 0, order++));
                 }
             }
 
@@ -153,6 +160,7 @@ public sealed class PowerPointFlowWriter : IFlowWriter
         OpenOrCreateDocument();
 
         _labels.Clear();
+        _nodeSlide.Clear();
         _nodeColumn.Clear();
         _branchAnchors.Clear();
         _columns.Clear();
@@ -161,9 +169,8 @@ public sealed class PowerPointFlowWriter : IFlowWriter
         _nextSlideId = 256;
 
         var presentationPart = _pptDoc!.PresentationPart!;
-        _slideHeightPx = (presentationPart.Presentation!.SlideSize?.Cy?.Value ?? (int)(InitialSlideHeightPx * EmuPerPixel)) / (double)EmuPerPixel;
 
-        foreach (var slideId in presentationPart.Presentation.SlideIdList?.Elements<P.SlideId>() ?? Enumerable.Empty<P.SlideId>())
+        foreach (var slideId in presentationPart.Presentation!.SlideIdList?.Elements<P.SlideId>() ?? Enumerable.Empty<P.SlideId>())
         {
             if (slideId.Id?.Value is uint id && id >= _nextSlideId)
             {
@@ -171,27 +178,34 @@ public sealed class PowerPointFlowWriter : IFlowWriter
             }
         }
 
-        foreach (var slidePart in presentationPart.SlideParts)
+        // Slides are scanned in deck order (not part order) so "last slide
+        // with this column's eyebrow" is well-defined for continuing after
+        // reopening the file.
+        foreach (var slideId in presentationPart.Presentation.SlideIdList?.Elements<P.SlideId>() ?? Enumerable.Empty<P.SlideId>())
         {
-            RebuildColumnFromSlide(slidePart);
+            if (slideId.RelationshipId?.Value is not string relId
+                || presentationPart.GetPartById(relId) is not SlidePart slidePart)
+            {
+                continue;
+            }
+
+            RebuildFromSlide(slidePart);
         }
 
-        if (_pendingResumeAnchor is { } resume && _nodeColumn.TryGetValue(resume, out var resumeColumnKey)
-            && _columns.TryGetValue(resumeColumnKey, out var resumeColumn))
+        if (_pendingResumeAnchor is { } resume
+            && _nodeSlide.TryGetValue(resume, out var resumeSlide)
+            && _nodeColumn.TryGetValue(resume, out var resumeColumnKey))
         {
             _currentBranchName = resumeColumnKey == MainColumnKey ? null : resumeColumnKey;
-            // NextY was already computed from this column's true current
-            // bottom (see RebuildColumnFromSlide), so the next click can't
-            // overlap anything regardless of where the resumed node
-            // physically sits — this only affects which label shows up as
-            // "current" in status messages.
-            resumeColumn.LastShapeName = resume;
+            var label = _labels.GetValueOrDefault(resume, "(ohne Beschreibung)");
+            var junction = CreateJunctionSlide($"Fortsetzung ab: {TruncateLabel(label)}", resumeSlide, label);
+            GetOrCreateColumnState(resumeColumnKey).LastSlidePart = junction;
         }
 
         _pendingResumeAnchor = null;
     }
 
-    private void RebuildColumnFromSlide(SlidePart slidePart)
+    private void RebuildFromSlide(SlidePart slidePart)
     {
         var tree = slidePart.Slide?.CommonSlideData?.ShapeTree;
         if (tree is null)
@@ -199,10 +213,25 @@ public sealed class PowerPointFlowWriter : IFlowWriter
             return;
         }
 
+        // Two passes: a slide's column is only knowable once its step
+        // shape (added before any branch marker on the same slide) has
+        // been seen, but every shape name on the slide — including branch
+        // markers — needs that same column recorded in _nodeColumn.
         string? columnKey = null;
-        double maxBottomPx = 0;
-        string? lastLabelName = null;
-        double lastLabelY = -1;
+
+        foreach (var shape in tree.Elements<P.Shape>())
+        {
+            var name = shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Name?.Value;
+            if (name is not null && name.StartsWith(StepNamePrefix, StringComparison.Ordinal))
+            {
+                var eyebrow = ExtractShapeText(shape).Split('\n', 2)[0];
+                columnKey = eyebrow == MainEyebrow
+                    ? MainColumnKey
+                    : eyebrow.StartsWith(BranchEyebrowPrefix, StringComparison.Ordinal)
+                        ? eyebrow[BranchEyebrowPrefix.Length..]
+                        : columnKey;
+            }
+        }
 
         foreach (var shape in tree.Elements<P.Shape>())
         {
@@ -213,31 +242,24 @@ public sealed class PowerPointFlowWriter : IFlowWriter
                 _nextShapeId = id + 1;
             }
 
-            var (y, height) = GetGeometryPx(shape.ShapeProperties);
-            maxBottomPx = Math.Max(maxBottomPx, y + height);
+            if (name is null)
+            {
+                continue;
+            }
 
-            if (name == "title")
+            if (name.StartsWith(StepNamePrefix, StringComparison.Ordinal))
             {
-                var text = ExtractShapeText(shape);
-                if (text == "Hauptablauf")
+                var lines = ExtractShapeText(shape).Split('\n', 2);
+                var caption = lines.Length > 1 ? lines[1] : ExtractShapeText(shape);
+
+                _labels[name] = TruncateLabel(caption);
+                _nodeSlide[name] = slidePart;
+                if (columnKey is not null)
                 {
-                    columnKey = MainColumnKey;
-                }
-                else if (text.StartsWith("Abzweigung: ", StringComparison.Ordinal))
-                {
-                    columnKey = text["Abzweigung: ".Length..];
+                    _nodeColumn[name] = columnKey;
                 }
             }
-            else if (name is not null && name.StartsWith(StepNamePrefix, StringComparison.Ordinal))
-            {
-                _labels[name] = TruncateLabel(ExtractShapeText(shape));
-                if (y > lastLabelY)
-                {
-                    lastLabelY = y;
-                    lastLabelName = name;
-                }
-            }
-            else if (name is not null && name.StartsWith(BranchMarkerNamePrefix, StringComparison.Ordinal))
+            else if (name.StartsWith(BranchMarkerNamePrefix, StringComparison.Ordinal))
             {
                 var firstLine = ExtractShapeText(shape).Split('\n', 2)[0];
                 if (firstLine.StartsWith(BranchMarkerPrefix, StringComparison.Ordinal))
@@ -246,48 +268,46 @@ public sealed class PowerPointFlowWriter : IFlowWriter
                     if (branchName.Length > 0)
                     {
                         _labels[name] = TruncateLabel(firstLine);
-                        AddOrReplaceAnchor(new BranchAnchor(branchName, name, columnKey ?? MainColumnKey));
-                    }
-                }
+                        _nodeSlide[name] = slidePart;
+                        if (columnKey is not null)
+                        {
+                            _nodeColumn[name] = columnKey;
+                        }
 
-                if (y > lastLabelY)
-                {
-                    lastLabelY = y;
-                    lastLabelName = name;
+                        AddOrReplaceAnchor(new BranchAnchor(branchName, name, slidePart));
+                    }
                 }
             }
         }
 
-        foreach (var picture in tree.Elements<P.Picture>())
+        if (columnKey is not null)
         {
-            var (y, height) = GetGeometryPx(picture.ShapeProperties);
-            maxBottomPx = Math.Max(maxBottomPx, y + height);
-        }
-
-        var key = columnKey ?? MainColumnKey;
-        var column = new ColumnState
-        {
-            Part = slidePart,
-            Tree = tree,
-            NextY = maxBottomPx > 0 ? maxBottomPx + SequentialSpacingPx : MarginPx + TitleHeightPx + SequentialSpacingPx,
-            LastShapeName = lastLabelName,
-            HasBackLink = tree.Elements<P.Shape>().Any(s => s.NonVisualShapeProperties?.NonVisualDrawingProperties?.Name?.Value == "backlink")
-        };
-        _columns[key] = column;
-
-        if (lastLabelName is not null)
-        {
-            _nodeColumn[lastLabelName] = key;
+            GetOrCreateColumnState(columnKey).LastSlidePart = slidePart;
         }
     }
 
-    private static (double Y, double Height) GetGeometryPx(P.ShapeProperties? shapeProperties)
+    private ColumnState GetOrCreateColumnState(string columnKey)
     {
-        var offset = shapeProperties?.Transform2D?.Offset;
-        var extents = shapeProperties?.Transform2D?.Extents;
-        var y = (offset?.Y?.Value ?? 0) / (double)EmuPerPixel;
-        var height = (extents?.Cy?.Value ?? 0) / (double)EmuPerPixel;
-        return (y, height);
+        if (!_columns.TryGetValue(columnKey, out var column))
+        {
+            column = new ColumnState();
+            _columns[columnKey] = column;
+        }
+
+        return column;
+    }
+
+    private static string? FindStepOrMarkerName(SlidePart slide)
+    {
+        var tree = slide.Slide?.CommonSlideData?.ShapeTree;
+        if (tree is null)
+        {
+            return null;
+        }
+
+        return tree.Elements<P.Shape>()
+            .Select(s => s.NonVisualShapeProperties?.NonVisualDrawingProperties?.Name?.Value)
+            .LastOrDefault(n => n is not null && (n.StartsWith(StepNamePrefix, StringComparison.Ordinal) || n.StartsWith(BranchMarkerNamePrefix, StringComparison.Ordinal)));
     }
 
     public void Stop()
@@ -308,66 +328,51 @@ public sealed class PowerPointFlowWriter : IFlowWriter
         }
 
         var columnKey = ColumnKey(_currentBranchName);
-        var column = GetOrCreateColumn(columnKey, columnKey == MainColumnKey ? "Hauptablauf" : $"Abzweigung: {columnKey}");
-
-        var imageHeightPx = screenshot.Height * (NodeWidthPx / screenshot.Width);
-        var topY = column.NextY;
-
-        if (column.LastShapeName is not null)
-        {
-            column.Tree.Append(BuildConnector(topY - SequentialSpacingPx, topY));
-        }
-
+        var eyebrow = columnKey == MainColumnKey ? MainEyebrow : $"{BranchEyebrowPrefix}{columnKey}";
         var nodeId = StepNamePrefix + Guid.NewGuid().ToString("N");
-        column.Tree.Append(BuildLabelShape(nodeId, description, topY));
-        column.Tree.Append(BuildImageShape(column.Part, screenshot, topY + LabelHeightPx + LabelGapPx, imageHeightPx));
 
-        var blockBottom = topY + LabelHeightPx + LabelGapPx + imageHeightPx;
-        column.NextY = blockBottom + SequentialSpacingPx;
-        column.LastShapeName = nodeId;
+        var slidePart = CreateBlankSlide();
+        var tree = GetTree(slidePart);
+        tree.Append(BuildCaptionShape(nodeId, eyebrow, description));
+        tree.Append(BuildImageShape(slidePart, screenshot));
 
         _labels[nodeId] = TruncateLabel(description);
-        _nodeColumn[nodeId] = columnKey;
+        _nodeSlide[nodeId] = slidePart;
+        GetOrCreateColumnState(columnKey).LastSlidePart = slidePart;
 
-        EnsureSlideHeight(blockBottom + MarginPx);
         Save();
     }
 
     public BranchActionResult MarkBranchAnchor(string branchName)
     {
         var columnKey = ColumnKey(_currentBranchName);
-        if (!_columns.TryGetValue(columnKey, out var column) || column.LastShapeName is null)
+        if (!_columns.TryGetValue(columnKey, out var column) || column.LastSlidePart is null)
         {
             return new BranchActionResult(false, _branchAnchors.Count, null);
         }
 
-        var markerY = column.NextY;
         var markerName = BranchMarkerNamePrefix + Guid.NewGuid().ToString("N");
-
-        column.Tree.Append(BuildConnector(markerY - SequentialSpacingPx, markerY));
-        column.Tree.Append(BuildMarkerShape(markerName, $"{BranchMarkerPrefix}{branchName}", markerY));
-
-        column.NextY = markerY + LabelHeightPx + SequentialSpacingPx;
-        column.LastShapeName = markerName;
+        var slidePart = column.LastSlidePart;
+        GetTree(slidePart).Append(BuildMarkerShape(markerName, $"{BranchMarkerPrefix}{branchName}"));
 
         _labels[markerName] = TruncateLabel($"{BranchMarkerPrefix}{branchName}");
-        _nodeColumn[markerName] = columnKey;
-        AddOrReplaceAnchor(new BranchAnchor(branchName, markerName, columnKey));
+        _nodeSlide[markerName] = slidePart;
+        AddOrReplaceAnchor(new BranchAnchor(branchName, markerName, slidePart));
 
-        EnsureSlideHeight(column.NextY + MarginPx);
         Save();
 
         return new BranchActionResult(true, _branchAnchors.Count, branchName);
     }
 
     /// <summary>
-    /// Word can grow a section in-place because it reflows; a PPTX slide
-    /// can't — every shape has a fixed position, so each branch instead
-    /// gets its own dedicated slide. Navigation between them is two
-    /// hyperlinks (PPTX can only jump to a slide, not a position within
-    /// it): a forward reference appended into the marker's own text (so it
-    /// never needs to displace anything placed after the marker) and,
-    /// once, a backward link on the branch's slide.
+    /// Jumping to a branch never reuses an existing slide as a link target
+    /// — it always creates a fresh junction slide, so every slide-to-slide
+    /// relationship this writer ever creates has a unique target. That
+    /// matters: <see cref="OpenXmlPartContainer.AddPart{T}(T)"/> always
+    /// creates a *new* relationship even if one already exists to the same
+    /// target, so re-linking to something already linked (e.g. from
+    /// visiting the same branch twice) would otherwise leave duplicate,
+    /// redundant relationships behind for PowerPoint to clean up itself.
     /// </summary>
     public BranchActionResult JumpToAnchor(string branchName)
     {
@@ -377,18 +382,12 @@ public sealed class PowerPointFlowWriter : IFlowWriter
             return new BranchActionResult(false, _branchAnchors.Count, null);
         }
 
-        var branchColumn = GetOrCreateColumn(branchName, $"Abzweigung: {branchName}");
-
-        AppendForwardReference(anchor, branchName, branchColumn.Part);
-
-        if (!branchColumn.HasBackLink)
-        {
-            AppendBackLink(branchColumn, anchor);
-            branchColumn.HasBackLink = true;
-            EnsureSlideHeight(branchColumn.NextY + MarginPx);
-        }
+        var anchorLabel = _labels.GetValueOrDefault(anchor.NodeId, "(ohne Beschreibung)");
+        var junction = CreateJunctionSlide($"Abzweigung: {branchName}", anchor.Slide, anchorLabel);
+        AppendForwardReference(anchor, branchName, junction);
 
         _currentBranchName = branchName;
+        GetOrCreateColumnState(branchName).LastSlidePart = junction;
         Save();
 
         return new BranchActionResult(true, _branchAnchors.Count, branchName);
@@ -409,114 +408,120 @@ public sealed class PowerPointFlowWriter : IFlowWriter
         }
     }
 
-    private void AppendForwardReference(BranchAnchor anchor, string branchName, SlidePart targetSlidePart)
+    /// <summary>A small divider slide: title + a link back to wherever it was reached from.</summary>
+    private SlidePart CreateJunctionSlide(string title, SlidePart backlinkTarget, string backlinkLabel)
     {
-        if (!_columns.TryGetValue(anchor.ColumnKey, out var anchorColumn))
-        {
-            return;
-        }
+        var slidePart = CreateBlankSlide();
+        var tree = GetTree(slidePart);
+        tree.Append(BuildSectionHeading(title));
+        tree.Append(BuildBackLink(slidePart, backlinkTarget, backlinkLabel));
+        return slidePart;
+    }
 
-        var markerShape = anchorColumn.Tree.Elements<P.Shape>()
+    private void AppendForwardReference(BranchAnchor anchor, string branchName, SlidePart targetSlide)
+    {
+        var markerOrStepShape = GetTree(anchor.Slide).Elements<P.Shape>()
             .FirstOrDefault(s => s.NonVisualShapeProperties?.NonVisualDrawingProperties?.Name?.Value == anchor.NodeId);
-        if (markerShape?.TextBody is null)
+        if (markerOrStepShape?.TextBody is null)
         {
             return;
         }
 
-        var referenceText = $"→ siehe Folie „Abzweigung: {branchName}“";
-        if (markerShape.TextBody.Elements<A.Paragraph>().Any(p => p.InnerText == referenceText))
-        {
-            return; // already referenced from here
-        }
+        var relId = GetOrAddRelationshipId(anchor.Slide, targetSlide);
+        var referenceText = $"→ siehe Abzweigung „{branchName}“";
 
-        anchorColumn.Part.AddPart(targetSlidePart);
-        var relId = anchorColumn.Part.GetIdOfPart(targetSlidePart);
-
-        // A run-level hyperlink appended into the *existing* marker shape's
-        // text body — its Transform2D (position/size) is untouched, so this
-        // can never overlap whatever else was placed on the slide since the
-        // marker was created.
-        markerShape.TextBody.Append(new A.Paragraph(
+        markerOrStepShape.TextBody.Append(new A.Paragraph(
             new A.Run(
                 new A.RunProperties(new A.HyperlinkOnClick { Id = relId, Action = "ppaction://hlinksldjump" }) { Language = "de-DE", FontSize = 1200 },
                 new A.Text(referenceText))));
     }
 
-    private void AppendBackLink(ColumnState branchColumn, BranchAnchor anchor)
+    private P.Shape BuildBackLink(SlidePart sourceSlide, SlidePart targetSlide, string label)
     {
-        if (!_columns.TryGetValue(anchor.ColumnKey, out var anchorColumn))
-        {
-            return;
-        }
-
-        branchColumn.Part.AddPart(anchorColumn.Part);
-        var relId = branchColumn.Part.GetIdOfPart(anchorColumn.Part);
-        var label = _labels.GetValueOrDefault(anchor.NodeId, "(ohne Beschreibung)");
-
-        var y = branchColumn.NextY;
-        var shape = new P.Shape(
+        var relId = GetOrAddRelationshipId(sourceSlide, targetSlide);
+        return new P.Shape(
             new P.NonVisualShapeProperties(
                 new P.NonVisualDrawingProperties { Id = _nextShapeId++, Name = "backlink" },
                 new P.NonVisualShapeDrawingProperties(),
                 new P.ApplicationNonVisualDrawingProperties()),
             new P.ShapeProperties(
                 new A.Transform2D(
-                    new A.Offset { X = (long)(MarginPx * EmuPerPixel), Y = (long)(y * EmuPerPixel) },
-                    new A.Extents { Cx = (long)(NodeWidthPx * EmuPerPixel), Cy = (long)(LabelHeightPx * EmuPerPixel) }),
+                    new A.Offset { X = (long)(MarginPx * EmuPerPixel), Y = (long)((MarginPx + TitleHeightPx + 10) * EmuPerPixel) },
+                    new A.Extents { Cx = (long)(ImageAreaWidthPx * EmuPerPixel), Cy = (long)(60 * EmuPerPixel) }),
                 new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Rectangle }),
             new P.TextBody(
                 new A.BodyProperties { Wrap = A.TextWrappingValues.Square },
                 new A.ListStyle(),
                 new A.Paragraph(
                     new A.Run(
-                        new A.RunProperties(new A.HyperlinkOnClick { Id = relId, Action = "ppaction://hlinksldjump" }) { Language = "de-DE", FontSize = 1200, Italic = true },
+                        new A.RunProperties(new A.HyperlinkOnClick { Id = relId, Action = "ppaction://hlinksldjump" }) { Language = "de-DE", FontSize = 1400, Italic = true },
                         new A.Text($"↩ Ausgangspunkt: {label}")))));
-
-        branchColumn.Tree.Append(shape);
-        branchColumn.NextY = y + LabelHeightPx + SequentialSpacingPx;
     }
 
-    private P.ConnectionShape BuildConnector(double fromY, double toY)
+    /// <summary>
+    /// Reuses an existing relationship between these two parts if one is
+    /// already there, instead of always minting a new one — see the
+    /// <see cref="JumpToAnchor"/> doc comment for why that matters. Cheap
+    /// insurance: this writer's own design never actually re-links the same
+    /// pair twice, but a future change reusing a slide as a target more
+    /// than once would otherwise silently accumulate redundant relationships.
+    /// </summary>
+    private static string GetOrAddRelationshipId(OpenXmlPart source, OpenXmlPart target)
     {
-        var centerX = (long)((MarginPx + NodeWidthPx / 2) * EmuPerPixel);
-        return new P.ConnectionShape(
-            new P.NonVisualConnectionShapeProperties(
-                new P.NonVisualDrawingProperties { Id = _nextShapeId++, Name = "conn" },
-                new P.NonVisualConnectorShapeDrawingProperties(),
-                new P.ApplicationNonVisualDrawingProperties()),
-            new P.ShapeProperties(
-                new A.Transform2D(
-                    new A.Offset { X = centerX, Y = (long)(fromY * EmuPerPixel) },
-                    new A.Extents { Cx = 0, Cy = (long)((toY - fromY) * EmuPerPixel) }),
-                new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Line },
-                new A.Outline(new A.SolidFill(new A.RgbColorModelHex { Val = "9A9AA2" })) { Width = 12700 }));
+        foreach (var idPartPair in source.Parts)
+        {
+            if (ReferenceEquals(idPartPair.OpenXmlPart, target))
+            {
+                return idPartPair.RelationshipId;
+            }
+        }
+
+        source.AddPart(target);
+        return source.GetIdOfPart(target);
     }
 
-    private P.Shape BuildLabelShape(string name, string text, double y) => new(
+    private P.Shape BuildCaptionShape(string name, string eyebrow, string description) => new(
         new P.NonVisualShapeProperties(
             new P.NonVisualDrawingProperties { Id = _nextShapeId++, Name = name },
             new P.NonVisualShapeDrawingProperties(),
             new P.ApplicationNonVisualDrawingProperties()),
         new P.ShapeProperties(
             new A.Transform2D(
-                new A.Offset { X = (long)(MarginPx * EmuPerPixel), Y = (long)(y * EmuPerPixel) },
-                new A.Extents { Cx = (long)(NodeWidthPx * EmuPerPixel), Cy = (long)(LabelHeightPx * EmuPerPixel) }),
-            new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Rectangle },
-            new A.SolidFill(new A.RgbColorModelHex { Val = "F5F5F5" })),
+                new A.Offset { X = (long)(MarginPx * EmuPerPixel), Y = (long)(MarginPx * EmuPerPixel) },
+                new A.Extents { Cx = (long)(ImageAreaWidthPx * EmuPerPixel), Cy = (long)(TitleHeightPx * EmuPerPixel) }),
+            new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Rectangle }),
         new P.TextBody(
             new A.BodyProperties { Wrap = A.TextWrappingValues.Square },
             new A.ListStyle(),
-            new A.Paragraph(new A.Run(new A.RunProperties { Language = "de-DE", Bold = true, FontSize = 1400 }, new A.Text(text)))));
+            new A.Paragraph(
+                new A.Run(new A.RunProperties { Language = "de-DE", Bold = true, FontSize = 1200 }, new A.Text(eyebrow))),
+            new A.Paragraph(
+                new A.Run(new A.RunProperties { Language = "de-DE", Bold = true, FontSize = 2000 }, new A.Text(description)))));
 
-    private P.Shape BuildMarkerShape(string name, string text, double y) => new(
+    private static P.Shape BuildSectionHeading(string title) => new(
+        new P.NonVisualShapeProperties(
+            new P.NonVisualDrawingProperties { Id = 2, Name = "title" },
+            new P.NonVisualShapeDrawingProperties(),
+            new P.ApplicationNonVisualDrawingProperties()),
+        new P.ShapeProperties(
+            new A.Transform2D(
+                new A.Offset { X = (long)(MarginPx * EmuPerPixel), Y = (long)(MarginPx * EmuPerPixel) },
+                new A.Extents { Cx = (long)(ImageAreaWidthPx * EmuPerPixel), Cy = (long)(TitleHeightPx * EmuPerPixel) }),
+            new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Rectangle }),
+        new P.TextBody(
+            new A.BodyProperties { Wrap = A.TextWrappingValues.Square },
+            new A.ListStyle(),
+            new A.Paragraph(new A.Run(new A.RunProperties { Language = "de-DE", Bold = true, FontSize = 2400 }, new A.Text(title)))));
+
+    private P.Shape BuildMarkerShape(string name, string text) => new(
         new P.NonVisualShapeProperties(
             new P.NonVisualDrawingProperties { Id = _nextShapeId++, Name = name },
             new P.NonVisualShapeDrawingProperties(),
             new P.ApplicationNonVisualDrawingProperties()),
         new P.ShapeProperties(
             new A.Transform2D(
-                new A.Offset { X = (long)(MarginPx * EmuPerPixel), Y = (long)(y * EmuPerPixel) },
-                new A.Extents { Cx = (long)(NodeWidthPx * EmuPerPixel), Cy = (long)(LabelHeightPx * EmuPerPixel) }),
+                new A.Offset { X = (long)(MarginPx * EmuPerPixel), Y = (long)((SlideHeightPx - MarginPx - NoteHeightPx) * EmuPerPixel) },
+                new A.Extents { Cx = (long)(ImageAreaWidthPx * EmuPerPixel), Cy = (long)(NoteHeightPx * EmuPerPixel) }),
             new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Rectangle },
             new A.NoFill()),
         new P.TextBody(
@@ -524,26 +529,10 @@ public sealed class PowerPointFlowWriter : IFlowWriter
             new A.ListStyle(),
             new A.Paragraph(
                 new A.Run(
-                    new A.RunProperties(new A.SolidFill(new A.RgbColorModelHex { Val = "7C3AED" }))
-                    { Language = "de-DE", Bold = true, Italic = true, FontSize = 1200 },
+                    new A.RunProperties(new A.SolidFill(new A.RgbColorModelHex { Val = "7C3AED" })) { Language = "de-DE", Bold = true, Italic = true, FontSize = 1200 },
                     new A.Text(text)))));
 
-    private P.Shape BuildTitleShape(string text) => new(
-        new P.NonVisualShapeProperties(
-            new P.NonVisualDrawingProperties { Id = _nextShapeId++, Name = "title" },
-            new P.NonVisualShapeDrawingProperties(),
-            new P.ApplicationNonVisualDrawingProperties()),
-        new P.ShapeProperties(
-            new A.Transform2D(
-                new A.Offset { X = (long)(MarginPx * EmuPerPixel), Y = (long)(MarginPx * EmuPerPixel) },
-                new A.Extents { Cx = (long)(NodeWidthPx * EmuPerPixel), Cy = (long)(TitleHeightPx * EmuPerPixel) }),
-            new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Rectangle }),
-        new P.TextBody(
-            new A.BodyProperties { Wrap = A.TextWrappingValues.Square },
-            new A.ListStyle(),
-            new A.Paragraph(new A.Run(new A.RunProperties { Language = "de-DE", Bold = true, FontSize = 2000 }, new A.Text(text)))));
-
-    private P.Picture BuildImageShape(SlidePart slidePart, Bitmap screenshot, double y, double heightPx)
+    private P.Picture BuildImageShape(SlidePart slidePart, Bitmap screenshot)
     {
         var imagePart = slidePart.AddImagePart(ImagePartType.Png);
         using (var ms = new MemoryStream())
@@ -552,6 +541,12 @@ public sealed class PowerPointFlowWriter : IFlowWriter
             ms.Position = 0;
             imagePart.FeedData(ms);
         }
+
+        var scale = Math.Min(ImageAreaWidthPx / screenshot.Width, ImageAreaHeightPx / screenshot.Height);
+        var imgWidthPx = screenshot.Width * scale;
+        var imgHeightPx = screenshot.Height * scale;
+        var x = (SlideWidthPx - imgWidthPx) / 2;
+        var y = ImageTopPx + (ImageAreaHeightPx - imgHeightPx) / 2;
 
         var relId = slidePart.GetIdOfPart(imagePart);
         return new P.Picture(
@@ -562,18 +557,15 @@ public sealed class PowerPointFlowWriter : IFlowWriter
             new P.BlipFill(new A.Blip { Embed = relId }, new A.Stretch(new A.FillRectangle())),
             new P.ShapeProperties(
                 new A.Transform2D(
-                    new A.Offset { X = (long)(MarginPx * EmuPerPixel), Y = (long)(y * EmuPerPixel) },
-                    new A.Extents { Cx = (long)(NodeWidthPx * EmuPerPixel), Cy = (long)(heightPx * EmuPerPixel) }),
+                    new A.Offset { X = (long)(x * EmuPerPixel), Y = (long)(y * EmuPerPixel) },
+                    new A.Extents { Cx = (long)(imgWidthPx * EmuPerPixel), Cy = (long)(imgHeightPx * EmuPerPixel) }),
                 new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Rectangle }));
     }
 
-    private ColumnState GetOrCreateColumn(string columnKey, string title)
-    {
-        if (_columns.TryGetValue(columnKey, out var existing))
-        {
-            return existing;
-        }
+    private static P.ShapeTree GetTree(SlidePart slidePart) => slidePart.Slide!.CommonSlideData!.ShapeTree!;
 
+    private SlidePart CreateBlankSlide()
+    {
         var presentationPart = _pptDoc!.PresentationPart!;
         var slidePart = presentationPart.AddNewPart<SlidePart>();
         slidePart.AddPart(_slideLayoutPart!);
@@ -585,33 +577,12 @@ public sealed class PowerPointFlowWriter : IFlowWriter
                 new P.ApplicationNonVisualDrawingProperties()),
             new P.GroupShapeProperties());
 
-        tree.Append(BuildTitleShape(title));
-
         slidePart.Slide = new P.Slide(new P.CommonSlideData(tree), new P.ColorMapOverride(new A.MasterColorMapping()));
 
         var slideIdList = presentationPart.Presentation!.SlideIdList!;
         slideIdList.Append(new P.SlideId { Id = _nextSlideId++, RelationshipId = presentationPart.GetIdOfPart(slidePart) });
 
-        var column = new ColumnState
-        {
-            Part = slidePart,
-            Tree = tree,
-            NextY = MarginPx + TitleHeightPx + SequentialSpacingPx,
-            LastShapeName = null
-        };
-        _columns[columnKey] = column;
-        return column;
-    }
-
-    private void EnsureSlideHeight(double requiredPx)
-    {
-        if (requiredPx <= _slideHeightPx)
-        {
-            return;
-        }
-
-        _slideHeightPx = requiredPx;
-        _pptDoc!.PresentationPart!.Presentation!.SlideSize!.Cy = (int)(_slideHeightPx * EmuPerPixel);
+        return slidePart;
     }
 
     private static string ExtractShapeText(P.Shape shape) =>
@@ -681,8 +652,8 @@ public sealed class PowerPointFlowWriter : IFlowWriter
         presentationPart.Presentation.Append(new P.SlideIdList());
         presentationPart.Presentation.Append(new P.SlideSize
         {
-            Cx = (int)((NodeWidthPx + 2 * MarginPx) * EmuPerPixel),
-            Cy = (int)(InitialSlideHeightPx * EmuPerPixel)
+            Cx = (int)(SlideWidthPx * EmuPerPixel),
+            Cy = (int)(SlideHeightPx * EmuPerPixel)
         });
         presentationPart.Presentation.Append(new P.NotesSize { Cx = 6858000, Cy = 9144000 });
     }
