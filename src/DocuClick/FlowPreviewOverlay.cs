@@ -25,10 +25,12 @@ namespace DocuClick;
 
 /// <summary>
 /// Freely draggable, semi-transparent minimap of the current flow (Canvas/
-/// draw.io/Excalidraw modes): every node as a small square positioned to
-/// scale, connector lines between them, and the node the next click will
-/// connect from highlighted — so it's always visible at a glance where "you
-/// are" in a long, branching flow without opening the actual file.
+/// draw.io/Excalidraw modes): every node as a small square laid out in a
+/// row/column grid derived from the flow's graph structure (see
+/// <see cref="UpdatePreview"/>), connector lines between them, and the node
+/// the next click will connect from highlighted — so it's always visible at
+/// a glance where "you are" in a long, branching flow without opening the
+/// actual file.
 ///
 /// Also doubles as a navigation tool: clicking any node jumps the recording
 /// cursor there (<see cref="NodeClicked"/>), the same way "Branch
@@ -54,6 +56,13 @@ public sealed class FlowPreviewOverlay : Window
     private const double CurrentNodeHeight = 20;
     private const double MinSizeScale = 0.8;
     private const double MaxSizeScale = 2.5;
+
+    // Floors for the grid layout in UpdatePreview: below these, rows/columns
+    // stop shrinking and the canvas grows past the visible panel instead —
+    // scrolling to see more beats every node shrinking into an unreadable,
+    // unclickable smear once a flow has enough steps or branches.
+    private const double MinRowSpacing = 24;
+    private const double MinColumnSpacing = 60;
 
     // Same accent palette as DrawIoFlowWriter's branch colors, reused here
     // so a branch's minimap dot and its actual card color line up in
@@ -155,21 +164,34 @@ public sealed class FlowPreviewOverlay : Window
             HorizontalAlignment = HorizontalAlignment.Center
         };
 
-        var canvasArea = new Grid { ClipToBounds = true };
-        canvasArea.Children.Add(_canvas);
-        canvasArea.Children.Add(_emptyHint);
+        // The canvas itself is now content-sized (see UpdatePreview) rather
+        // than stretched to fill the panel, so a flow with more steps/
+        // branches than comfortably fit can grow past the visible area and
+        // scroll instead of every node shrinking to illegibility.
+        var scrollViewer = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = _canvas
+        };
 
-        // Node positions are normalized against the canvas's actual
-        // current size, so growing the window via the resize grip spreads
-        // the same nodes across more space instead of leaving them
-        // clustered in a corner.
-        _canvas.SizeChanged += (_, _) => UpdatePreview(_lastPreview);
+        var canvasArea = new Grid { ClipToBounds = true };
+        canvasArea.Children.Add(scrollViewer);
+        canvasArea.Children.Add(_emptyHint);
 
         _canvasHost = new Border
         {
             Margin = new Thickness(Padding, 0, Padding, Padding),
             Child = canvasArea
         };
+
+        // Reacts to the *viewport* growing/shrinking (dragging the resize
+        // grip), not the canvas's own content size — the canvas is
+        // content-sized now, so listening to its own SizeChanged would
+        // mean "redo the layout because the layout changed its size",
+        // which only wastes a redundant pass instead of responding to
+        // anything the user did.
+        _canvasHost.SizeChanged += (_, _) => UpdatePreview(_lastPreview);
 
         var resizeGrip = new Rectangle
         {
@@ -313,11 +335,21 @@ public sealed class FlowPreviewOverlay : Window
     }
 
     /// <summary>
-    /// Redraws the minimap from scratch: all node positions are normalized
-    /// into the fixed panel size (nodes vary a lot in real size/spacing
-    /// across output modes, so a to-scale rendering would make most of them
-    /// vanish to sub-pixel size in a long flow — uniform squares connected
-    /// by lines stay legible and clickable regardless of flow length).
+    /// Redraws the minimap from scratch using a layout derived purely from
+    /// the flow's graph topology — NOT the real x/y coordinates the active
+    /// output writer (Canvas/draw.io/Excalidraw) uses for its own file.
+    /// Those real coordinates reflect actual card sizes and spacing in that
+    /// file, which vary wildly and are dominated by whichever two nodes
+    /// happen to be furthest apart; normalizing directly against them (the
+    /// previous approach) meant one distant outlier could compress every
+    /// other node into an unreadable sliver. Instead: every node's row is
+    /// its depth from the flow's start (one step down per edge) and its
+    /// column is which branch it belongs to (0 = main flow, 1.. = each
+    /// named branch in first-seen order) — spacing is then derived purely
+    /// from row/column counts, so it fills the panel evenly regardless of
+    /// how the real file happens to be laid out. Rows/columns below a
+    /// legible minimum stop shrinking and the canvas scrolls instead (see
+    /// <see cref="MinRowSpacing"/>/<see cref="MinColumnSpacing"/>).
     /// </summary>
     public void UpdatePreview(FlowPreview preview)
     {
@@ -327,101 +359,127 @@ public sealed class FlowPreviewOverlay : Window
         if (preview.Nodes.Count == 0)
         {
             _emptyHint.Visibility = Visibility.Visible;
+            _canvas.Width = 0;
+            _canvas.Height = 0;
             return;
         }
 
         _emptyHint.Visibility = Visibility.Collapsed;
 
-        // Falls back to the initial content size before the first layout
-        // pass has run (ActualWidth/Height are still 0 at that point).
-        var canvasWidth = _canvas.ActualWidth > 0 ? _canvas.ActualWidth : PanelWidth;
-        var canvasHeight = _canvas.ActualHeight > 0 ? _canvas.ActualHeight : PanelHeight;
+        // The *viewport* size (falls back to the initial content size
+        // before the first layout pass has run, when it's still 0).
+        var viewportWidth = _canvasHost.ActualWidth > 0 ? _canvasHost.ActualWidth : PanelWidth;
+        var viewportHeight = _canvasHost.ActualHeight > 0 ? _canvasHost.ActualHeight : PanelHeight;
 
-        var minX = preview.Nodes.Min(n => n.X);
-        var minY = preview.Nodes.Min(n => n.Y);
-        var maxX = preview.Nodes.Max(n => n.X + n.Width);
-        var maxY = preview.Nodes.Max(n => n.Y + n.Height);
-        var spanX = Math.Max(maxX - minX, 1);
-        var spanY = Math.Max(maxY - minY, 1);
+        // Row = depth from the flow's start (root nodes with no inbound
+        // edge get row 0), computed via BFS over the edge graph rather than
+        // trusting list order — a node's row is always exactly one more
+        // than whatever node points into it.
+        var forward = preview.Edges
+            .GroupBy(e => e.FromId)
+            .ToDictionary(g => g.Key, g => g.Select(e => e.ToId).ToList());
+        var hasInbound = preview.Edges.Select(e => e.ToId).ToHashSet();
 
-        // Grows node size together with the panel (not just the spacing
-        // between them) — clamped so a tiny window doesn't shrink nodes to
-        // illegibility and a huge one doesn't blow them up absurdly. This is
-        // only a starting point for the layout margin below; the actual
-        // rendered size gets capped further down so nodes can never overlap.
-        var tentativeSizeScale = Math.Clamp(Math.Min(canvasWidth / PanelWidth, canvasHeight / PanelHeight), MinSizeScale, MaxSizeScale);
-        var tentativeHalfExtent = Math.Max(CurrentNodeWidth, CurrentNodeHeight) * tentativeSizeScale / 2;
-
-        var drawableWidth = canvasWidth - tentativeHalfExtent * 2;
-        var drawableHeight = canvasHeight - tentativeHalfExtent * 2;
-
-        // Separate X/Y scale factors instead of one shared "min of both"
-        // factor: with many branch columns, horizontal span grows a lot
-        // (each branch is its own column), which used to force the
-        // *vertical* spacing down too even though the sequential main flow
-        // had plenty of vertical room — branching sideways no longer
-        // squeezes the unrelated vertical layout.
-        var scaleX = drawableWidth / spanX;
-        var scaleY = drawableHeight / spanY;
-
-        (double X, double Y) ToCanvas(double x, double y) => (
-            tentativeHalfExtent + (x - minX) * scaleX,
-            tentativeHalfExtent + (y - minY) * scaleY);
-
-        var centers = preview.Nodes.ToDictionary(n => n.Id, n => ToCanvas(n.X + n.Width / 2, n.Y + n.Height / 2));
-
-        // Nodes must never collide, however tight the flow's real layout
-        // is — cap the rendered size (never the position) so every pair of
-        // nodes fits within its own on-screen distance. Per-pair (not one
-        // global worst case using the biggest possible node size): most
-        // nodes are the small regular kind, so a tight regular/regular pair
-        // shouldn't be constrained as if it were the much bigger
-        // current-node box — that was massively over-shrinking everything
-        // for the sake of the one node that's actually bigger.
-        double HalfDiagonal(PreviewNode n)
+        var rowOf = new Dictionary<string, int>();
+        var bfsQueue = new Queue<string>();
+        foreach (var node in preview.Nodes)
         {
-            var w = n.IsCurrent ? CurrentNodeWidth : NodeWidth;
-            var h = n.IsCurrent ? CurrentNodeHeight : NodeHeight;
-            return Math.Sqrt(w * w + h * h) / 2;
+            if (!hasInbound.Contains(node.Id))
+            {
+                rowOf[node.Id] = 0;
+                bfsQueue.Enqueue(node.Id);
+            }
         }
 
-        const double CollisionMargin = 0.85; // leave a visible gap, not just "not touching"
-        var nodeList = preview.Nodes;
-        var collisionSafeScale = double.PositiveInfinity;
-        for (var i = 0; i < nodeList.Count; i++)
+        while (bfsQueue.Count > 0)
         {
-            var centerI = centers[nodeList[i].Id];
-            var halfDiagonalI = HalfDiagonal(nodeList[i]);
-            for (var j = i + 1; j < nodeList.Count; j++)
+            var id = bfsQueue.Dequeue();
+            if (!forward.TryGetValue(id, out var children))
             {
-                var centerJ = centers[nodeList[j].Id];
-                var dx = centerI.X - centerJ.X;
-                var dy = centerI.Y - centerJ.Y;
-                var distance = Math.Sqrt(dx * dx + dy * dy);
-                var sumHalfDiagonals = halfDiagonalI + HalfDiagonal(nodeList[j]);
-                if (sumHalfDiagonals <= 0)
+                continue;
+            }
+
+            foreach (var child in children)
+            {
+                if (rowOf.ContainsKey(child))
                 {
                     continue;
                 }
 
-                var pairSafeScale = distance * CollisionMargin / sumHalfDiagonals;
-                if (pairSafeScale < collisionSafeScale)
-                {
-                    collisionSafeScale = pairSafeScale;
-                }
+                rowOf[child] = rowOf[id] + 1;
+                bfsQueue.Enqueue(child);
             }
         }
 
-        if (double.IsPositiveInfinity(collisionSafeScale))
+        // Defensive: any node the BFS above never reached (shouldn't
+        // happen for a tree-shaped flow, but a stray disconnected node
+        // must not throw a KeyNotFoundException below) just lands at row 0.
+        foreach (var node in preview.Nodes)
         {
-            collisionSafeScale = tentativeSizeScale; // nothing to collide with (0 or 1 node)
+            rowOf.TryAdd(node.Id, 0);
         }
 
-        var sizeScale = Math.Clamp(Math.Min(tentativeSizeScale, collisionSafeScale), 0.4, MaxSizeScale);
+        // Column = which branch (0 = main flow, otherwise the branch's
+        // first-seen order among the nodes) — BranchName is already tagged
+        // onto every node by FlowPreviewBranching.TagBranches before this
+        // preview reaches the overlay.
+        var columnOfBranch = new Dictionary<string, int>();
+        var columnOf = new Dictionary<string, int>();
+        foreach (var node in preview.Nodes)
+        {
+            if (node.BranchName is { } branch)
+            {
+                if (!columnOfBranch.TryGetValue(branch, out var column))
+                {
+                    column = columnOfBranch.Count + 1;
+                    columnOfBranch[branch] = column;
+                }
+
+                columnOf[node.Id] = column;
+            }
+            else
+            {
+                columnOf[node.Id] = 0;
+            }
+        }
+
+        var columnCount = columnOfBranch.Count + 1;
+        var maxRow = rowOf.Values.Max();
+
+        // Slot sizes never shrink below a legible floor — once the panel
+        // is too small to fit every row/column at that floor, the canvas
+        // grows past the viewport and the ScrollViewer around it takes
+        // over instead of squeezing nodes into an unreadable smear.
+        var rowSpacing = Math.Max(MinRowSpacing, viewportHeight / Math.Max(1, maxRow));
+        var columnSpacing = Math.Max(MinColumnSpacing, viewportWidth / columnCount);
+
+        // Node size still grows with the window (bigger panel → bigger,
+        // easier-to-click nodes), but is now also capped by whichever slot
+        // dimension (row or column) is currently tightest, using the
+        // bigger current-node box as the worst case so a regular node
+        // (which is smaller) is guaranteed to fit too.
+        var windowSizeScale = Math.Clamp(Math.Min(viewportWidth / PanelWidth, viewportHeight / PanelHeight), MinSizeScale, MaxSizeScale);
+        var slotFitScale = Math.Min(rowSpacing / CurrentNodeHeight, columnSpacing / CurrentNodeWidth) * 0.7;
+        var sizeScale = Math.Clamp(Math.Min(windowSizeScale, slotFitScale), 0.5, MaxSizeScale);
+
         var nodeWidth = NodeWidth * sizeScale;
         var nodeHeight = NodeHeight * sizeScale;
         var currentNodeWidth = CurrentNodeWidth * sizeScale;
         var currentNodeHeight = CurrentNodeHeight * sizeScale;
+
+        var halfExtentX = Math.Max(currentNodeWidth, nodeWidth) / 2 + 6;
+        var halfExtentY = Math.Max(currentNodeHeight, nodeHeight) / 2 + 6;
+
+        var contentWidth = Math.Max(viewportWidth, columnCount * columnSpacing + halfExtentX * 2);
+        var contentHeight = Math.Max(viewportHeight, maxRow * rowSpacing + halfExtentY * 2);
+        _canvas.Width = contentWidth;
+        _canvas.Height = contentHeight;
+
+        (double X, double Y) GridPosition(string nodeId) => (
+            halfExtentX + columnOf[nodeId] * columnSpacing + columnSpacing / 2,
+            halfExtentY + rowOf[nodeId] * rowSpacing);
+
+        var centers = preview.Nodes.ToDictionary(n => n.Id, n => GridPosition(n.Id));
 
         var edgeBrush = new SolidColorBrush(Color.FromArgb(130, 255, 255, 255));
         foreach (var edge in preview.Edges)
@@ -443,10 +501,9 @@ public sealed class FlowPreviewOverlay : Window
 
             // A midpoint arrowhead instead of one at either endpoint: at
             // either end it would sit right on top of (or under) a node
-            // square, especially once nodes shrink under the collision-
-            // avoidance scaling above — the midpoint always has clear space
-            // around it and still unambiguously shows which way the flow
-            // runs without having to trace the color/branch of each node.
+            // square — the midpoint always has clear space around it and
+            // still unambiguously shows which way the flow runs without
+            // having to trace the color/branch of each node.
             var dx = to.X - from.X;
             var dy = to.Y - from.Y;
             var length = Math.Sqrt(dx * dx + dy * dy);
@@ -479,6 +536,7 @@ public sealed class FlowPreviewOverlay : Window
             _canvas.Children.Add(arrowHead);
         }
 
+        Rectangle? currentSquare = null;
         foreach (var node in preview.Nodes)
         {
             var center = centers[node.Id];
@@ -518,6 +576,11 @@ public sealed class FlowPreviewOverlay : Window
 
             _canvas.Children.Add(square);
 
+            if (node.IsCurrent)
+            {
+                currentSquare = square;
+            }
+
             // Hovering shows the full label for any node, but branch
             // markers and "you are here" are what people actually need to
             // spot at a glance — so those two get a permanent text label
@@ -539,10 +602,30 @@ public sealed class FlowPreviewOverlay : Window
                     Padding = new Thickness(3, 1, 3, 1),
                     IsHitTestVisible = false
                 };
-                Canvas.SetLeft(label, center.X + width / 2 + 4);
+
+                // Measuring gives DesiredSize without needing a layout pass,
+                // so a node sitting in the rightmost column (rightmost
+                // node's label used to just run off the edge and get
+                // clipped, unreadable — see the "Ablauf-Übersicht" bug
+                // report) flips its label to the left instead of overflowing.
+                label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                var labelWidth = label.DesiredSize.Width;
+                var fitsOnRight = center.X + width / 2 + 4 + labelWidth <= contentWidth;
+                Canvas.SetLeft(label, fitsOnRight ? center.X + width / 2 + 4 : center.X - width / 2 - 4 - labelWidth);
                 Canvas.SetTop(label, center.Y - 8);
                 _canvas.Children.Add(label);
             }
+        }
+
+        // Auto-scrolls the ScrollViewer so "you are here" is always in
+        // view after a redraw, without the user having to manually scroll
+        // down to find it in a long flow — BringIntoView walks up to the
+        // nearest ScrollViewer ancestor on its own. Deferred to Loaded
+        // priority: the square was only just added, so it needs one layout
+        // pass before its position is something BringIntoView can act on.
+        if (currentSquare is { } toReveal)
+        {
+            Dispatcher.BeginInvoke(new Action(() => toReveal.BringIntoView()), System.Windows.Threading.DispatcherPriority.Loaded);
         }
     }
 

@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Shapes;
 
 // UseWindowsForms implicitly brings System.Drawing/Windows.Forms into every
 // file too; combined with the System.Windows(.Media) usings above, several
@@ -29,9 +30,10 @@ namespace DocuClick;
 /// </summary>
 public sealed class TopBarWindow : Window
 {
-    internal const double BarHeight = 26;
+    internal const double BarHeight = 28;
     private const double CornerRadius = BarHeight / 2;
 
+    private readonly Ellipse _statusDot;
     private readonly TextBlock _statusText;
     private readonly Button _toggleRecordingButton;
     private readonly Button _markBranchButton;
@@ -62,13 +64,37 @@ public sealed class TopBarWindow : Window
         // screen edge.
         Top = bounds.Top + 6;
 
+        // Small state dot ahead of the status text — same red used for
+        // "recording" everywhere else in the app (RecordingIndicatorOverlay,
+        // the minimap's "current node" box) so the color already means
+        // something to the eye before reading a single word, and idle/
+        // recording is tellable at a glance even at a distance where the
+        // text itself isn't legible.
+        _statusDot = new Ellipse
+        {
+            Width = 8,
+            Height = 8,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0)
+        };
+
         _statusText = new TextBlock
         {
             Foreground = Brushes.White,
             FontSize = 11,
+            FontWeight = FontWeights.SemiBold,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(12, 0, 10, 0)
+            Margin = new Thickness(0, 0, 4, 0)
         };
+
+        var statusGroup = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(12, 0, 0, 0)
+        };
+        statusGroup.Children.Add(_statusDot);
+        statusGroup.Children.Add(_statusText);
 
         var buttonStyle = BuildButtonStyle();
 
@@ -92,26 +118,71 @@ public sealed class TopBarWindow : Window
         _zoomToCursorButton.Click += (_, _) => ZoomToCursorToggleRequested?.Invoke();
 
         var panel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        panel.Children.Add(_statusText);
+        panel.Children.Add(statusGroup);
+        panel.Children.Add(CreateSeparator());
         panel.Children.Add(_toggleRecordingButton);
         panel.Children.Add(_markBranchButton);
         panel.Children.Add(_jumpBranchButton);
+        panel.Children.Add(CreateSeparator());
         panel.Children.Add(_newSessionButton);
+        panel.Children.Add(CreateSeparator());
         panel.Children.Add(_zoomToCursorButton);
 
-        // Same accent blue as every dialog window (Settings, session start,
-        // ...) instead of the previous, slightly different toolbar blue —
-        // one accent color across the whole app rather than two near-
-        // identical ones. Fully rounded (stadium shape) now that the bar
-        // floats free instead of sitting flush against the screen edge,
-        // with a soft drop shadow so it visually lifts off whatever
-        // window/desktop is behind it instead of looking pasted on.
+        // A subtle top-to-bottom gradient (instead of a flat fill) plus a
+        // glossy highlight strip across the upper half give the pill some
+        // depth instead of reading as a flat-colored sticker; same accent
+        // blue family as every dialog window otherwise. Fully rounded
+        // (stadium shape) since the bar floats free instead of sitting
+        // flush against the screen edge, with a soft drop shadow so it
+        // visually lifts off whatever window/desktop is behind it.
+        var background = new LinearGradientBrush
+        {
+            StartPoint = new System.Windows.Point(0, 0),
+            EndPoint = new System.Windows.Point(0, 1),
+            GradientStops =
+            {
+                new GradientStop(Color.FromRgb(0x3E, 0x7C, 0xEA), 0.0),
+                new GradientStop(Color.FromRgb(0x2D, 0x6C, 0xDF), 0.55),
+                new GradientStop(Color.FromRgb(0x25, 0x5C, 0xC4), 1.0)
+            }
+        };
+
+        var glossHighlight = new Border
+        {
+            IsHitTestVisible = false,
+            VerticalAlignment = VerticalAlignment.Top,
+            Height = BarHeight * 0.55,
+            // Top corners rounded to match the pill's own CornerRadius,
+            // bottom corners square: FrameworkElement.ClipToBounds only
+            // clips to a plain rectangle, not a Border's rounded geometry,
+            // so without this the highlight's flat rectangular top edge
+            // would poke small square corners past the pill's rounded
+            // silhouette. Square bottom corners are fine — that edge sits
+            // inside the pill body, nowhere near its outer boundary.
+            CornerRadius = new System.Windows.CornerRadius(CornerRadius, CornerRadius, 0, 0),
+            Background = new LinearGradientBrush
+            {
+                StartPoint = new System.Windows.Point(0, 0),
+                EndPoint = new System.Windows.Point(0, 1),
+                GradientStops =
+                {
+                    new GradientStop(Color.FromArgb(55, 255, 255, 255), 0.0),
+                    new GradientStop(Color.FromArgb(0, 255, 255, 255), 1.0)
+                }
+            }
+        };
+
+        var pillContent = new Grid();
+        pillContent.Children.Add(glossHighlight);
+        pillContent.Children.Add(panel);
+
         var border = new Border
         {
-            Background = new SolidColorBrush(Color.FromRgb(0x2D, 0x6C, 0xDF)),
+            Background = background,
             CornerRadius = new System.Windows.CornerRadius(CornerRadius),
             Height = BarHeight,
-            Child = panel,
+            ClipToBounds = true,
+            Child = pillContent,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
                 Color = Colors.Black,
@@ -182,6 +253,14 @@ public sealed class TopBarWindow : Window
         ToolTip = tooltip
     };
 
+    /// <summary>Thin vertical divider between logical button groups (recording/branching, session, zoom) instead of one undifferentiated row.</summary>
+    private static Border CreateSeparator() => new()
+    {
+        Width = 1,
+        Margin = new Thickness(2, 6, 8, 6),
+        Background = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255))
+    };
+
     /// <summary>
     /// Frosted-glass pill buttons (semi-transparent white on the bar's
     /// blue) instead of default Windows button chrome, with hover/disabled
@@ -237,6 +316,13 @@ public sealed class TopBarWindow : Window
         _jumpBranchButton.IsEnabled = isRecording && supportsBranching;
         // "Neue Session" is always clickable: with no recording running it
         // just behaves like Start (see App.OnNewSessionRequested).
+
+        // Same red as RecordingIndicatorOverlay/the minimap's "current node"
+        // box when active; a dim translucent white at rest so it reads as
+        // "off" without looking like an error state.
+        _statusDot.Fill = isRecording
+            ? new SolidColorBrush(Color.FromRgb(0xE6, 0x39, 0x46))
+            : new SolidColorBrush(Color.FromArgb(90, 255, 255, 255));
 
         var baseText = isRecording ? "DocuClick – Aufnahme läuft" : "DocuClick – Aufnahme gestoppt";
         _statusText.Text = detail is null ? baseText : $"{baseText} · {detail}";
