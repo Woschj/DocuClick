@@ -45,7 +45,13 @@ public sealed class CanvasFlowWriter : IFlowWriter
     private const string BranchMarkerPrefix = "◆ Branch: ";
     private const string BranchMarkerColor = "6"; // Obsidian canvas preset color slot ("purple"), just to stand out
 
-    private sealed record BranchAnchor(string Name, string NodeId, double X, double Y);
+    // TipNodeId/TipX/TipY track where this branch's cursor currently is —
+    // initially the marker itself (in its own freshly opened column, set
+    // up by MarkBranchAnchor), then whichever node AddClickNode most
+    // recently added while this branch was active. Re-visiting a branch
+    // via JumpToAnchor always resumes from here, in the SAME column,
+    // instead of re-deriving a stale position from the marker every time.
+    private sealed record BranchAnchor(string Name, string TipNodeId, double TipX, double TipY);
 
     private readonly AppConfig _config;
     private readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
@@ -114,7 +120,11 @@ public sealed class CanvasFlowWriter : IFlowWriter
 
         // Rebuild branch anchors by scanning for their marker nodes (see
         // MarkBranchAnchor) instead of relying on in-memory state, so a
-        // Stop()/Start() cycle on the same file doesn't lose them.
+        // Stop()/Start() cycle on the same file doesn't lose them. Each
+        // anchor's tip is resolved by walking forward from the marker
+        // along whatever's already connected to it — otherwise every
+        // reload would forget how far a branch had actually grown and
+        // reset it back to "just marked".
         _branchAnchors.Clear();
         foreach (var n in _doc.Nodes
             .Where(n => n.Text is not null && n.Text.StartsWith(BranchMarkerPrefix, StringComparison.Ordinal))
@@ -126,7 +136,8 @@ public sealed class CanvasFlowWriter : IFlowWriter
                 continue;
             }
 
-            AddOrReplaceAnchor(new BranchAnchor(branchName, n.Id, n.X, n.Y));
+            var tip = FindBranchTip(n);
+            AddOrReplaceAnchor(new BranchAnchor(branchName, tip.Id, tip.X, tip.Y));
         }
 
         if (_pendingResumeAnchor is { } resume && _doc.Nodes.Any(n => n.Id == resume.NodeId))
@@ -218,6 +229,14 @@ public sealed class CanvasFlowWriter : IFlowWriter
         _cursorNodeId = textNode.Id;
         _cursorY = newY;
 
+        // Keeps the active branch's anchor pointing at wherever it was
+        // actually just extended to, so the next JumpToAnchor to it
+        // resumes from here instead of jumping back to a stale position.
+        if (_currentBranchName is { } branchName)
+        {
+            AddOrReplaceAnchor(new BranchAnchor(branchName, textNode.Id, _cursorX, newY));
+        }
+
         Save();
     }
 
@@ -263,7 +282,11 @@ public sealed class CanvasFlowWriter : IFlowWriter
             ToNode = marker.Id
         });
 
-        AddOrReplaceAnchor(new BranchAnchor(branchName, marker.Id, marker.X, marker.Y));
+        // Opens the branch's own column right here, once, at creation —
+        // see JumpToAnchor's doc comment for why re-visiting the same
+        // branch later must NOT do this again.
+        _nextColumnX += NodeWidth + BranchColumnSpacing;
+        AddOrReplaceAnchor(new BranchAnchor(branchName, marker.Id, _nextColumnX, markerY));
         Save();
 
         return JumpToAnchor(branchName);
@@ -271,7 +294,15 @@ public sealed class CanvasFlowWriter : IFlowWriter
 
     public List<string> ListBranchAnchorNames() => _branchAnchors.Select(a => a.Name).ToList();
 
-    /// <summary>Moves the cursor to the named anchor and opens a new column so the branch doesn't overlap the existing flow.</summary>
+    /// <summary>
+    /// Moves the cursor to the branch's current tip — MarkBranchAnchor
+    /// already opened its column when the branch was created, so this
+    /// only ever resumes there; it must NOT open another new column on
+    /// every visit, which used to both fork a disconnected extra column
+    /// per re-visit AND reset the position back to the marker's original
+    /// spot, overlapping/overwriting whatever had already been added to
+    /// the branch since.
+    /// </summary>
     public BranchActionResult JumpToAnchor(string branchName)
     {
         var anchor = _branchAnchors.FirstOrDefault(a => a.Name == branchName);
@@ -280,10 +311,9 @@ public sealed class CanvasFlowWriter : IFlowWriter
             return new BranchActionResult(false, _branchAnchors.Count, null);
         }
 
-        _nextColumnX += NodeWidth + BranchColumnSpacing;
-        _cursorNodeId = anchor.NodeId;
-        _cursorX = _nextColumnX;
-        _cursorY = anchor.Y;
+        _cursorNodeId = anchor.TipNodeId;
+        _cursorX = anchor.TipX;
+        _cursorY = anchor.TipY;
         _currentBranchName = branchName;
 
         return new BranchActionResult(true, _branchAnchors.Count, branchName);
@@ -317,9 +347,26 @@ public sealed class CanvasFlowWriter : IFlowWriter
         _cursorNodeId = node.Id;
         _cursorX = _nextColumnX;
         _cursorY = node.Y;
-        _currentBranchName = _branchAnchors.FirstOrDefault(a => a.NodeId == node.Id)?.Name;
+        _currentBranchName = _branchAnchors.FirstOrDefault(a => a.TipNodeId == node.Id)?.Name;
 
         return new BranchActionResult(true, _branchAnchors.Count, _currentBranchName);
+    }
+
+    /// <summary>Follows the single-child edge chain from <paramref name="start"/> as far as it goes, for rebuilding a branch's tip after a Stop()/Start() cycle (see StartSession).</summary>
+    private (string Id, double X, double Y) FindBranchTip(CanvasNode start)
+    {
+        var current = start;
+        while (true)
+        {
+            var nextEdge = _doc.Edges.FirstOrDefault(e => e.FromNode == current.Id);
+            var nextNode = nextEdge is null ? null : _doc.Nodes.FirstOrDefault(n => n.Id == nextEdge.ToNode);
+            if (nextNode is null)
+            {
+                return (current.Id, current.X, current.Y);
+            }
+
+            current = nextNode;
+        }
     }
 
     private void AddOrReplaceAnchor(BranchAnchor anchor)

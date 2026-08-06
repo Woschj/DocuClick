@@ -150,7 +150,13 @@ public sealed class FlowPreviewOverlay : Window
         header.Children.Add(titleText);
         DockPanel.SetDock(header, Dock.Top);
 
-        _canvas = new Canvas();
+        // Transparent (not null/unset) Background: WPF only hit-tests a
+        // panel's empty space when it actually has a Background brush —
+        // without this, clicks that don't land on a node square never
+        // reach any handler at all (not even bubbling to the ScrollViewer
+        // below), which is why drag-panning silently did nothing while the
+        // mouse wheel — routed differently — still worked.
+        _canvas = new Canvas { Background = Brushes.Transparent };
 
         _emptyHint = new TextBlock
         {

@@ -68,7 +68,7 @@ public partial class App : Application
         _topBar.ZoomToCursorToggleRequested += () => _sessionManager?.ToggleZoomToCursor();
         _topBar.Show();
 
-        _sessionManager.ZoomToCursorChanged += active => Dispatcher.Invoke(() => _topBar?.UpdateZoomToCursorState(active));
+        _sessionManager.ZoomToCursorChanged += active => Dispatcher.BeginInvoke(() => _topBar?.UpdateZoomToCursorState(active));
 
         // Clicks on any of DocuClick's own interactive windows (top bar,
         // branch dialogs, session-start picker, settings, ...) or the tray
@@ -148,17 +148,17 @@ public partial class App : Application
     {
         // These events fire from a background Task, but NotifyIcon must
         // be touched from the UI thread it was created on.
-        Dispatcher.Invoke(() => _trayApp?.ShowError(message));
+        Dispatcher.BeginInvoke(() => _trayApp?.ShowError(message));
     }
 
     private void OnSessionInfo(string message)
     {
-        Dispatcher.Invoke(() => _trayApp?.ShowInfo(message));
+        Dispatcher.BeginInvoke(() => _trayApp?.ShowInfo(message));
     }
 
     private void OnBranchDepthChanged(int depth)
     {
-        Dispatcher.Invoke(() =>
+        Dispatcher.BeginInvoke(() =>
         {
             _trayApp?.SetBranchDepth(depth);
             var currentBranch = _sessionManager!.CurrentBranchName;
@@ -228,7 +228,7 @@ public partial class App : Application
 
     private void OnCanvasStatusChanged(string? statusText)
     {
-        Dispatcher.Invoke(() =>
+        Dispatcher.BeginInvoke(() =>
         {
             if (statusText is null)
             {
@@ -244,13 +244,13 @@ public partial class App : Application
 
     private void OnLastScreenshotCaptured(byte[] pngBytes)
     {
-        // This event fires from a background Task (see SessionManager);
+        // This event fires from SessionManager's dedicated writer thread;
         // the overlay is WPF UI and must only be touched from its own
         // thread. Only relevant to modes that show the status overlay in
         // the first place (see OnCanvasStatusChanged) — for plain Note
         // mode the overlay is never shown, so updating a hidden thumbnail
         // would be pointless work on every single click.
-        Dispatcher.Invoke(() =>
+        Dispatcher.BeginInvoke(() =>
         {
             if (_canvasStatusOverlay is { IsVisible: true })
             {
@@ -261,10 +261,10 @@ public partial class App : Application
 
     private void OnFlowPreviewChanged(FlowPreview? preview)
     {
-        // Fires from a background Task for every click (see SessionManager)
-        // — the overlay is WPF UI and must only be touched from its own
-        // thread.
-        Dispatcher.Invoke(() =>
+        // Fires from SessionManager's dedicated writer thread for every
+        // click/branch action — the overlay is WPF UI and must only be
+        // touched from its own thread.
+        Dispatcher.BeginInvoke(() =>
         {
             if (preview is null)
             {

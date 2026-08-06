@@ -57,7 +57,15 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         "#D97706", "#059669", "#DB2777", "#7C3AED", "#DC2626", "#0891B2"
     };
 
-    private sealed record BranchAnchor(string Name, string NodeId, double X, double Y, string Color);
+    // TipNodeId/TipX/TipY/TipHeight track where this branch's cursor
+    // currently is — initially the marker itself (in its own freshly
+    // opened column, set up by MarkBranchAnchor), then whichever card
+    // AddClickNode most recently added while this branch was active.
+    // Re-visiting a branch via JumpToAnchor always resumes from here, in
+    // the SAME column, instead of re-deriving a stale position from the
+    // marker every time. TipHeight is needed (unlike in CanvasFlowWriter)
+    // because card height here varies with caption length.
+    private sealed record BranchAnchor(string Name, string TipNodeId, double TipX, double TipY, double TipHeight, string Color);
 
     private readonly AppConfig _config;
 
@@ -164,7 +172,10 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         // Stop()/Start() cycle on the same file doesn't lose them. Colors
         // are re-derived from scan order (not stored), which is stable
         // because markers are always encountered in the same relative
-        // order across scans.
+        // order across scans. Each anchor's tip is resolved by walking
+        // forward from the marker along whatever's already connected to it
+        // — otherwise every reload would forget how far a branch had
+        // actually grown and reset it back to "just marked".
         var branchOrder = 0;
         foreach (var cell in _root.Elements("mxCell")
             .Where(c => ((string?)c.Attribute("id"))?.StartsWith(MarkerIdPrefix, StringComparison.Ordinal) ?? false))
@@ -185,11 +196,13 @@ public sealed class DrawIoFlowWriter : IFlowWriter
             var geometry = cell.Element("mxGeometry");
             var x = ParseDouble(geometry?.Attribute("x"));
             var y = ParseDouble(geometry?.Attribute("y"));
+            var height = ParseDouble(geometry?.Attribute("height"));
             var color = BranchColors[branchOrder % BranchColors.Length];
             branchOrder++;
 
             _labels[id] = value;
-            AddOrReplaceAnchor(new BranchAnchor(branchName, id, x, y, color));
+            var tip = FindBranchTip(id, x, y, height);
+            AddOrReplaceAnchor(new BranchAnchor(branchName, tip.Id, tip.X, tip.Y, tip.Height, color));
         }
 
         _nextColumnX = _root.Elements("mxCell")
@@ -245,6 +258,15 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         _cursorNodeId = cardId;
         _cursorY = newY;
 
+        // Keeps the active branch's anchor pointing at wherever it was
+        // actually just extended to, so the next JumpToAnchor to it
+        // resumes from here instead of jumping back to a stale position.
+        if (_currentBranchName is { } branchName)
+        {
+            var existingColor = _branchAnchors.FirstOrDefault(a => a.Name == branchName)?.Color ?? GetAccentColor(branchName);
+            AddOrReplaceAnchor(new BranchAnchor(branchName, cardId, _cursorX, newY, cardHeight, existingColor));
+        }
+
         Save();
     }
 
@@ -292,7 +314,12 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         AddEdge(_cursorNodeId, markerId, GetAccentColor(_currentBranchName));
 
         _labels[markerId] = $"{BranchMarkerPrefix}{branchName}";
-        AddOrReplaceAnchor(new BranchAnchor(branchName, markerId, _cursorX + (CardWidth - MarkerWidth) / 2, markerY, color));
+
+        // Opens the branch's own column right here, once, at creation —
+        // see JumpToAnchor's doc comment for why re-visiting the same
+        // branch later must NOT do this again.
+        _nextColumnX += CardWidth + BranchColumnSpacing;
+        AddOrReplaceAnchor(new BranchAnchor(branchName, markerId, _nextColumnX, markerY, MarkerHeight, color));
         Save();
 
         return JumpToAnchor(branchName);
@@ -300,7 +327,15 @@ public sealed class DrawIoFlowWriter : IFlowWriter
 
     public List<string> ListBranchAnchorNames() => _branchAnchors.Select(a => a.Name).ToList();
 
-    /// <summary>Moves the cursor to the named anchor and opens a new column so the branch doesn't overlap the existing flow.</summary>
+    /// <summary>
+    /// Moves the cursor to the branch's current tip — MarkBranchAnchor
+    /// already opened its column when the branch was created, so this
+    /// only ever resumes there; it must NOT open another new column on
+    /// every visit, which used to both fork a disconnected extra column
+    /// per re-visit AND reset the position back to the marker's original
+    /// spot, overlapping/overwriting whatever had already been added to
+    /// the branch since.
+    /// </summary>
     public BranchActionResult JumpToAnchor(string branchName)
     {
         var anchor = _branchAnchors.FirstOrDefault(a => a.Name == branchName);
@@ -309,12 +344,11 @@ public sealed class DrawIoFlowWriter : IFlowWriter
             return new BranchActionResult(false, _branchAnchors.Count, null);
         }
 
-        _nextColumnX += CardWidth + BranchColumnSpacing;
-        _cursorNodeId = anchor.NodeId;
-        _cursorX = _nextColumnX;
-        _cursorY = anchor.Y;
+        _cursorNodeId = anchor.TipNodeId;
+        _cursorX = anchor.TipX;
+        _cursorY = anchor.TipY;
         _currentBranchName = branchName;
-        _lastCardHeight = MarkerHeight;
+        _lastCardHeight = anchor.TipHeight;
 
         return new BranchActionResult(true, _branchAnchors.Count, branchName);
     }
@@ -374,7 +408,7 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         _cursorNodeId = nodeId;
         _cursorX = _nextColumnX;
         _cursorY = y;
-        _currentBranchName = _branchAnchors.FirstOrDefault(a => a.NodeId == nodeId)?.Name;
+        _currentBranchName = _branchAnchors.FirstOrDefault(a => a.TipNodeId == nodeId)?.Name;
         _lastCardHeight = isMarker ? MarkerHeight : height;
 
         return new BranchActionResult(true, _branchAnchors.Count, _currentBranchName);
@@ -542,6 +576,32 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         attribute is not null && double.TryParse((string)attribute, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
             ? value
             : 0;
+
+    /// <summary>Follows the single-child edge chain from the marker cell <paramref name="startId"/> as far as it goes, for rebuilding a branch's tip after a Stop()/Start() cycle (see StartSession).</summary>
+    private (string Id, double X, double Y, double Height) FindBranchTip(string startId, double startX, double startY, double startHeight)
+    {
+        var currentId = startId;
+        var currentX = startX;
+        var currentY = startY;
+        var currentHeight = startHeight;
+        while (true)
+        {
+            var edge = _root.Elements("mxCell")
+                .FirstOrDefault(c => (string?)c.Attribute("edge") == "1" && (string?)c.Attribute("source") == currentId);
+            var targetId = (string?)edge?.Attribute("target");
+            var targetCell = targetId is null ? null : _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == targetId);
+            if (targetCell is null)
+            {
+                return (currentId, currentX, currentY, currentHeight);
+            }
+
+            var geometry = targetCell.Element("mxGeometry");
+            currentId = targetId!;
+            currentX = ParseDouble(geometry?.Attribute("x"));
+            currentY = ParseDouble(geometry?.Attribute("y"));
+            currentHeight = ParseDouble(geometry?.Attribute("height"));
+        }
+    }
 
     private static (XDocument Doc, XElement Root) LoadOrCreate(string path)
     {

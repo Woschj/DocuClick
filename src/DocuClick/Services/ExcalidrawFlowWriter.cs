@@ -37,7 +37,17 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
     // to mark them out the way draw.io's rhombus does.
     private const string BranchMarkerPrefix = "◆ Branch: ";
 
-    private sealed record BranchAnchor(string Name, string NodeId, double X, double Y);
+    // TipNodeId/TipX/TipY track where this branch's cursor currently is —
+    // initially the marker itself (in its own freshly opened column, set
+    // up by MarkBranchAnchor), then whichever rectangle AddClickNode most
+    // recently added while this branch was active. Re-visiting a branch
+    // via JumpToAnchor always resumes from here, in the SAME column,
+    // instead of re-deriving a stale position from the marker every time.
+    // No separate tip-height field needed (unlike DrawIoFlowWriter):
+    // AddClickNode already re-derives the previous element's height from
+    // whatever _cursorNodeId currently points to (see ImageHeightOf), so
+    // keeping TipNodeId in sync is enough.
+    private sealed record BranchAnchor(string Name, string TipNodeId, double TipX, double TipY);
 
     private readonly AppConfig _config;
     private readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
@@ -99,7 +109,11 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
 
         // Rebuild branch anchors by scanning for their marker text elements
         // (see MarkBranchAnchor) instead of relying on in-memory state, so
-        // a Stop()/Start() cycle on the same file doesn't lose them.
+        // a Stop()/Start() cycle on the same file doesn't lose them. Each
+        // anchor's tip is resolved by walking forward from the marker
+        // along whatever's already connected to it — otherwise every
+        // reload would forget how far a branch had actually grown and
+        // reset it back to "just marked".
         _branchAnchors.Clear();
         foreach (var el in _doc.Elements
             .Where(e => e.Type == "text" && e.OriginalText is not null && e.OriginalText.StartsWith(BranchMarkerPrefix, StringComparison.Ordinal))
@@ -111,7 +125,8 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
                 continue;
             }
 
-            AddOrReplaceAnchor(new BranchAnchor(branchName, el.Id, el.X, el.Y));
+            var tip = FindBranchTip(el);
+            AddOrReplaceAnchor(new BranchAnchor(branchName, tip.Id, tip.X, tip.Y));
         }
 
         if (_pendingResumeAnchor is { } resume && rectangles.Any(e => e.Id == resume.NodeId))
@@ -197,6 +212,14 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
         _cursorNodeId = rectangleId;
         _cursorY = newY;
 
+        // Keeps the active branch's anchor pointing at wherever it was
+        // actually just extended to, so the next JumpToAnchor to it
+        // resumes from here instead of jumping back to a stale position.
+        if (_currentBranchName is { } branchName)
+        {
+            AddOrReplaceAnchor(new BranchAnchor(branchName, rectangleId, _cursorX, newY));
+        }
+
         Save();
     }
 
@@ -237,7 +260,11 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
         _doc.Elements.Add(marker);
         _doc.Elements.Add(BuildArrow(_cursorNodeId, markerId));
 
-        AddOrReplaceAnchor(new BranchAnchor(branchName, markerId, marker.X, marker.Y));
+        // Opens the branch's own column right here, once, at creation —
+        // see JumpToAnchor's doc comment for why re-visiting the same
+        // branch later must NOT do this again.
+        _nextColumnX += NodeWidth + BranchColumnSpacing;
+        AddOrReplaceAnchor(new BranchAnchor(branchName, markerId, _nextColumnX, markerY));
         Save();
 
         return JumpToAnchor(branchName);
@@ -258,6 +285,15 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
         }
     }
 
+    /// <summary>
+    /// Moves the cursor to the branch's current tip — MarkBranchAnchor
+    /// already opened its column when the branch was created, so this
+    /// only ever resumes there; it must NOT open another new column on
+    /// every visit, which used to both fork a disconnected extra column
+    /// per re-visit AND reset the position back to the marker's original
+    /// spot, overlapping/overwriting whatever had already been added to
+    /// the branch since.
+    /// </summary>
     public BranchActionResult JumpToAnchor(string branchName)
     {
         var anchor = _branchAnchors.FirstOrDefault(a => a.Name == branchName);
@@ -266,10 +302,9 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
             return new BranchActionResult(false, _branchAnchors.Count, null);
         }
 
-        _nextColumnX += NodeWidth + BranchColumnSpacing;
-        _cursorNodeId = anchor.NodeId;
-        _cursorX = _nextColumnX;
-        _cursorY = anchor.Y;
+        _cursorNodeId = anchor.TipNodeId;
+        _cursorX = anchor.TipX;
+        _cursorY = anchor.TipY;
         _currentBranchName = branchName;
 
         return new BranchActionResult(true, _branchAnchors.Count, branchName);
@@ -312,7 +347,7 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
         _cursorNodeId = nodeId;
         _cursorX = _nextColumnX;
         _cursorY = target.Y;
-        _currentBranchName = _branchAnchors.FirstOrDefault(a => a.NodeId == nodeId)?.Name;
+        _currentBranchName = _branchAnchors.FirstOrDefault(a => a.TipNodeId == nodeId)?.Name;
 
         return new BranchActionResult(true, _branchAnchors.Count, _currentBranchName);
     }
@@ -340,6 +375,24 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
         (toRect.BoundElements ??= new List<ExcalidrawBoundElementRef>()).Add(new ExcalidrawBoundElementRef { Id = arrowId, Type = "arrow" });
 
         return arrow;
+    }
+
+    /// <summary>Follows the single-child arrow-binding chain from <paramref name="start"/> as far as it goes, for rebuilding a branch's tip after a Stop()/Start() cycle (see StartSession).</summary>
+    private (string Id, double X, double Y) FindBranchTip(ExcalidrawElement start)
+    {
+        var current = start;
+        while (true)
+        {
+            var arrow = _doc.Elements.FirstOrDefault(e => e.Type == "arrow" && e.StartBinding?.ElementId == current.Id);
+            var nextId = arrow?.EndBinding?.ElementId;
+            var next = nextId is null ? null : _doc.Elements.FirstOrDefault(e => e.Id == nextId);
+            if (next is null)
+            {
+                return (current.Id, current.X, current.Y);
+            }
+
+            current = next;
+        }
     }
 
     private static ExcalidrawElement NewElement(string type, string id, double x, double y, double width, double height) => new()

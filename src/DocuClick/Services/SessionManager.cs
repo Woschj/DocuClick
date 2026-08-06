@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Drawing;
 using System.IO;
+using System.Threading;
 
 namespace DocuClick.Services;
 
@@ -23,6 +25,20 @@ public sealed class SessionManager : IDisposable
     private string _currentTargetFileName = string.Empty;
     private bool _isRunning;
     private bool _zoomToCursorActive;
+
+    // Every touch of a writer's mutable cursor/anchor state — a captured
+    // click, Start/Stop, a branch mark/jump — funnels through this single
+    // background thread instead of running wherever it happens to be
+    // called from. Without this, clicks were dispatched via independent
+    // Task.Run calls with no ordering or mutual exclusion at all: two
+    // clicks (or a click racing a branch jump) could interleave their
+    // reads/writes of _cursorNodeId/_cursorX/_cursorY, corrupting node
+    // positions/edges — the exact "screenshots overwritten" / "minimap
+    // doesn't match the actual file" symptoms this fixes. A single serial
+    // worker guarantees both mutual exclusion AND that actions execute in
+    // the exact order they were captured, which a lock alone would not.
+    private readonly BlockingCollection<Action> _writerQueue = new();
+    private readonly Thread _writerThread;
 
     public event Action<string>? ErrorOccurred;
     public event Action<string>? InfoOccurred;
@@ -81,7 +97,68 @@ public sealed class SessionManager : IDisposable
         _mouseHook.LeftButtonDown += OnLeftButtonDown;
         _mouseHook.RightButtonDown += OnRightButtonDown;
         _keyboardHook.EnterPressed += OnEnterPressed;
+
+        _writerThread = new Thread(RunWriterQueue) { IsBackground = true, Name = "DocuClick-Writer" };
+        _writerThread.Start();
     }
+
+    private void RunWriterQueue()
+    {
+        foreach (var action in _writerQueue.GetConsumingEnumerable())
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception ex)
+            {
+                // Queued actions are expected to catch their own errors
+                // (FinalizeCapture does; RunOnWriterQueue<T> forwards them
+                // to its caller via the TaskCompletionSource) — this is
+                // only a last-resort backstop so a genuinely unexpected
+                // exception can never kill this thread. If it did, every
+                // click and branch action for the rest of the session
+                // would silently do nothing from then on.
+                LogService.Log($"Unerwarteter Fehler in der Writer-Queue: {ex}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> exclusively on the writer thread and
+    /// blocks the caller until it completes, returning its result — the
+    /// caller's own thread (UI thread for a branch action, this same
+    /// writer thread for a queued click) is otherwise free to continue
+    /// immediately afterward. <paramref name="work"/> must only touch
+    /// writer state and build plain data to return (a preview snapshot,
+    /// a status string, ...) — it must NOT raise any event that a
+    /// subscriber marshals back to the UI thread via a *blocking*
+    /// dispatcher call while still running here, or a caller blocked
+    /// waiting on this same queue would deadlock against it. Callers fire
+    /// their events themselves, afterward, using the returned result.
+    /// </summary>
+    private T RunOnWriterQueue<T>(Func<T> work)
+    {
+        var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _writerQueue.Add(() =>
+        {
+            try
+            {
+                tcs.SetResult(work());
+            }
+            catch (Exception ex)
+            {
+                tcs.SetException(ex);
+            }
+        });
+        return tcs.Task.GetAwaiter().GetResult();
+    }
+
+    private void RunOnWriterQueue(Action work) => RunOnWriterQueue<object?>(() =>
+    {
+        work();
+        return null;
+    });
 
     /// <summary>Extension for a given <see cref="AppConfig.OutputMode"/> value.</summary>
     public static string ExtensionForOutputMode(string outputMode) => outputMode switch
@@ -132,7 +209,16 @@ public sealed class SessionManager : IDisposable
             Directory.CreateDirectory(targetDirectory);
         }
 
-        ActiveFlowWriter?.StartSession(_currentTargetFileName);
+        // Runs on the writer thread (see RunOnWriterQueue) so it can never
+        // race an already-queued click from a previous session that hasn't
+        // finished processing yet.
+        var snapshot = RunOnWriterQueue(() =>
+        {
+            ActiveFlowWriter?.StartSession(_currentTargetFileName);
+            return ActiveFlowWriter is { } writer
+                ? new StatusSnapshot(BuildStatusText(), writer.GetPreview())
+                : default;
+        });
 
         _mouseHook.Start();
         if (_config.CaptureOnEnter)
@@ -141,10 +227,10 @@ public sealed class SessionManager : IDisposable
         }
 
         _isRunning = true;
-        if (ActiveFlowWriter is { } writer)
+        if (snapshot.StatusText is not null)
         {
-            CanvasStatusChanged?.Invoke(BuildStatusText());
-            FlowPreviewChanged?.Invoke(writer.GetPreview());
+            CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            FlowPreviewChanged?.Invoke(snapshot.Preview);
         }
         LogService.Log($"Session gestartet. Ziel: {_currentTargetFileName} (Modus: {_config.OutputMode}), Vault: '{_config.VaultPath}'");
     }
@@ -153,7 +239,11 @@ public sealed class SessionManager : IDisposable
     {
         _mouseHook.Stop();
         _keyboardHook.Stop();
-        ActiveFlowWriter?.Stop();
+        // Runs on the writer thread: an already-queued click captured just
+        // before Stop() finishes writing its card first, then this runs
+        // right after — instead of racing it and potentially resetting
+        // cursor state out from under a click still being processed.
+        RunOnWriterQueue(() => ActiveFlowWriter?.Stop());
         _isRunning = false;
         BranchDepthChanged?.Invoke(0);
         CanvasStatusChanged?.Invoke(null);
@@ -165,6 +255,9 @@ public sealed class SessionManager : IDisposable
         // no-op, so nothing breaks by it staying open.
         LogService.Log("Session gestoppt.");
     }
+
+    /// <summary>Bundled result of a writer action performed on the writer thread — captured there so CanvasStatusChanged/FlowPreviewChanged always reflect that exact action's outcome, never a state read moments later from a different thread.</summary>
+    private readonly record struct StatusSnapshot(string? StatusText, FlowPreview? Preview);
 
     /// <summary>"Neue Session"-Aktion: closes out the current target file (a normal Stop) and immediately starts a fresh, explicitly-named one.</summary>
     public void StartNewSession(string targetFileName)
@@ -198,12 +291,23 @@ public sealed class SessionManager : IDisposable
             return;
         }
 
-        var result = writer.MarkBranchAnchor(branchName);
+        // The mutation, and everything read afterward to describe its
+        // outcome, happen together on the writer thread — otherwise a
+        // click already queued just before this call could run in between
+        // the mutation and, say, BuildStatusText() reading the result,
+        // showing state that doesn't match what was just done.
+        var (result, snapshot) = RunOnWriterQueue(() =>
+        {
+            var actionResult = writer.MarkBranchAnchor(branchName);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
+            return (actionResult, statusSnapshot);
+        });
+
         if (result.Success)
         {
             BranchDepthChanged?.Invoke(result.Depth);
-            CanvasStatusChanged?.Invoke(BuildStatusText());
-            FlowPreviewChanged?.Invoke(writer.GetPreview());
+            CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            FlowPreviewChanged?.Invoke(snapshot.Preview);
             InfoOccurred?.Invoke($"Branch \"{branchName}\" gesetzt — nächster Klick beginnt dort eine neue Spalte/einen neuen Abschnitt.");
         }
         else
@@ -221,12 +325,18 @@ public sealed class SessionManager : IDisposable
             return;
         }
 
-        var result = writer.JumpToAnchor(branchName);
+        var (result, snapshot) = RunOnWriterQueue(() =>
+        {
+            var actionResult = writer.JumpToAnchor(branchName);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
+            return (actionResult, statusSnapshot);
+        });
+
         if (result.Success)
         {
             BranchDepthChanged?.Invoke(result.Depth);
-            CanvasStatusChanged?.Invoke(BuildStatusText());
-            FlowPreviewChanged?.Invoke(writer.GetPreview());
+            CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            FlowPreviewChanged?.Invoke(snapshot.Preview);
             InfoOccurred?.Invoke($"Zu Branch \"{branchName}\" gesprungen — nächster Klick beginnt dort eine neue Spalte/einen neuen Abschnitt.");
         }
         else
@@ -244,13 +354,20 @@ public sealed class SessionManager : IDisposable
             return;
         }
 
-        var result = writer.JumpToNode(nodeId);
+        var (result, snapshot, currentLabel) = RunOnWriterQueue(() =>
+        {
+            var actionResult = writer.JumpToNode(nodeId);
+            return actionResult.Success
+                ? (actionResult, new StatusSnapshot(BuildStatusText(), writer.GetPreview()), writer.CurrentNodeLabel)
+                : (actionResult, default, null);
+        });
+
         if (result.Success)
         {
             BranchDepthChanged?.Invoke(result.Depth);
-            CanvasStatusChanged?.Invoke(BuildStatusText());
-            FlowPreviewChanged?.Invoke(writer.GetPreview());
-            InfoOccurred?.Invoke($"Zu \"{writer.CurrentNodeLabel ?? "(ohne Beschreibung)"}\" gesprungen — nächster Klick knüpft hier an.");
+            CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            FlowPreviewChanged?.Invoke(snapshot.Preview);
+            InfoOccurred?.Invoke($"Zu \"{currentLabel ?? "(ohne Beschreibung)"}\" gesprungen — nächster Klick knüpft hier an.");
         }
         else
         {
@@ -300,13 +417,18 @@ public sealed class SessionManager : IDisposable
 
         // Copy everything the hook thread needs to hand off, then return
         // immediately — see the warning in MouseHookService about hooks
-        // that block the message queue for too long.
+        // that block the message queue for too long. Queued (not
+        // Task.Run): the hook thread already sees clicks in true
+        // chronological order, and _writerQueue.Add preserves that exact
+        // order all the way through to ProcessClick — an unordered thread-
+        // pool Task.Run per click could let two rapid clicks' writes
+        // interleave or even complete out of order.
         var point = e.Point;
         var timestamp = e.Timestamp;
         var targetFileName = _currentTargetFileName;
 
         LogService.Log($"{(isRightClick ? "Rechtsklick" : "Klick")} erkannt bei ({point.X}, {point.Y}).");
-        Task.Run(() => ProcessClick(point, timestamp, targetFileName, isRightClick));
+        _writerQueue.Add(() => ProcessClick(point, timestamp, targetFileName, isRightClick));
     }
 
     private void OnEnterPressed(object? sender, EnterKeyEventArgs e)
@@ -325,7 +447,7 @@ public sealed class SessionManager : IDisposable
         var targetFileName = _currentTargetFileName;
 
         LogService.Log("Enter-Taste erkannt.");
-        Task.Run(() => ProcessEnterPress(timestamp, targetFileName));
+        _writerQueue.Add(() => ProcessEnterPress(timestamp, targetFileName));
     }
 
     private bool IsSkipModifierDown(bool shiftDown, bool controlDown, bool altDown) => _config.SkipRecordingModifier switch
@@ -439,5 +561,8 @@ public sealed class SessionManager : IDisposable
     {
         _mouseHook.Dispose();
         _keyboardHook.Dispose();
+        _writerQueue.CompleteAdding();
+        _writerThread.Join(TimeSpan.FromSeconds(2));
+        _writerQueue.Dispose();
     }
 }
