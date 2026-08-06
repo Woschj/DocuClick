@@ -4,35 +4,19 @@
         Title="DocuClick - Branch benennen" Width="340" SizeToContent="Height"
         WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
         ShowInTaskbar="False" Topmost="True"
-        Background="White" Foreground="Black">
-    <!-- Explicit White/Black/Border below: with no theme styling at all,
-         an unstyled TextBox can render white-on-white (or borderless) in
-         Windows dark mode (Background/BorderBrush aren't inherited WPF
-         properties, so setting them only on the Window doesn't reach
-         child controls). SizeToContent (rather than a fixed Window
-         Height) avoids a second bug: a fixed height easily squeezes the
-         DockPanel's fill-child (this TextBox, being last) down to a
-         sliver once title-bar chrome is subtracted from it.
-    -->
-    <Window.Resources>
-        <Style TargetType="TextBox">
-            <Setter Property="Background" Value="White"/>
-            <Setter Property="Foreground" Value="Black"/>
-            <Setter Property="BorderBrush" Value="Gray"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="4"/>
-            <Setter Property="Height" Value="28"/>
-        </Style>
-    </Window.Resources>
-    <DockPanel Margin="16">
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0" DockPanel.Dock="Bottom">
-            <Button Content="Abbrechen" Width="90" Margin="0,0,8,0" Click="OnCancelClicked" IsCancel="True"/>
-            <Button Content="Setzen" Width="90" Click="OnSetClicked" IsDefault="True"/>
+        Background="{StaticResource WindowBackgroundBrush}" FontFamily="Segoe UI">
+    <!-- SizeToContent (rather than a fixed Window Height): a fixed height
+         easily squeezes the DockPanel's fill-child (this TextBox, being
+         last) down to a sliver once title-bar chrome is subtracted from it. -->
+    <DockPanel Margin="18">
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0" DockPanel.Dock="Bottom">
+            <Button Content="Abbrechen" Width="100" Margin="0,0,8,0" Style="{StaticResource ModernButton}" Click="OnCancelClicked" IsCancel="True"/>
+            <Button Content="Setzen" Width="100" Style="{StaticResource PrimaryButton}" Click="OnSetClicked" IsDefault="True"/>
         </StackPanel>
 
-        <TextBlock DockPanel.Dock="Top" Text="Branch-Name" Margin="0,0,0,6"/>
+        <TextBlock DockPanel.Dock="Top" Text="Branch-Name" Style="{StaticResource FieldLabel}"/>
 
-        <TextBox x:Name="BranchNameBox" DockPanel.Dock="Top"
+        <TextBox x:Name="BranchNameBox" DockPanel.Dock="Top" Style="{StaticResource ModernTextBox}"
                  ToolTip="z. B. &quot;Login-Fehler&quot; — später über &quot;Branch auswählen&quot; wiederfindbar."/>
     </DockPanel>
 </Window>

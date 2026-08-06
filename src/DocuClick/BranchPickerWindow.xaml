@@ -4,26 +4,16 @@
         Title="DocuClick - Branch auswählen" Height="360" Width="380"
         WindowStartupLocation="CenterScreen"
         ShowInTaskbar="False" Topmost="True"
-        Background="White" Foreground="Black">
-    <!-- See BranchNameWindow.xaml: unstyled controls can render
-         white-on-white in Windows dark mode without this. -->
-    <Window.Resources>
-        <Style TargetType="ListBox">
-            <Setter Property="Background" Value="White"/>
-            <Setter Property="Foreground" Value="Black"/>
-            <Setter Property="BorderBrush" Value="Gray"/>
-            <Setter Property="BorderThickness" Value="1"/>
-        </Style>
-    </Window.Resources>
-    <DockPanel Margin="16">
-        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,8"
+        Background="{StaticResource WindowBackgroundBrush}" FontFamily="Segoe UI">
+    <DockPanel Margin="18">
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintText}" Margin="0,0,0,10"
                    Text="Branch wählen, zu dem der nächste Klick springen soll."/>
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0" DockPanel.Dock="Bottom">
-            <Button Content="Abbrechen" Width="90" Margin="0,0,8,0" Click="OnCancelClicked" IsCancel="True"/>
-            <Button Content="Springen" Width="90" Click="OnSelectClicked" IsDefault="True"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0" DockPanel.Dock="Bottom">
+            <Button Content="Abbrechen" Width="100" Margin="0,0,8,0" Style="{StaticResource ModernButton}" Click="OnCancelClicked" IsCancel="True"/>
+            <Button Content="Springen" Width="100" Style="{StaticResource PrimaryButton}" Click="OnSelectClicked" IsDefault="True"/>
         </StackPanel>
 
-        <ListBox x:Name="BranchListBox"/>
+        <ListBox x:Name="BranchListBox" Style="{StaticResource ModernListBox}"/>
     </DockPanel>
 </Window>

@@ -99,17 +99,27 @@ public sealed class TopBarWindow : Window
         panel.Children.Add(_newSessionButton);
         panel.Children.Add(_zoomToCursorButton);
 
-        // Solid, saturated blue (TeamViewer-toolbar style) instead of the
-        // previous near-black bar, which blended into dark taskbars/title
-        // bars and was hard to spot at a glance. Fully rounded (stadium
-        // shape) now that the bar floats free instead of sitting flush
-        // against the screen edge.
+        // Same accent blue as every dialog window (Settings, session start,
+        // ...) instead of the previous, slightly different toolbar blue —
+        // one accent color across the whole app rather than two near-
+        // identical ones. Fully rounded (stadium shape) now that the bar
+        // floats free instead of sitting flush against the screen edge,
+        // with a soft drop shadow so it visually lifts off whatever
+        // window/desktop is behind it instead of looking pasted on.
         var border = new Border
         {
-            Background = new SolidColorBrush(Color.FromRgb(0x1C, 0x5D, 0xB3)),
+            Background = new SolidColorBrush(Color.FromRgb(0x2D, 0x6C, 0xDF)),
             CornerRadius = new System.Windows.CornerRadius(CornerRadius),
             Height = BarHeight,
-            Child = panel
+            Child = panel,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Colors.Black,
+                Opacity = 0.35,
+                BlurRadius = 14,
+                ShadowDepth = 2,
+                Direction = 270
+            }
         };
         Content = border;
 

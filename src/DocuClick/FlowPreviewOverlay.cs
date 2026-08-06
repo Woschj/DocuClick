@@ -19,6 +19,7 @@ using VerticalAlignment = System.Windows.VerticalAlignment;
 using TextAlignment = System.Windows.TextAlignment;
 using Point = System.Windows.Point;
 using Size = System.Windows.Size;
+using Orientation = System.Windows.Controls.Orientation;
 
 namespace DocuClick;
 
@@ -39,6 +40,8 @@ public sealed class FlowPreviewOverlay : Window
     private const double PanelWidth = 260;
     private const double PanelHeight = 190;
     private const double Padding = 12;
+    private const double HeaderHeight = 26;
+    private const double CollapsedMinHeight = HeaderHeight + 16;
 
     // Node dimensions at the default (un-resized) panel size — wider than
     // tall (real content nodes are cards, not squares) and, per node size,
@@ -66,9 +69,13 @@ public sealed class FlowPreviewOverlay : Window
 
     private readonly Canvas _canvas;
     private readonly TextBlock _emptyHint;
+    private readonly Border _canvasHost;
+    private readonly TextBlock _collapseIcon;
     private FlowPreview _lastPreview = new(new List<PreviewNode>(), new List<PreviewEdge>());
     private Point _resizeStartMouse;
     private Size _resizeStartSize;
+    private bool _collapsed;
+    private double _expandedHeight;
 
     public event Action<string>? NodeClicked;
 
@@ -86,19 +93,52 @@ public sealed class FlowPreviewOverlay : Window
         ShowActivated = false;
         SizeToContent = SizeToContent.Manual;
         Width = PanelWidth + Padding * 2;
-        Height = PanelHeight + 34 + Padding;
+        Height = PanelHeight + HeaderHeight + Padding;
         MinWidth = 160;
         MinHeight = 110;
 
-        var header = new TextBlock
+        // Short, single-line title instead of the previous permanently-
+        // wrapped instruction sentence — that sentence used up two lines of
+        // vertical space on every redraw even though it only needs to be
+        // read once. The full instructions now live in the info icon's
+        // tooltip, and the panel can be collapsed to just this header row
+        // via the toggle icon when the user doesn't currently need it.
+        var titleText = new TextBlock
         {
-            Text = "Ablauf-Übersicht — ziehbar/größenverstellbar, Knoten anklicken zum Springen",
+            Text = "Ablauf-Übersicht",
             Foreground = Brushes.White,
-            FontSize = 10,
-            Opacity = 0.8,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(Padding, 6, Padding, 4)
+            FontSize = 11,
+            FontWeight = FontWeights.SemiBold,
+            Opacity = 0.9,
+            VerticalAlignment = VerticalAlignment.Center
         };
+
+        var infoIcon = CreateHeaderIcon("i", "Ziehbar/größenverstellbar (Ecke unten rechts). Knoten anklicken, um dorthin zu springen.");
+
+        _collapseIcon = new TextBlock
+        {
+            Text = "–", // en dash, doubles as a minimal "collapse" glyph; becomes "+" when collapsed
+            Foreground = Brushes.White,
+            FontSize = 11,
+            FontWeight = FontWeights.Bold,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var collapseToggle = WrapHeaderIcon(_collapseIcon, "Ein-/Ausklappen");
+        collapseToggle.MouseLeftButtonDown += (_, e) =>
+        {
+            e.Handled = true;
+            ToggleCollapsed();
+        };
+
+        var headerIcons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        headerIcons.Children.Add(infoIcon);
+        headerIcons.Children.Add(collapseToggle);
+
+        var header = new DockPanel { Margin = new Thickness(Padding, 6, 8, 6) };
+        DockPanel.SetDock(headerIcons, Dock.Right);
+        header.Children.Add(headerIcons);
+        header.Children.Add(titleText);
         DockPanel.SetDock(header, Dock.Top);
 
         _canvas = new Canvas();
@@ -125,7 +165,7 @@ public sealed class FlowPreviewOverlay : Window
         // clustered in a corner.
         _canvas.SizeChanged += (_, _) => UpdatePreview(_lastPreview);
 
-        var canvasHost = new Border
+        _canvasHost = new Border
         {
             Margin = new Thickness(Padding, 0, Padding, Padding),
             Child = canvasArea
@@ -165,7 +205,7 @@ public sealed class FlowPreviewOverlay : Window
 
         var content = new DockPanel();
         content.Children.Add(header);
-        content.Children.Add(canvasHost);
+        content.Children.Add(_canvasHost);
 
         var border = new Border
         {
@@ -202,6 +242,74 @@ public sealed class FlowPreviewOverlay : Window
         };
 
         UpdatePreview(_lastPreview);
+    }
+
+    /// <summary>
+    /// Collapses the panel down to just its header row (hiding the node
+    /// canvas/resize grip) so it can be gotten out of the way without
+    /// closing it outright, and restores it back to its previous size
+    /// afterwards. MinHeight is temporarily lowered too — otherwise the
+    /// window-level MinHeight constraint (needed so the expanded minimap
+    /// never shrinks to illegibility) would also floor the collapsed size.
+    /// </summary>
+    private void ToggleCollapsed()
+    {
+        _collapsed = !_collapsed;
+        _canvasHost.Visibility = _collapsed ? Visibility.Collapsed : Visibility.Visible;
+        _collapseIcon.Text = _collapsed ? "+" : "–";
+
+        if (_collapsed)
+        {
+            _expandedHeight = ActualHeight > 0 ? ActualHeight : Height;
+            MinHeight = CollapsedMinHeight;
+            Height = CollapsedMinHeight;
+        }
+        else
+        {
+            MinHeight = 110;
+            Height = _expandedHeight;
+        }
+    }
+
+    /// <summary>Small circular header affordance (info/collapse icons) built from a symbol string — see <see cref="WrapHeaderIcon"/> for the shared visual.</summary>
+    private static Border CreateHeaderIcon(string symbol, string tooltip)
+    {
+        var text = new TextBlock
+        {
+            Text = symbol,
+            Foreground = Brushes.White,
+            FontSize = 10,
+            FontWeight = FontWeights.Bold,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        return WrapHeaderIcon(text, tooltip);
+    }
+
+    /// <summary>
+    /// Wraps header content in a small translucent circle with a hover
+    /// highlight, matching the frosted-glass affordance style used by
+    /// <see cref="TopBarWindow"/>'s buttons — kept as plain Border/TextBlock
+    /// (not a real Button) since this window has no XAML/styles of its own
+    /// and a real Button would need the same from-scratch ControlTemplate
+    /// treatment TopBarWindow uses just for two tiny icons.
+    /// </summary>
+    private static Border WrapHeaderIcon(FrameworkElement content, string tooltip)
+    {
+        var icon = new Border
+        {
+            Width = 18,
+            Height = 18,
+            CornerRadius = new CornerRadius(9),
+            Background = new SolidColorBrush(Color.FromArgb(45, 255, 255, 255)),
+            Margin = new Thickness(4, 0, 0, 0),
+            Cursor = Cursors.Hand,
+            ToolTip = tooltip,
+            Child = content
+        };
+        icon.MouseEnter += (_, _) => icon.Background = new SolidColorBrush(Color.FromArgb(90, 255, 255, 255));
+        icon.MouseLeave += (_, _) => icon.Background = new SolidColorBrush(Color.FromArgb(45, 255, 255, 255));
+        return icon;
     }
 
     /// <summary>
@@ -315,6 +423,7 @@ public sealed class FlowPreviewOverlay : Window
         var currentNodeWidth = CurrentNodeWidth * sizeScale;
         var currentNodeHeight = CurrentNodeHeight * sizeScale;
 
+        var edgeBrush = new SolidColorBrush(Color.FromArgb(130, 255, 255, 255));
         foreach (var edge in preview.Edges)
         {
             if (!centers.TryGetValue(edge.FromId, out var from) || !centers.TryGetValue(edge.ToId, out var to))
@@ -328,9 +437,46 @@ public sealed class FlowPreviewOverlay : Window
                 Y1 = from.Y,
                 X2 = to.X,
                 Y2 = to.Y,
-                Stroke = new SolidColorBrush(Color.FromArgb(130, 255, 255, 255)),
+                Stroke = edgeBrush,
                 StrokeThickness = 1
             });
+
+            // A midpoint arrowhead instead of one at either endpoint: at
+            // either end it would sit right on top of (or under) a node
+            // square, especially once nodes shrink under the collision-
+            // avoidance scaling above — the midpoint always has clear space
+            // around it and still unambiguously shows which way the flow
+            // runs without having to trace the color/branch of each node.
+            var dx = to.X - from.X;
+            var dy = to.Y - from.Y;
+            var length = Math.Sqrt(dx * dx + dy * dy);
+            if (length < 1)
+            {
+                continue;
+            }
+
+            var ux = dx / length;
+            var uy = dy / length;
+            var midX = (from.X + to.X) / 2;
+            var midY = (from.Y + to.Y) / 2;
+            var arrowLength = Math.Clamp(6 * sizeScale, 4, 10);
+            var arrowHalfWidth = arrowLength * 0.4;
+            var tip = new Point(midX + ux * arrowLength / 2, midY + uy * arrowLength / 2);
+            var baseCenter = new Point(midX - ux * arrowLength / 2, midY - uy * arrowLength / 2);
+            var perpX = -uy;
+            var perpY = ux;
+
+            var arrowHead = new Polygon
+            {
+                Fill = edgeBrush,
+                Points = new PointCollection
+                {
+                    tip,
+                    new Point(baseCenter.X + perpX * arrowHalfWidth, baseCenter.Y + perpY * arrowHalfWidth),
+                    new Point(baseCenter.X - perpX * arrowHalfWidth, baseCenter.Y - perpY * arrowHalfWidth)
+                }
+            };
+            _canvas.Children.Add(arrowHead);
         }
 
         foreach (var node in preview.Nodes)

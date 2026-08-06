@@ -3,26 +3,16 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="DocuClick - Ablauf fortsetzen" Height="420" Width="480"
         WindowStartupLocation="CenterScreen"
-        Background="White" Foreground="Black">
-    <!-- See BranchNameWindow.xaml: unstyled controls can render
-         white-on-white in Windows dark mode without this. -->
-    <Window.Resources>
-        <Style TargetType="ListBox">
-            <Setter Property="Background" Value="White"/>
-            <Setter Property="Foreground" Value="Black"/>
-            <Setter Property="BorderBrush" Value="Gray"/>
-            <Setter Property="BorderThickness" Value="1"/>
-        </Style>
-    </Window.Resources>
-    <DockPanel Margin="16">
-        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,8"
+        Background="{StaticResource WindowBackgroundBrush}" FontFamily="Segoe UI">
+    <DockPanel Margin="18">
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource HintText}" Margin="0,0,0,10"
                    Text="Knoten wählen, an den die nächste Aufnahme angehängt werden soll. Neue Klicks starten dann als eigene Spalte ab diesem Punkt."/>
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0" DockPanel.Dock="Bottom">
-            <Button Content="Abbrechen" Width="90" Margin="0,0,8,0" Click="OnCancelClicked"/>
-            <Button Content="Auswählen" Width="90" Click="OnSelectClicked"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0" DockPanel.Dock="Bottom">
+            <Button Content="Abbrechen" Width="100" Margin="0,0,8,0" Style="{StaticResource ModernButton}" Click="OnCancelClicked"/>
+            <Button Content="Auswählen" Width="100" Style="{StaticResource PrimaryButton}" Click="OnSelectClicked"/>
         </StackPanel>
 
-        <ListBox x:Name="NodeListBox" DisplayMemberPath="Label"/>
+        <ListBox x:Name="NodeListBox" DisplayMemberPath="Label" Style="{StaticResource ModernListBox}"/>
     </DockPanel>
 </Window>

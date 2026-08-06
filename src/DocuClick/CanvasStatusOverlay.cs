@@ -57,10 +57,16 @@ public sealed class CanvasStatusOverlay : Window
         panel.Children.Add(_textBlock);
         panel.Children.Add(_thumbnailImage);
 
+        // Same dark-glass panel look (background alpha, corner radius,
+        // subtle white border) as FlowPreviewOverlay's minimap, so the two
+        // HUD panels that can be on screen together read as one visual
+        // family instead of two differently-styled boxes.
         Content = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb(200, 30, 30, 32)),
-            CornerRadius = new CornerRadius(6),
+            Background = new SolidColorBrush(Color.FromArgb(170, 25, 25, 28)),
+            CornerRadius = new CornerRadius(8),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255)),
+            BorderThickness = new Thickness(1),
             Child = panel
         };
 
