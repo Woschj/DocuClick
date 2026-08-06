@@ -151,8 +151,35 @@ public partial class App : Application
         Dispatcher.BeginInvoke(() => _trayApp?.ShowInfo(message));
     }
 
-    /// <summary>TopBar button/hotkey: marks the current node as a decision point — SessionManager itself shows the "not running"/"mode doesn't support this" info balloon if that's not currently possible.</summary>
-    private void OnDecisionPointRequested() => _sessionManager?.MarkDecisionPoint();
+    /// <summary>
+    /// TopBar button/hotkey: marks the current node as a decision point and
+    /// immediately forks its first path — prompts for that path's name
+    /// first (same dialog "+ Neuer Pfad" uses), since a decision point
+    /// with no named path yet would have nothing selectable in the
+    /// Ablauf-Übersicht popup. Cancelling the prompt does nothing at all —
+    /// still routes the "not running"/"mode doesn't support this" case
+    /// through SessionManager's own info balloon rather than asking for a
+    /// name first when it can't apply anyway.
+    /// </summary>
+    private void OnDecisionPointRequested()
+    {
+        if (_sessionManager is null)
+        {
+            return;
+        }
+
+        if (!_sessionManager.IsRunning || !_sessionManager.SupportsBranching)
+        {
+            _sessionManager.MarkDecisionPoint(string.Empty);
+            return;
+        }
+
+        var nameWindow = new BranchNameWindow();
+        if (nameWindow.ShowDialog() == true && nameWindow.BranchName is { } name)
+        {
+            _sessionManager.MarkDecisionPoint(name);
+        }
+    }
 
     /// <summary>Ablauf-Übersicht popup: "+ Neuer Pfad" was chosen and named.</summary>
     private void OnNewPathRequested(string decisionPointId, string pathName) => _sessionManager?.StartNewPath(decisionPointId, pathName);

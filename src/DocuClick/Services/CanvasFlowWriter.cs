@@ -18,10 +18,10 @@ public sealed record ResumableNode(string Id, string Label, double X, double Y);
 ///
 /// Branching (see <see cref="IFlowWriter"/> for the full model):
 /// <see cref="MarkDecisionPoint"/> adds a small "◆ Abzweigung" diamond
-/// connected from the current node and moves the cursor onto it inline —
-/// clicking normally afterward just continues straight through it. From
-/// there, <see cref="StartNewPath"/> forks a new "↳ Pfad: &lt;name&gt;"
-/// column, or <see cref="ContinuePath"/> resumes one started earlier.
+/// connected from the current node and immediately forks its first named
+/// "↳ Pfad: &lt;name&gt;" column, jumping the cursor onto it. Later,
+/// <see cref="StartNewPath"/> forks another new column from the same
+/// diamond, or <see cref="ContinuePath"/> resumes one started earlier.
 /// Nothing about a path/decision point is cached in memory — every lookup
 /// walks the actual node/edge graph, so a Stop()/Start() cycle can never
 /// forget or desync from what's really in the file.
@@ -216,15 +216,16 @@ public sealed class CanvasFlowWriter : IFlowWriter
 
     /// <summary>
     /// Adds a small "◆ Abzweigung" diamond connected from the current node
-    /// — an explicit, visible waypoint rather than hidden state — and moves
-    /// the cursor onto it inline, so the next regular click still just
-    /// continues straight through it in the same column. Forking an actual
-    /// new path only happens via <see cref="StartNewPath"/>, chosen later
-    /// by clicking this diamond in the Ablauf-Übersicht; nothing here asks
-    /// for a name upfront, since a decision point can end up with any
-    /// number of differently-named paths over time.
+    /// — an explicit, visible waypoint rather than hidden state — then
+    /// immediately forks <paramref name="firstPathName"/> off it via
+    /// <see cref="StartNewPath"/> and jumps the cursor onto that path.
+    /// There's deliberately no bare, unnamed "just continue" state: every
+    /// path leaving a decision point is a real, named node from the start,
+    /// so it always shows up in <see cref="ListPaths"/> and can be resumed
+    /// later — an implicit default continuation could never be listed
+    /// there, making it permanently unreachable once you moved on.
     /// </summary>
-    public BranchActionResult MarkDecisionPoint()
+    public BranchActionResult MarkDecisionPoint(string firstPathName)
     {
         if (_cursorNodeId is null)
         {
@@ -251,11 +252,9 @@ public sealed class CanvasFlowWriter : IFlowWriter
             ToNode = marker.Id
         });
 
-        _cursorNodeId = marker.Id;
-        _cursorY = markerY;
-
-        Save();
-        return new BranchActionResult(true);
+        // StartNewPath saves the whole document (marker included) once
+        // it's done — no need to save here too.
+        return StartNewPath(marker.Id, firstPathName);
     }
 
     /// <summary>Every path already forking from <paramref name="decisionPointId"/>, resolved fresh from the graph (never cached) — see <see cref="ListPaths"/> on <see cref="IFlowWriter"/>.</summary>

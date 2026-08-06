@@ -202,22 +202,35 @@ public sealed class FlowPreviewOverlay : Window
             Content = _canvas
         };
 
+        // handledEventsToo: true on all three — ScrollViewer has its own
+        // class handlers for these (e.g. for focus/scroll-gesture
+        // handling) that run before ours and often mark the event Handled
+        // themselves; a plain "+=" subscription never receives an
+        // already-handled event, which is why drag-panning silently never
+        // fired at all (only the mouse wheel, routed independently,
+        // worked). Explicitly opting into already-handled events is the
+        // standard fix for "my handler on a Control never runs".
         var panning = false;
         var panMouseStart = default(Point);
         var panOffsetStart = default(Point);
-        scrollViewer.MouseLeftButtonDown += (_, e) =>
+        scrollViewer.AddHandler(MouseLeftButtonDownEvent, new MouseButtonEventHandler((_, e) =>
         {
-            // Only reaches here for clicks that didn't land on a node
-            // square — those mark the event Handled in their own handler
-            // first, and a standard (non-"handled events too") subscription
-            // like this one never sees an already-handled event.
+            // Only meant for clicks that didn't land on a node square —
+            // those mark the event Handled in their own handler first;
+            // since we now see already-handled events too, explicitly
+            // skip this one instead of starting a pan under it.
+            if (e.Handled)
+            {
+                return;
+            }
+
             e.Handled = true; // don't also start a window-drag via the border handler below
             panning = true;
             scrollViewer.CaptureMouse();
             panMouseStart = e.GetPosition(scrollViewer);
             panOffsetStart = new Point(scrollViewer.HorizontalOffset, scrollViewer.VerticalOffset);
-        };
-        scrollViewer.MouseMove += (_, e) =>
+        }), handledEventsToo: true);
+        scrollViewer.AddHandler(MouseMoveEvent, new System.Windows.Input.MouseEventHandler((_, e) =>
         {
             if (!panning)
             {
@@ -227,12 +240,12 @@ public sealed class FlowPreviewOverlay : Window
             var current = e.GetPosition(scrollViewer);
             scrollViewer.ScrollToHorizontalOffset(panOffsetStart.X - (current.X - panMouseStart.X));
             scrollViewer.ScrollToVerticalOffset(panOffsetStart.Y - (current.Y - panMouseStart.Y));
-        };
-        scrollViewer.MouseLeftButtonUp += (_, _) =>
+        }), handledEventsToo: true);
+        scrollViewer.AddHandler(MouseLeftButtonUpEvent, new MouseButtonEventHandler((_, _) =>
         {
             panning = false;
             scrollViewer.ReleaseMouseCapture();
-        };
+        }), handledEventsToo: true);
 
         var canvasArea = new Grid { ClipToBounds = true };
         canvasArea.Children.Add(scrollViewer);

@@ -207,15 +207,15 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
     /// <summary>
     /// Adds a small, visible "◆ Abzweigung" text marker connected from the
     /// current node with an arrow — an explicit waypoint rather than
-    /// hidden state — and moves the cursor onto it inline, so the next
-    /// regular click still just continues straight through it in the same
-    /// column. Forking an actual new path only happens via
-    /// <see cref="StartNewPath"/>, chosen later by clicking this marker in
-    /// the Ablauf-Übersicht; nothing here asks for a name upfront, since a
-    /// decision point can end up with any number of differently-named
-    /// paths over time.
+    /// hidden state — then immediately forks <paramref name="firstPathName"/>
+    /// off it via <see cref="StartNewPath"/> and jumps the cursor onto that
+    /// path. There's deliberately no bare, unnamed "just continue" state:
+    /// every path leaving a decision point is a real, named node from the
+    /// start, so it always shows up in <see cref="ListPaths"/> and can be
+    /// resumed later — an implicit default continuation could never be
+    /// listed there, making it permanently unreachable once you moved on.
     /// </summary>
-    public BranchActionResult MarkDecisionPoint()
+    public BranchActionResult MarkDecisionPoint(string firstPathName)
     {
         if (_cursorNodeId is null)
         {
@@ -237,12 +237,9 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
         _doc.Elements.Add(marker);
         _doc.Elements.Add(BuildArrow(_cursorNodeId, markerId));
 
-        _cursorNodeId = markerId;
-        _cursorX = marker.X;
-        _cursorY = markerY;
-
-        Save();
-        return new BranchActionResult(true);
+        // StartNewPath saves the whole document (marker included) once
+        // it's done — no need to save here too.
+        return StartNewPath(markerId, firstPathName);
     }
 
     /// <summary>Every path already forking from <paramref name="decisionPointId"/>, resolved fresh from the graph (never cached) — see <see cref="ListPaths"/> on <see cref="IFlowWriter"/>.</summary>

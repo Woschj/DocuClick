@@ -25,10 +25,10 @@ namespace DocuClick.Services;
 ///
 /// Branching (see <see cref="IFlowWriter"/> for the full model):
 /// <see cref="MarkDecisionPoint"/> adds a gray rhombus connected from the
-/// current card and moves the cursor onto it inline — clicking normally
-/// afterward just continues straight through it. From there,
-/// <see cref="StartNewPath"/> forks a new, colored "↳ Pfad: &lt;name&gt;"
-/// column, or <see cref="ContinuePath"/> resumes one started earlier.
+/// current card and immediately forks its first named, colored
+/// "↳ Pfad: &lt;name&gt;" column, jumping the cursor onto it. Later,
+/// <see cref="StartNewPath"/> forks another new column from the same
+/// rhombus, or <see cref="ContinuePath"/> resumes one started earlier.
 /// Nothing about a path/decision point is cached in memory — every lookup
 /// walks the actual mxCell graph, so a Stop()/Start() cycle can never
 /// forget or desync from what's really in the file.
@@ -259,15 +259,16 @@ public sealed class DrawIoFlowWriter : IFlowWriter
 
     /// <summary>
     /// Adds a gray "◆ Abzweigung" rhombus connected from the current card
-    /// — an explicit, visible waypoint rather than hidden state — and
-    /// moves the cursor onto it inline, so the next regular click still
-    /// just continues straight through it in the same column. Forking an
-    /// actual new path only happens via <see cref="StartNewPath"/>, chosen
-    /// later by clicking this rhombus in the Ablauf-Übersicht; nothing
-    /// here asks for a name upfront, since a decision point can end up
-    /// with any number of differently-named paths over time.
+    /// — an explicit, visible waypoint rather than hidden state — then
+    /// immediately forks <paramref name="firstPathName"/> off it via
+    /// <see cref="StartNewPath"/> and jumps the cursor onto that path.
+    /// There's deliberately no bare, unnamed "just continue" state: every
+    /// path leaving a decision point is a real, named node from the start,
+    /// so it always shows up in <see cref="ListPaths"/> and can be resumed
+    /// later — an implicit default continuation could never be listed
+    /// there, making it permanently unreachable once you moved on.
     /// </summary>
-    public BranchActionResult MarkDecisionPoint()
+    public BranchActionResult MarkDecisionPoint(string firstPathName)
     {
         if (_cursorNodeId is null)
         {
@@ -297,9 +298,9 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         AddEdge(_cursorNodeId, markerId, DecisionPointColor);
         _labels[markerId] = DecisionPointLabel;
 
-        SetCursor(markerId, markerX, markerY, MarkerHeight);
-        Save();
-        return new BranchActionResult(true);
+        // StartNewPath saves the whole document (marker included) once
+        // it's done — no need to save here too.
+        return StartNewPath(markerId, firstPathName);
     }
 
     /// <summary>Every path already forking from <paramref name="decisionPointId"/>, resolved fresh from the graph (never cached) — see <see cref="ListPaths"/> on <see cref="IFlowWriter"/>.</summary>

@@ -282,8 +282,17 @@ public sealed class SessionManager : IDisposable
         return $"{_config.OutputMode}\nZuletzt: {label}";
     }
 
-    /// <summary>Hotkey/button action: turns the current node into a decision point (a small diamond) — the flow keeps recording normally afterward. Forking an actual new path, or resuming one, happens later by clicking the diamond in the Ablauf-Übersicht (see <see cref="ListPaths"/>/<see cref="StartNewPath"/>/<see cref="ContinuePath"/>).</summary>
-    public void MarkDecisionPoint()
+    /// <summary>
+    /// Hotkey/button action: turns the current node into a decision point
+    /// (a small diamond) and immediately forks+jumps onto its first named
+    /// path — App.xaml.cs prompts for <paramref name="firstPathName"/>
+    /// before calling this, the same dialog "+ Neuer Pfad" uses. There's
+    /// no unnamed default continuation: additional paths, or resuming this
+    /// first one later, both happen by clicking the diamond in the
+    /// Ablauf-Übersicht (see <see cref="ListPaths"/>/<see cref="StartNewPath"/>/
+    /// <see cref="ContinuePath"/>).
+    /// </summary>
+    public void MarkDecisionPoint(string firstPathName)
     {
         if (!_isRunning || ActiveFlowWriter is not { } writer)
         {
@@ -298,7 +307,7 @@ public sealed class SessionManager : IDisposable
         // showing state that doesn't match what was just done.
         var (result, snapshot) = RunOnWriterQueue(() =>
         {
-            var actionResult = writer.MarkDecisionPoint();
+            var actionResult = writer.MarkDecisionPoint(firstPathName);
             var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
             return (actionResult, statusSnapshot);
         });
@@ -307,7 +316,7 @@ public sealed class SessionManager : IDisposable
         {
             CanvasStatusChanged?.Invoke(snapshot.StatusText);
             FlowPreviewChanged?.Invoke(snapshot.Preview);
-            InfoOccurred?.Invoke("Abzweigungspunkt gesetzt — in der Ablauf-Übersicht anklicken, um einen Pfad zu starten oder fortzusetzen.");
+            InfoOccurred?.Invoke($"Abzweigungspunkt gesetzt, Pfad \"{firstPathName}\" gestartet — nächster Klick beginnt dort.");
         }
         else
         {

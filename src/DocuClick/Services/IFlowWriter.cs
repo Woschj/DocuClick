@@ -127,11 +127,15 @@ public readonly record struct PathInfo(string PathStartNodeId, string Name, int 
 /// deliberately does not implement this.
 ///
 /// Branching model: <see cref="MarkDecisionPoint"/> turns the current node
-/// into a small diamond — a decision point — without moving the cursor;
-/// the ongoing flow keeps recording normally. From a decision point (found
-/// by clicking its diamond in the Ablauf-Übersicht), the user picks
-/// <see cref="StartNewPath"/> to fork a brand-new named path in its own
-/// column, or <see cref="ContinuePath"/> to resume a path started earlier —
+/// into a small diamond — a decision point — and immediately forks the
+/// first named path from it, jumping the cursor onto that path (there is
+/// deliberately no unnamed/implicit "default continuation": every path
+/// leaving a decision point is a real, selectable, named node from the
+/// moment it exists — otherwise it could never appear in
+/// <see cref="ListPaths"/>, making it impossible to ever resume). From a
+/// decision point (found by clicking its diamond in the Ablauf-Übersicht),
+/// the user picks <see cref="StartNewPath"/> to fork another new named
+/// path, or <see cref="ContinuePath"/> to resume one started earlier —
 /// mirroring a UML activity diagram's decision nodes and their outgoing
 /// flows, screenshots instead of activity labels.
 /// </summary>
@@ -141,8 +145,8 @@ public interface IFlowWriter
     void Stop();
     void AddClickNode(string description, Bitmap screenshot, DateTime timestamp);
 
-    /// <summary>Marks the current node as a decision point (a small diamond marker) — does not move the cursor.</summary>
-    BranchActionResult MarkDecisionPoint();
+    /// <summary>Marks the current node as a decision point (a small diamond marker) and immediately forks+jumps onto its first named path — see the type's own doc comment for why there's no unnamed default continuation.</summary>
+    BranchActionResult MarkDecisionPoint(string firstPathName);
 
     /// <summary>Every path already forking from a given decision point, for the Ablauf-Übersicht's "bestehenden Pfad fortsetzen" popup.</summary>
     List<PathInfo> ListPaths(string decisionPointId);

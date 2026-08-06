@@ -100,8 +100,8 @@ public sealed class TopBarWindow : Window
         _toggleRecordingButton.Click += (_, _) => ToggleRecordingRequested?.Invoke();
 
         _decisionPointButton = CreateButton(buttonStyle, "Abzweigung",
-            "Markiert den aktuellen Knoten als Abzweigungspunkt (Raute) — die Aufnahme läuft normal weiter. " +
-            "In der Ablauf-Übersicht auf die Raute klicken, um dort einen neuen Pfad zu starten oder einen bestehenden fortzusetzen.");
+            "Markiert den aktuellen Knoten als Abzweigungspunkt (Raute) und fragt nach dem Namen des ersten Pfads — der nächste Klick beginnt dort. " +
+            "Weitere Pfade: in der Ablauf-Übersicht auf die Raute klicken, um einen weiteren neuen Pfad zu starten oder einen bestehenden fortzusetzen.");
         _decisionPointButton.Click += (_, _) => DecisionPointRequested?.Invoke();
 
         _newSessionButton = CreateButton(buttonStyle, "Neue Session", "Startet eine neue Aufnahme-Session (fragt nach Zieldatei) — schließt bei laufender Aufnahme zuerst die aktuelle Datei ab.");
