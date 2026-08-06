@@ -21,7 +21,7 @@ public partial class App : Application
     private FlowPreviewOverlay? _flowPreviewOverlay;
     private TopBarWindow? _topBar;
 
-    /// <summary>Set by "Ablauf fortsetzen ab Punkt...", consumed once by the next session-start file picker.</summary>
+    /// <summary>Set by clicking a node in the Ablauf-Übersicht while stopped (see <see cref="OnFlowPreviewNodeClicked"/>), consumed once by the next session-start file picker.</summary>
     private string? _pendingResumeFileName;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -56,7 +56,6 @@ public partial class App : Application
         _trayApp = new TrayApp();
         _trayApp.RecordingStateChanged += OnRecordingStateChanged;
         _trayApp.SettingsRequested += OnSettingsRequested;
-        _trayApp.ResumeFromPointRequested += OnResumeFromPointRequested;
 
         // Visible for the app's whole lifetime (not just while recording),
         // so there is always an at-a-glance answer to "is it running".
@@ -275,7 +274,7 @@ public partial class App : Application
             if (_flowPreviewOverlay is null)
             {
                 _flowPreviewOverlay = new FlowPreviewOverlay();
-                _flowPreviewOverlay.NodeClicked += nodeId => _sessionManager?.JumpToNode(nodeId);
+                _flowPreviewOverlay.NodeClicked += OnFlowPreviewNodeClicked;
             }
 
             _flowPreviewOverlay.UpdatePreview(preview);
@@ -283,45 +282,37 @@ public partial class App : Application
         });
     }
 
-    private void OnResumeFromPointRequested()
+    /// <summary>
+    /// While recording, clicking a node in the Ablauf-Übersicht jumps the
+    /// live cursor there (as before). While stopped, the overlay still
+    /// shows the last session's file — so a click there instead primes
+    /// *that* node as the attach point for the next Start(), replacing the
+    /// old separate "Ablauf fortsetzen ab Punkt..." tray menu item and its
+    /// own file/node picker dialogs: the overlay already shows exactly the
+    /// same nodes those would have asked to choose from.
+    /// </summary>
+    private void OnFlowPreviewNodeClicked(string nodeId)
     {
         if (_sessionManager!.IsRunning)
         {
-            _trayApp!.ShowInfo("Bitte erst die Aufnahme stoppen, bevor ein Fortsetzungspunkt gewählt wird.");
+            _sessionManager.JumpToNode(nodeId);
             return;
         }
 
-        if (!_sessionManager.SupportsBranching)
+        if (_sessionManager.CurrentTargetFileName is not { } fileName)
         {
-            _trayApp!.ShowInfo("Nur im Canvas-, draw.io- oder Excalidraw-Modus verfügbar (siehe Einstellungen).");
             return;
         }
 
-        var files = _sessionManager.ListExistingFiles();
-        if (files.Count == 0)
+        var node = _sessionManager.ListResumableCanvasNodes(fileName).FirstOrDefault(n => n.Id == nodeId);
+        if (node is null)
         {
-            _trayApp!.ShowInfo("Noch keine Datei im Zielordner vorhanden.");
             return;
         }
 
-        // Newest file first (ListExistingFiles) — good enough default for
-        // this secondary action without a second file-picker dialog just
-        // for it; the session-start dialog is where file choice matters.
-        var fileName = files[0];
-        var nodes = _sessionManager.ListResumableCanvasNodes(fileName);
-        if (nodes.Count == 0)
-        {
-            _trayApp!.ShowInfo($"Noch keine Knoten in \"{fileName}\" vorhanden.");
-            return;
-        }
-
-        var picker = new ResumePickerWindow(nodes);
-        if (picker.ShowDialog() == true && picker.SelectedNode is not null)
-        {
-            _sessionManager.SetResumeAnchor(picker.SelectedNode);
-            _pendingResumeFileName = fileName;
-            _trayApp!.ShowInfo($"Nächste Aufnahme wird angehängt an: {picker.SelectedNode.Label} (in {fileName})");
-        }
+        _sessionManager.SetResumeAnchor(node);
+        _pendingResumeFileName = fileName;
+        _trayApp!.ShowInfo($"Nächste Aufnahme wird angehängt an: {node.Label} (in {fileName})");
     }
 
     /// <summary>Shows the session-start file picker; null means the user cancelled.</summary>

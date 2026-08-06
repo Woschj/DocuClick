@@ -63,6 +63,17 @@ public sealed class SessionManager : IDisposable
 
     public bool IsRunning => _isRunning;
 
+    /// <summary>
+    /// The target file of the current (or, once stopped, the most recent)
+    /// session — null before any session has ever run. Lets the
+    /// Ablauf-Übersicht overlay resolve a clicked node back to "which file
+    /// is this actually in" for the resume-from-point flow (see
+    /// <see cref="ListResumableCanvasNodes"/>/<see cref="SetResumeAnchor"/>)
+    /// without a separate file picker — the overlay already only ever
+    /// shows this file's content.
+    /// </summary>
+    public string? CurrentTargetFileName => string.IsNullOrEmpty(_currentTargetFileName) ? null : _currentTargetFileName;
+
     /// <summary>Whether "Zoom-auf-Cursor" is currently active (see <see cref="ToggleZoomToCursor"/>).</summary>
     public bool IsZoomToCursorActive => _zoomToCursorActive;
 

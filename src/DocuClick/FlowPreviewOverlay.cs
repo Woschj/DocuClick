@@ -32,10 +32,12 @@ namespace DocuClick;
 /// a glance where "you are" in a long, branching flow without opening the
 /// actual file.
 ///
-/// Also doubles as a navigation tool: clicking any node jumps the recording
-/// cursor there (<see cref="NodeClicked"/>), the same way "Branch
-/// auswählen" does for named branches, but for any node in the flow — see
-/// <see cref="SessionManager.JumpToNode"/>.
+/// Also doubles as a navigation tool via <see cref="NodeClicked"/>: while
+/// recording, clicking any node jumps the cursor there, the same way
+/// "Branch auswählen" does for named branches but for any node — see
+/// <see cref="SessionManager.JumpToNode"/>. While stopped, clicking a node
+/// instead primes it as the attach point for the next recording — see
+/// App.OnFlowPreviewNodeClicked.
 /// </summary>
 public sealed class FlowPreviewOverlay : Window
 {
@@ -122,7 +124,7 @@ public sealed class FlowPreviewOverlay : Window
             VerticalAlignment = VerticalAlignment.Center
         };
 
-        var infoIcon = CreateHeaderIcon("i", "Panel per Kopfzeile ziehbar, per Ecke unten rechts größenverstellbar. Diagramm im Panel per Ziehen verschieben. Knoten anklicken, um dorthin zu springen.");
+        var infoIcon = CreateHeaderIcon("i", "Panel per Kopfzeile ziehbar, per Ecke unten rechts größenverstellbar. Diagramm im Panel per Ziehen verschieben. Knoten anklicken: springt während der Aufnahme dorthin, oder setzt bei gestoppter Aufnahme den Startpunkt für die nächste.");
 
         _collapseIcon = new TextBlock
         {

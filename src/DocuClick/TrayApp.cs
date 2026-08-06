@@ -20,20 +20,17 @@ public sealed class TrayApp : IDisposable
 
     public event Action<bool>? RecordingStateChanged;
     public event Action? SettingsRequested;
-    public event Action? ResumeFromPointRequested;
 
     public bool IsRecording => _isRecording;
 
     public TrayApp()
     {
         _toggleItem = new ToolStripMenuItem("Aufnahme starten", null, OnToggleClicked);
-        var resumeItem = new ToolStripMenuItem("Ablauf fortsetzen ab Punkt...", null, OnResumeClicked);
         var settingsItem = new ToolStripMenuItem("Einstellungen...", null, OnSettingsClicked);
         var exitItem = new ToolStripMenuItem("Beenden", null, OnExitClicked);
 
         var contextMenu = new ContextMenuStrip();
         contextMenu.Items.Add(_toggleItem);
-        contextMenu.Items.Add(resumeItem);
         contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add(settingsItem);
         contextMenu.Items.Add(new ToolStripSeparator());
@@ -161,8 +158,6 @@ public sealed class TrayApp : IDisposable
     }
 
     private void OnToggleClicked(object? sender, EventArgs e) => ToggleRecording();
-
-    private void OnResumeClicked(object? sender, EventArgs e) => ResumeFromPointRequested?.Invoke();
 
     private void OnSettingsClicked(object? sender, EventArgs e) => SettingsRequested?.Invoke();
 

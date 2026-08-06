@@ -28,10 +28,11 @@ public partial class SessionStartWindow : Window
     public string? SelectedFileName { get; private set; }
 
     /// <param name="preselectExistingFile">
-    /// If set and present among the existing files (e.g. a pending "Ablauf
-    /// fortsetzen ab Punkt..." resume anchor lives in this file), the
-    /// "bestehende Datei" option is preselected with it instead of
-    /// defaulting to "neue Datei".
+    /// If set and present among the existing files (e.g. a resume anchor
+    /// set by clicking a node in the Ablauf-Übersicht while stopped — see
+    /// App.OnFlowPreviewNodeClicked — lives in this file), the "bestehende
+    /// Datei" option is preselected with it instead of defaulting to "neue
+    /// Datei".
     /// </param>
     public SessionStartWindow(AppConfig config, string? preselectExistingFile = null)
     {
