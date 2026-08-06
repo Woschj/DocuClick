@@ -18,7 +18,7 @@ namespace DocuClick;
 
 public partial class SettingsWindow : Window
 {
-    private enum HotkeyTarget { None, StartStop, BranchMark, BranchJump, ZoomToCursor }
+    private enum HotkeyTarget { None, StartStop, BranchMark, ZoomToCursor }
 
     private readonly AppConfig _config;
 
@@ -28,8 +28,6 @@ public partial class SettingsWindow : Window
     private string _startStopKey = "R";
     private string _branchMarkModifiers = "";
     private string _branchMarkKey = "F9";
-    private string _branchJumpModifiers = "";
-    private string _branchJumpKey = "F10";
     private string _zoomToCursorModifiers = "";
     private string _zoomToCursorKey = "F11";
 
@@ -74,8 +72,6 @@ public partial class SettingsWindow : Window
         _startStopKey = _config.StartStopKey;
         _branchMarkModifiers = _config.BranchMarkModifiers;
         _branchMarkKey = _config.BranchMarkKey;
-        _branchJumpModifiers = _config.BranchJumpModifiers;
-        _branchJumpKey = _config.BranchJumpKey;
         _zoomToCursorModifiers = _config.ZoomToCursorModifiers;
         _zoomToCursorKey = _config.ZoomToCursorKey;
         RefreshHotkeyDisplays();
@@ -154,8 +150,6 @@ public partial class SettingsWindow : Window
 
     private void OnRecordBranchMarkClicked(object sender, RoutedEventArgs e) => BeginCapture(HotkeyTarget.BranchMark, BranchMarkDisplayBox);
 
-    private void OnRecordBranchJumpClicked(object sender, RoutedEventArgs e) => BeginCapture(HotkeyTarget.BranchJump, BranchJumpDisplayBox);
-
     private void OnRecordZoomToCursorClicked(object sender, RoutedEventArgs e) => BeginCapture(HotkeyTarget.ZoomToCursor, ZoomToCursorDisplayBox);
 
     private void BeginCapture(HotkeyTarget target, TextBox displayBox)
@@ -199,10 +193,6 @@ public partial class SettingsWindow : Window
                 _branchMarkModifiers = modifiersText;
                 _branchMarkKey = keyText;
                 break;
-            case HotkeyTarget.BranchJump:
-                _branchJumpModifiers = modifiersText;
-                _branchJumpKey = keyText;
-                break;
             case HotkeyTarget.ZoomToCursor:
                 _zoomToCursorModifiers = modifiersText;
                 _zoomToCursorKey = keyText;
@@ -223,7 +213,6 @@ public partial class SettingsWindow : Window
     {
         StartStopDisplayBox.Text = FormatHotkey(_startStopModifiers, _startStopKey);
         BranchMarkDisplayBox.Text = FormatHotkey(_branchMarkModifiers, _branchMarkKey);
-        BranchJumpDisplayBox.Text = FormatHotkey(_branchJumpModifiers, _branchJumpKey);
         ZoomToCursorDisplayBox.Text = FormatHotkey(_zoomToCursorModifiers, _zoomToCursorKey);
     }
 
@@ -287,8 +276,6 @@ public partial class SettingsWindow : Window
         _config.StartStopKey = _startStopKey;
         _config.BranchMarkModifiers = _branchMarkModifiers;
         _config.BranchMarkKey = _branchMarkKey;
-        _config.BranchJumpModifiers = _branchJumpModifiers;
-        _config.BranchJumpKey = _branchJumpKey;
         _config.ZoomToCursorModifiers = _zoomToCursorModifiers;
         _config.ZoomToCursorKey = _zoomToCursorKey;
         _config.ZoomToCursorRadius = int.TryParse(ZoomToCursorRadiusBox.Text, out var zoomRadius) ? zoomRadius : _config.ZoomToCursorRadius;

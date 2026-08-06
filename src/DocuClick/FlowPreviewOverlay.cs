@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -33,11 +34,14 @@ namespace DocuClick;
 /// actual file.
 ///
 /// Also doubles as a navigation tool via <see cref="NodeClicked"/>: while
-/// recording, clicking any node jumps the cursor there, the same way
-/// "Branch auswählen" does for named branches but for any node — see
-/// <see cref="SessionManager.JumpToNode"/>. While stopped, clicking a node
-/// instead primes it as the attach point for the next recording — see
-/// App.OnFlowPreviewNodeClicked.
+/// recording, clicking any regular/path-start node jumps the cursor there
+/// — see <see cref="SessionManager.JumpToNode"/>. While stopped, clicking
+/// one instead primes it as the attach point for the next recording — see
+/// App.OnFlowPreviewNodeClicked. Clicking a decision-point diamond is
+/// different from either: it opens a small popup right there (see
+/// <see cref="PathsProvider"/>/<see cref="NewPathRequested"/>/
+/// <see cref="ContinuePathRequested"/>) to start a brand-new path from it
+/// or resume one already forking from it.
 /// </summary>
 public sealed class FlowPreviewOverlay : Window
 {
@@ -87,8 +91,18 @@ public sealed class FlowPreviewOverlay : Window
     private Size _resizeStartSize;
     private bool _collapsed;
     private double _expandedHeight;
+    private Popup? _pathPopup;
 
     public event Action<string>? NodeClicked;
+
+    /// <summary>Fired when "+ Neuer Pfad" is chosen from a decision point's popup, after the user has named it — (decisionPointId, pathName).</summary>
+    public event Action<string, string>? NewPathRequested;
+
+    /// <summary>Fired when an existing path is chosen from a decision point's popup — the path's own start-node id.</summary>
+    public event Action<string>? ContinuePathRequested;
+
+    /// <summary>Supplies the existing paths for a decision point, queried fresh right when its popup opens — set by App.xaml.cs to <see cref="SessionManager.ListPaths"/>.</summary>
+    public Func<string, List<PathInfo>>? PathsProvider { get; set; }
 
     public FlowPreviewOverlay()
     {
@@ -399,6 +413,11 @@ public sealed class FlowPreviewOverlay : Window
     /// </summary>
     public void UpdatePreview(FlowPreview preview)
     {
+        // Defensive: a redraw can move/remove the node a still-open path
+        // popup is anchored to (e.g. another click landed while it was
+        // open), so don't leave it pointing at stale geometry.
+        ClosePathPopup();
+
         _lastPreview = preview;
         _canvas.Children.Clear();
 
@@ -465,20 +484,23 @@ public sealed class FlowPreviewOverlay : Window
             rowOf.TryAdd(node.Id, 0);
         }
 
-        // Column = which branch (0 = main flow, otherwise the branch's
-        // first-seen order among the nodes) — BranchName is already tagged
-        // onto every node by FlowPreviewBranching.TagBranches before this
-        // preview reaches the overlay.
-        var columnOfBranch = new Dictionary<string, int>();
+        // Column = which path (0 = main flow, otherwise the path's
+        // first-seen order among the nodes) — PathId is already tagged onto
+        // every node by FlowPreviewBranching.TagBranches before this
+        // preview reaches the overlay. Grouped by PathId (the path-start
+        // node's own id, always unique) rather than PathName — two
+        // different decision points can easily have same-named paths, and
+        // those must stay visually distinct columns.
+        var columnOfPath = new Dictionary<string, int>();
         var columnOf = new Dictionary<string, int>();
         foreach (var node in preview.Nodes)
         {
-            if (node.BranchName is { } branch)
+            if (node.PathId is { } pathId)
             {
-                if (!columnOfBranch.TryGetValue(branch, out var column))
+                if (!columnOfPath.TryGetValue(pathId, out var column))
                 {
-                    column = columnOfBranch.Count + 1;
-                    columnOfBranch[branch] = column;
+                    column = columnOfPath.Count + 1;
+                    columnOfPath[pathId] = column;
                 }
 
                 columnOf[node.Id] = column;
@@ -489,7 +511,7 @@ public sealed class FlowPreviewOverlay : Window
             }
         }
 
-        var columnCount = columnOfBranch.Count + 1;
+        var columnCount = columnOfPath.Count + 1;
         var maxRow = rowOf.Values.Max();
 
         // Slot sizes never shrink below a legible floor — once the panel
@@ -589,12 +611,13 @@ public sealed class FlowPreviewOverlay : Window
             var width = node.IsCurrent ? currentNodeWidth : nodeWidth;
             var height = node.IsCurrent ? currentNodeHeight : nodeHeight;
 
-            // Branch-marker nodes render as pill/oval shapes (RadiusX/Y =
-            // half the dimension) instead of the sharper-cornered rectangle
-            // used for regular nodes, so the waypoint itself stays visually
-            // distinct even when its color matches every other node
-            // further down that same branch.
-            var radius = node.IsBranchMarker ? Math.Min(width, height) / 2 : 4;
+            // Decision points and path starts render as pill/oval shapes
+            // (RadiusX/Y = half the dimension) instead of the sharper-
+            // cornered rectangle used for regular nodes, so both waypoint
+            // kinds stay visually distinct even when a path start's color
+            // matches every other node further down that same path.
+            var isMarker = node.IsDecisionPoint || node.IsPathStart;
+            var radius = isMarker ? Math.Min(width, height) / 2 : 4;
 
             var square = new Rectangle
             {
@@ -606,18 +629,26 @@ public sealed class FlowPreviewOverlay : Window
                 Stroke = Brushes.White,
                 StrokeThickness = node.IsCurrent ? 2 : 1,
                 Cursor = Cursors.Hand,
-                ToolTip = node.BranchName is { } b ? $"{node.Label} · Branch: {b}" : node.Label
+                ToolTip = node.PathName is { } p ? $"{node.Label} · Pfad: {p}" : node.Label
             };
             Canvas.SetLeft(square, center.X - width / 2);
             Canvas.SetTop(square, center.Y - height / 2);
 
             var nodeId = node.Id;
+            var isDecisionPoint = node.IsDecisionPoint;
             square.MouseLeftButtonDown += (_, e) =>
             {
                 // Marks Handled so the panel-drag handler on the outer
                 // border (which bubbles up from here) doesn't also fire.
                 e.Handled = true;
-                NodeClicked?.Invoke(nodeId);
+                if (isDecisionPoint)
+                {
+                    ShowPathPopup(nodeId, square);
+                }
+                else
+                {
+                    NodeClicked?.Invoke(nodeId);
+                }
             };
 
             _canvas.Children.Add(square);
@@ -627,16 +658,18 @@ public sealed class FlowPreviewOverlay : Window
                 currentSquare = square;
             }
 
-            // Hovering shows the full label for any node, but branch
-            // markers and "you are here" are what people actually need to
-            // spot at a glance — so those two get a permanent text label
-            // instead of requiring a hover, unlike the many identical-
-            // looking regular nodes in between.
-            if (node.IsBranchMarker || node.IsCurrent)
+            // Hovering shows the full label for any node, but decision
+            // points/path starts and "you are here" are what people
+            // actually need to spot at a glance — so those get a permanent
+            // text label instead of requiring a hover, unlike the many
+            // identical-looking regular nodes in between.
+            if (isMarker || node.IsCurrent)
             {
-                var labelText = node.IsBranchMarker && node.BranchName is { } branchName
-                    ? $"↳ {branchName}"
-                    : "● hier";
+                var labelText = node.IsDecisionPoint
+                    ? "◆ Abzweigung"
+                    : node.IsPathStart && node.PathName is { } pathName
+                        ? $"↳ {pathName}"
+                        : "● hier";
 
                 var label = new TextBlock
                 {
@@ -675,6 +708,103 @@ public sealed class FlowPreviewOverlay : Window
         }
     }
 
+    /// <summary>
+    /// Opens a small popup anchored to a clicked decision-point diamond,
+    /// offering "+ Neuer Pfad" (prompts a name, then fires
+    /// <see cref="NewPathRequested"/>) plus every path already forking from
+    /// it (click one to fire <see cref="ContinuePathRequested"/>). Uses a
+    /// real WPF <see cref="Popup"/> rather than adding content to
+    /// <see cref="_canvas"/> directly — canvas children get wiped on every
+    /// <see cref="UpdatePreview"/> redraw, which would silently kill the
+    /// popup out from under the user the moment anything else changed the
+    /// preview while it was open.
+    /// </summary>
+    private void ShowPathPopup(string decisionPointId, FrameworkElement anchor)
+    {
+        ClosePathPopup();
+
+        var paths = PathsProvider?.Invoke(decisionPointId) ?? new List<PathInfo>();
+
+        var panel = new StackPanel { Margin = new Thickness(4) };
+
+        var newPathItem = CreatePopupItem("+ Neuer Pfad", isPrimary: true);
+        newPathItem.MouseLeftButtonDown += (_, e) =>
+        {
+            e.Handled = true;
+            ClosePathPopup();
+
+            var nameWindow = new BranchNameWindow();
+            if (nameWindow.ShowDialog() == true && nameWindow.BranchName is { } name)
+            {
+                NewPathRequested?.Invoke(decisionPointId, name);
+            }
+        };
+        panel.Children.Add(newPathItem);
+
+        foreach (var path in paths)
+        {
+            var stepLabel = path.StepCount == 1 ? "1 Schritt" : $"{path.StepCount} Schritte";
+            var item = CreatePopupItem($"→ {path.Name} ({stepLabel})", isPrimary: false);
+            var pathStartId = path.PathStartNodeId;
+            item.MouseLeftButtonDown += (_, e) =>
+            {
+                e.Handled = true;
+                ClosePathPopup();
+                ContinuePathRequested?.Invoke(pathStartId);
+            };
+            panel.Children.Add(item);
+        }
+
+        var popupBorder = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(235, 25, 25, 28)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Child = panel
+        };
+
+        _pathPopup = new Popup
+        {
+            PlacementTarget = anchor,
+            Placement = PlacementMode.Right,
+            StaysOpen = false, // auto-closes on an outside click, e.g. clicking elsewhere in the panel or the flow itself
+            AllowsTransparency = true,
+            Child = popupBorder,
+            IsOpen = true
+        };
+    }
+
+    private void ClosePathPopup()
+    {
+        if (_pathPopup is { } popup)
+        {
+            popup.IsOpen = false;
+            _pathPopup = null;
+        }
+    }
+
+    private static Border CreatePopupItem(string text, bool isPrimary)
+    {
+        var item = new Border
+        {
+            Padding = new Thickness(8, 6, 8, 6),
+            CornerRadius = new CornerRadius(4),
+            Background = Brushes.Transparent,
+            Cursor = Cursors.Hand,
+            Child = new TextBlock
+            {
+                Text = text,
+                Foreground = Brushes.White,
+                FontSize = 11,
+                FontWeight = isPrimary ? FontWeights.Bold : FontWeights.Normal
+            }
+        };
+        item.MouseEnter += (_, _) => item.Background = new SolidColorBrush(Color.FromArgb(50, 255, 255, 255));
+        item.MouseLeave += (_, _) => item.Background = Brushes.Transparent;
+        return item;
+    }
+
     private static Color GetNodeColor(PreviewNode node)
     {
         if (node.IsCurrent)
@@ -682,14 +812,21 @@ public sealed class FlowPreviewOverlay : Window
             return Color.FromRgb(0xE6, 0x39, 0x46);
         }
 
-        if (node.BranchName is { } branch)
+        // Decision points are always neutral gray, matching the actual
+        // output file (DrawIoFlowWriter etc. use the same fixed color for
+        // them) — they aren't part of any one path's color themselves,
+        // regardless of which path happened to lead into them.
+        if (node.IsDecisionPoint)
         {
-            return BranchPalette[StableHash(branch) % BranchPalette.Length];
+            return Color.FromRgb(0x6B, 0x72, 0x80);
         }
 
-        return node.IsBranchMarker
-            ? Color.FromRgb(0x7C, 0x3A, 0xED)
-            : Color.FromArgb(230, 0x4C, 0xAF, 0xE8);
+        if (node.PathId is { } pathId)
+        {
+            return BranchPalette[StableHash(pathId) % BranchPalette.Length];
+        }
+
+        return Color.FromArgb(230, 0x4C, 0xAF, 0xE8);
     }
 
     private static int StableHash(string value)

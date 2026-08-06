@@ -36,14 +36,12 @@ public sealed class TopBarWindow : Window
     private readonly Ellipse _statusDot;
     private readonly TextBlock _statusText;
     private readonly Button _toggleRecordingButton;
-    private readonly Button _markBranchButton;
-    private readonly Button _jumpBranchButton;
+    private readonly Button _decisionPointButton;
     private readonly Button _newSessionButton;
     private readonly Button _zoomToCursorButton;
 
     public event Action? ToggleRecordingRequested;
-    public event Action? MarkBranchRequested;
-    public event Action? JumpBranchRequested;
+    public event Action? DecisionPointRequested;
     public event Action? NewSessionRequested;
     public event Action? ZoomToCursorToggleRequested;
 
@@ -101,11 +99,10 @@ public sealed class TopBarWindow : Window
         _toggleRecordingButton = CreateButton(buttonStyle, "Start", "Aufnahme starten/stoppen (wie der Tray-Menüpunkt bzw. der Start/Stop-Hotkey).");
         _toggleRecordingButton.Click += (_, _) => ToggleRecordingRequested?.Invoke();
 
-        _markBranchButton = CreateButton(buttonStyle, "Branch setzen", "Aktuellen Knoten/Abschnitt unter einem Namen als Branch-Punkt markieren (fragt nach dem Namen) und direkt dorthin springen — der nächste Klick beginnt eine neue Spalte.");
-        _markBranchButton.Click += (_, _) => MarkBranchRequested?.Invoke();
-
-        _jumpBranchButton = CreateButton(buttonStyle, "Branch auswählen", "Zu einem benannten Branch-Punkt springen: der nächste Klick beginnt dort eine neue Abzweigung.");
-        _jumpBranchButton.Click += (_, _) => JumpBranchRequested?.Invoke();
+        _decisionPointButton = CreateButton(buttonStyle, "Abzweigung",
+            "Markiert den aktuellen Knoten als Abzweigungspunkt (Raute) — die Aufnahme läuft normal weiter. " +
+            "In der Ablauf-Übersicht auf die Raute klicken, um dort einen neuen Pfad zu starten oder einen bestehenden fortzusetzen.");
+        _decisionPointButton.Click += (_, _) => DecisionPointRequested?.Invoke();
 
         _newSessionButton = CreateButton(buttonStyle, "Neue Session", "Startet eine neue Aufnahme-Session (fragt nach Zieldatei) — schließt bei laufender Aufnahme zuerst die aktuelle Datei ab.");
         _newSessionButton.Click += (_, _) => NewSessionRequested?.Invoke();
@@ -121,8 +118,7 @@ public sealed class TopBarWindow : Window
         panel.Children.Add(statusGroup);
         panel.Children.Add(CreateSeparator());
         panel.Children.Add(_toggleRecordingButton);
-        panel.Children.Add(_markBranchButton);
-        panel.Children.Add(_jumpBranchButton);
+        panel.Children.Add(_decisionPointButton);
         panel.Children.Add(CreateSeparator());
         panel.Children.Add(_newSessionButton);
         panel.Children.Add(CreateSeparator());
@@ -312,8 +308,7 @@ public sealed class TopBarWindow : Window
     public void UpdateStatus(bool isRecording, string? detail, bool supportsBranching)
     {
         _toggleRecordingButton.Content = isRecording ? "Stop" : "Start";
-        _markBranchButton.IsEnabled = isRecording && supportsBranching;
-        _jumpBranchButton.IsEnabled = isRecording && supportsBranching;
+        _decisionPointButton.IsEnabled = isRecording && supportsBranching;
         // "Neue Session" is always clickable: with no recording running it
         // just behaves like Start (see App.OnNewSessionRequested).
 

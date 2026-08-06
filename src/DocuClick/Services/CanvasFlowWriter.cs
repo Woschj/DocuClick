@@ -4,9 +4,6 @@ using System.Text.Json;
 
 namespace DocuClick.Services;
 
-/// <summary>Result of a branch-related action, for user-facing feedback.</summary>
-public readonly record struct BranchActionResult(bool Success, int Depth, string? AnchorLabel);
-
 /// <summary>An existing canvas node offered as a resume point for the next session.</summary>
 public sealed record ResumableNode(string Id, string Label, double X, double Y);
 
@@ -19,15 +16,15 @@ public sealed record ResumableNode(string Id, string Label, double X, double Y);
 ///
 /// Layout is vertical: the main line runs top-to-bottom in one column.
 ///
-/// Branching: <see cref="MarkBranchAnchor"/> adds a small, visible marker
-/// node ("Branch: &lt;name&gt;") connected from the current node — an
-/// explicit waypoint object in the canvas itself, not hidden metadata.
-/// <see cref="JumpToAnchor"/> moves the cursor to that marker (can be
-/// re-visited any number of times) and starts a new column so the new
-/// branch doesn't overlap the existing flow. Because the marker is a real,
-/// recognizable node in the file, <see cref="StartSession"/> rebuilds the
-/// branch list by scanning for it — branches survive a Stop()/Start()
-/// cycle instead of only living in memory for one run.
+/// Branching (see <see cref="IFlowWriter"/> for the full model):
+/// <see cref="MarkDecisionPoint"/> adds a small "◆ Abzweigung" diamond
+/// connected from the current node and moves the cursor onto it inline —
+/// clicking normally afterward just continues straight through it. From
+/// there, <see cref="StartNewPath"/> forks a new "↳ Pfad: &lt;name&gt;"
+/// column, or <see cref="ContinuePath"/> resumes one started earlier.
+/// Nothing about a path/decision point is cached in memory — every lookup
+/// walks the actual node/edge graph, so a Stop()/Start() cycle can never
+/// forget or desync from what's really in the file.
 /// </summary>
 public sealed class CanvasFlowWriter : IFlowWriter
 {
@@ -38,20 +35,15 @@ public sealed class CanvasFlowWriter : IFlowWriter
     private const double ImageNodeHeight = NodeHeight - TextNodeHeight - TextToImageGap;
     private const double MarkerHeight = 60;
     private const double SequentialSpacing = 60; // gap between consecutive nodes along the main (vertical) flow
-    private const double BranchColumnSpacing = 80; // gap between branch columns
-    // Leading "◆" gives the marker a distinct at-a-glance icon in Obsidian
-    // Canvas, which — unlike draw.io's rhombus shape — has no concept of
-    // node shapes at all, only plain text/file/link/group nodes.
-    private const string BranchMarkerPrefix = "◆ Branch: ";
-    private const string BranchMarkerColor = "6"; // Obsidian canvas preset color slot ("purple"), just to stand out
+    private const double BranchColumnSpacing = 80; // gap between path columns
 
-    // TipNodeId/TipX/TipY track where this branch's cursor currently is —
-    // initially the marker itself (in its own freshly opened column, set
-    // up by MarkBranchAnchor), then whichever node AddClickNode most
-    // recently added while this branch was active. Re-visiting a branch
-    // via JumpToAnchor always resumes from here, in the SAME column,
-    // instead of re-deriving a stale position from the marker every time.
-    private sealed record BranchAnchor(string Name, string TipNodeId, double TipX, double TipY);
+    // Leading icons give both kinds of marker a distinct at-a-glance look
+    // in Obsidian Canvas, which — unlike draw.io's rhombus shape — has no
+    // concept of node shapes at all, only plain text/file/link/group nodes.
+    private const string DecisionPointLabel = "◆ Abzweigung";
+    private const string PathStartPrefix = "↳ Pfad: ";
+    private const string DecisionPointColor = "6"; // Obsidian canvas preset color slot ("purple")
+    private const string PathStartColor = "4"; // preset "green" — visually distinct from the decision point itself
 
     private readonly AppConfig _config;
     private readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
@@ -63,8 +55,6 @@ public sealed class CanvasFlowWriter : IFlowWriter
     private double _cursorX;
     private double _cursorY;
     private double _nextColumnX;
-    private string? _currentBranchName;
-    private readonly List<BranchAnchor> _branchAnchors = new();
     private (string NodeId, double X, double Y)? _pendingResumeAnchor;
 
     public CanvasFlowWriter(AppConfig config)
@@ -87,10 +77,11 @@ public sealed class CanvasFlowWriter : IFlowWriter
         var path = Path.Combine(_config.VaultPath, canvasFileName);
         var doc = LoadOrCreate(path);
 
-        // Only offer the description/text nodes as resume points — not
-        // their sibling image nodes (no Text to show) or branch markers.
+        // Only offer real content nodes as resume points — not their
+        // sibling image nodes (no Text to show), decision points, or path
+        // starts (neither has a screenshot to resume "at").
         return doc.Nodes
-            .Where(n => n.Type == "text" && !(n.Text?.StartsWith(BranchMarkerPrefix, StringComparison.Ordinal) ?? false))
+            .Where(n => n.Type == "text" && !IsDecisionPointNode(n) && !IsPathStartNode(n))
             .OrderBy(n => n.Y).ThenBy(n => n.X)
             .Select(n => new ResumableNode(n.Id, BuildLabel(n.Text), n.X, n.Y))
             .ToList();
@@ -116,34 +107,11 @@ public sealed class CanvasFlowWriter : IFlowWriter
         _sessionName = Path.GetFileNameWithoutExtension(canvasFileName);
         _doc = LoadOrCreate(_canvasPath);
         _nextColumnX = _doc.Nodes.Count > 0 ? _doc.Nodes.Max(n => n.X) + NodeWidth + BranchColumnSpacing : 0;
-        _currentBranchName = null;
-
-        // Rebuild branch anchors by scanning for their marker nodes (see
-        // MarkBranchAnchor) instead of relying on in-memory state, so a
-        // Stop()/Start() cycle on the same file doesn't lose them. Each
-        // anchor's tip is resolved by walking forward from the marker
-        // along whatever's already connected to it — otherwise every
-        // reload would forget how far a branch had actually grown and
-        // reset it back to "just marked".
-        _branchAnchors.Clear();
-        foreach (var n in _doc.Nodes
-            .Where(n => n.Text is not null && n.Text.StartsWith(BranchMarkerPrefix, StringComparison.Ordinal))
-            .OrderBy(n => n.Y).ThenBy(n => n.X))
-        {
-            var branchName = n.Text![BranchMarkerPrefix.Length..].Trim();
-            if (branchName.Length == 0)
-            {
-                continue;
-            }
-
-            var tip = FindBranchTip(n);
-            AddOrReplaceAnchor(new BranchAnchor(branchName, tip.Id, tip.X, tip.Y));
-        }
 
         if (_pendingResumeAnchor is { } resume && _doc.Nodes.Any(n => n.Id == resume.NodeId))
         {
-            // Continue from a previously recorded node as a new branch
-            // column, so it never collides with whatever is already below it.
+            // Continue from a previously recorded node as a new column, so
+            // it never collides with whatever is already below it.
             _cursorNodeId = resume.NodeId;
             _cursorX = _nextColumnX;
             _cursorY = resume.Y;
@@ -161,16 +129,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
         _pendingResumeAnchor = null;
     }
 
-    public void Stop()
-    {
-        _cursorNodeId = null;
-        _branchAnchors.Clear();
-        _currentBranchName = null;
-    }
-
-    public int BranchDepth => _branchAnchors.Count;
-
-    public string? CurrentBranchName => _currentBranchName;
+    public void Stop() => _cursorNodeId = null;
 
     /// <summary>Short preview of the node the next click would connect from, if any.</summary>
     public string? CurrentNodeLabel => _cursorNodeId is null ? null : GetNodeLabel(_cursorNodeId);
@@ -229,37 +188,24 @@ public sealed class CanvasFlowWriter : IFlowWriter
         _cursorNodeId = textNode.Id;
         _cursorY = newY;
 
-        // Keeps the active branch's anchor pointing at wherever it was
-        // actually just extended to, so the next JumpToAnchor to it
-        // resumes from here instead of jumping back to a stale position.
-        if (_currentBranchName is { } branchName)
-        {
-            AddOrReplaceAnchor(new BranchAnchor(branchName, textNode.Id, _cursorX, newY));
-        }
-
         Save();
     }
 
     /// <summary>
-    /// Adds a small, visible "Branch: &lt;name&gt;" marker node connected
-    /// from the current node — an explicit waypoint object rather than a
-    /// hidden field, so it shows up in the canvas itself and survives a
-    /// Stop()/Start() cycle (see StartSession) — then immediately jumps the
-    /// cursor onto it (see <see cref="JumpToAnchor"/>), so the marker
-    /// becomes a real decision-node-style branch point: the very next click
-    /// attaches under it in a fresh column, instead of the main flow
-    /// continuing to grow past a marker that just sits there unconnected to
-    /// anything new. <see cref="JumpToAnchor"/> remains separately useful
-    /// afterwards, for returning to this (or any other) anchor later once
-    /// the flow has moved on elsewhere. Re-marking an existing name adds a
-    /// fresh marker (the newest one wins on the next reload, same as
-    /// in-memory re-marking).
+    /// Adds a small "◆ Abzweigung" diamond connected from the current node
+    /// — an explicit, visible waypoint rather than hidden state — and moves
+    /// the cursor onto it inline, so the next regular click still just
+    /// continues straight through it in the same column. Forking an actual
+    /// new path only happens via <see cref="StartNewPath"/>, chosen later
+    /// by clicking this diamond in the Ablauf-Übersicht; nothing here asks
+    /// for a name upfront, since a decision point can end up with any
+    /// number of differently-named paths over time.
     /// </summary>
-    public BranchActionResult MarkBranchAnchor(string branchName)
+    public BranchActionResult MarkDecisionPoint()
     {
         if (_cursorNodeId is null)
         {
-            return new BranchActionResult(false, _branchAnchors.Count, null);
+            return new BranchActionResult(false);
         }
 
         var markerY = _cursorY + NodeHeight + SequentialSpacing;
@@ -267,12 +213,12 @@ public sealed class CanvasFlowWriter : IFlowWriter
         {
             Id = Guid.NewGuid().ToString("N"),
             Type = "text",
-            Text = $"{BranchMarkerPrefix}{branchName}",
+            Text = DecisionPointLabel,
             X = _cursorX,
             Y = markerY,
             Width = NodeWidth,
             Height = MarkerHeight,
-            Color = BranchMarkerColor
+            Color = DecisionPointColor
         };
         _doc.Nodes.Add(marker);
         _doc.Edges.Add(new CanvasEdge
@@ -282,103 +228,136 @@ public sealed class CanvasFlowWriter : IFlowWriter
             ToNode = marker.Id
         });
 
-        // Opens the branch's own column right here, once, at creation —
-        // see JumpToAnchor's doc comment for why re-visiting the same
-        // branch later must NOT do this again.
-        _nextColumnX += NodeWidth + BranchColumnSpacing;
-        AddOrReplaceAnchor(new BranchAnchor(branchName, marker.Id, _nextColumnX, markerY));
-        Save();
+        _cursorNodeId = marker.Id;
+        _cursorY = markerY;
 
-        return JumpToAnchor(branchName);
+        Save();
+        return new BranchActionResult(true);
     }
 
-    public List<string> ListBranchAnchorNames() => _branchAnchors.Select(a => a.Name).ToList();
-
-    /// <summary>
-    /// Moves the cursor to the branch's current tip — MarkBranchAnchor
-    /// already opened its column when the branch was created, so this
-    /// only ever resumes there; it must NOT open another new column on
-    /// every visit, which used to both fork a disconnected extra column
-    /// per re-visit AND reset the position back to the marker's original
-    /// spot, overlapping/overwriting whatever had already been added to
-    /// the branch since.
-    /// </summary>
-    public BranchActionResult JumpToAnchor(string branchName)
+    /// <summary>Every path already forking from <paramref name="decisionPointId"/>, resolved fresh from the graph (never cached) — see <see cref="ListPaths"/> on <see cref="IFlowWriter"/>.</summary>
+    public List<PathInfo> ListPaths(string decisionPointId)
     {
-        var anchor = _branchAnchors.FirstOrDefault(a => a.Name == branchName);
-        if (anchor is null)
+        var childIds = _doc.Edges.Where(e => e.FromNode == decisionPointId).Select(e => e.ToNode).ToHashSet();
+        return _doc.Nodes
+            .Where(n => childIds.Contains(n.Id) && IsPathStartNode(n))
+            .Select(n => new PathInfo(n.Id, ExtractPathName(n), FindBranchTip(n).Steps))
+            .ToList();
+    }
+
+    /// <summary>Forks a brand-new named path from an existing decision point into its own column, and jumps the cursor onto it.</summary>
+    public BranchActionResult StartNewPath(string decisionPointId, string pathName)
+    {
+        var decisionNode = _doc.Nodes.FirstOrDefault(n => n.Id == decisionPointId && IsDecisionPointNode(n));
+        if (decisionNode is null)
         {
-            return new BranchActionResult(false, _branchAnchors.Count, null);
+            return new BranchActionResult(false);
         }
 
-        _cursorNodeId = anchor.TipNodeId;
-        _cursorX = anchor.TipX;
-        _cursorY = anchor.TipY;
-        _currentBranchName = branchName;
+        _nextColumnX += NodeWidth + BranchColumnSpacing;
+        var pathStart = new CanvasNode
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Type = "text",
+            Text = $"{PathStartPrefix}{pathName}",
+            X = _nextColumnX,
+            Y = decisionNode.Y,
+            Width = NodeWidth,
+            Height = MarkerHeight,
+            Color = PathStartColor
+        };
+        _doc.Nodes.Add(pathStart);
+        _doc.Edges.Add(new CanvasEdge
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            FromNode = decisionNode.Id,
+            ToNode = pathStart.Id
+        });
 
-        return new BranchActionResult(true, _branchAnchors.Count, branchName);
+        _cursorNodeId = pathStart.Id;
+        _cursorX = pathStart.X;
+        _cursorY = pathStart.Y;
+
+        Save();
+        return new BranchActionResult(true);
+    }
+
+    /// <summary>Resumes an existing path at wherever it currently ends (walked fresh from the graph — see <see cref="FindBranchTip"/>), in its own already-established column.</summary>
+    public BranchActionResult ContinuePath(string pathStartNodeId)
+    {
+        var pathStart = _doc.Nodes.FirstOrDefault(n => n.Id == pathStartNodeId && IsPathStartNode(n));
+        if (pathStart is null)
+        {
+            return new BranchActionResult(false);
+        }
+
+        var tip = FindBranchTip(pathStart);
+        _cursorNodeId = tip.Id;
+        _cursorX = tip.X;
+        _cursorY = tip.Y;
+
+        return new BranchActionResult(true);
     }
 
     public FlowPreview GetPreview()
     {
         var nodes = _doc.Nodes
             .Where(n => n.Type == "text")
-            .Select(n => new PreviewNode(
-                n.Id,
-                BuildLabel(n.Text),
-                n.X, n.Y, n.Width, n.Height,
-                n.Id == _cursorNodeId,
-                n.Text?.StartsWith(BranchMarkerPrefix, StringComparison.Ordinal) ?? false))
+            .Select(n =>
+            {
+                var isDecisionPoint = IsDecisionPointNode(n);
+                var isPathStart = IsPathStartNode(n);
+                var label = isDecisionPoint ? "Abzweigung" : isPathStart ? $"↳ {ExtractPathName(n)}" : BuildLabel(n.Text);
+                return new PreviewNode(
+                    n.Id, label, n.X, n.Y, n.Width, n.Height,
+                    n.Id == _cursorNodeId, isDecisionPoint, isPathStart,
+                    PathName: isPathStart ? ExtractPathName(n) : null);
+            })
             .ToList();
         var edges = _doc.Edges.Select(e => new PreviewEdge(e.FromNode, e.ToNode)).ToList();
         return FlowPreviewBranching.TagBranches(new FlowPreview(nodes, edges));
     }
 
-    /// <summary>Jumps the cursor to an arbitrary existing text/marker node, opening a new column so the new content doesn't overlap the existing flow — same mechanics as <see cref="JumpToAnchor"/>, just not limited to named branch markers.</summary>
+    /// <summary>Jumps the cursor to an arbitrary existing node, opening a new column so the new content doesn't overlap the existing flow — for regular nodes and path-start nodes; decision points are handled separately by the Ablauf-Übersicht's path popup (<see cref="StartNewPath"/>/<see cref="ContinuePath"/>).</summary>
     public BranchActionResult JumpToNode(string nodeId)
     {
         var node = _doc.Nodes.FirstOrDefault(n => n.Id == nodeId && n.Type == "text");
         if (node is null)
         {
-            return new BranchActionResult(false, _branchAnchors.Count, null);
+            return new BranchActionResult(false);
         }
 
         _nextColumnX += NodeWidth + BranchColumnSpacing;
         _cursorNodeId = node.Id;
         _cursorX = _nextColumnX;
         _cursorY = node.Y;
-        _currentBranchName = _branchAnchors.FirstOrDefault(a => a.TipNodeId == node.Id)?.Name;
 
-        return new BranchActionResult(true, _branchAnchors.Count, _currentBranchName);
+        return new BranchActionResult(true);
     }
 
-    /// <summary>Follows the single-child edge chain from <paramref name="start"/> as far as it goes, for rebuilding a branch's tip after a Stop()/Start() cycle (see StartSession).</summary>
-    private (string Id, double X, double Y) FindBranchTip(CanvasNode start)
+    private static bool IsDecisionPointNode(CanvasNode n) => n.Type == "text" && n.Text == DecisionPointLabel;
+
+    private static bool IsPathStartNode(CanvasNode n) =>
+        n.Type == "text" && (n.Text?.StartsWith(PathStartPrefix, StringComparison.Ordinal) ?? false);
+
+    private static string ExtractPathName(CanvasNode n) => n.Text![PathStartPrefix.Length..].Trim();
+
+    /// <summary>Follows the single-child edge chain from <paramref name="start"/> as far as it goes, resolving a path's current tip fresh from the graph every time (never cached, so it can never desync from what's actually in the file).</summary>
+    private (string Id, double X, double Y, int Steps) FindBranchTip(CanvasNode start)
     {
         var current = start;
+        var steps = 0;
         while (true)
         {
             var nextEdge = _doc.Edges.FirstOrDefault(e => e.FromNode == current.Id);
             var nextNode = nextEdge is null ? null : _doc.Nodes.FirstOrDefault(n => n.Id == nextEdge.ToNode);
             if (nextNode is null)
             {
-                return (current.Id, current.X, current.Y);
+                return (current.Id, current.X, current.Y, steps);
             }
 
             current = nextNode;
-        }
-    }
-
-    private void AddOrReplaceAnchor(BranchAnchor anchor)
-    {
-        var existingIndex = _branchAnchors.FindIndex(a => a.Name == anchor.Name);
-        if (existingIndex >= 0)
-        {
-            _branchAnchors[existingIndex] = anchor;
-        }
-        else
-        {
-            _branchAnchors.Add(anchor);
+            steps++;
         }
     }
 

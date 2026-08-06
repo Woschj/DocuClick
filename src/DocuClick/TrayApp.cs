@@ -16,7 +16,6 @@ public sealed class TrayApp : IDisposable
     private bool _isRecording;
     private bool _disposed;
     private string _baseStatusText = "DocuClick - Aufnahme gestoppt";
-    private int _branchDepth;
 
     public event Action<bool>? RecordingStateChanged;
     public event Action? SettingsRequested;
@@ -69,10 +68,6 @@ public sealed class TrayApp : IDisposable
         _isRecording = isRecording;
         _toggleItem.Text = isRecording ? "Aufnahme stoppen" : "Aufnahme starten";
         _baseStatusText = isRecording ? "DocuClick - Aufnahme läuft" : "DocuClick - Aufnahme gestoppt";
-        if (!isRecording)
-        {
-            _branchDepth = 0;
-        }
         UpdateTooltip();
 
         var oldIcon = _notifyIcon.Icon;
@@ -83,17 +78,6 @@ public sealed class TrayApp : IDisposable
         {
             RecordingStateChanged?.Invoke(isRecording);
         }
-    }
-
-    /// <summary>
-    /// Reflects how many branch anchors are currently bookmarked in the
-    /// tray tooltip, so hovering the icon always shows "where you are" —
-    /// not just whether a click was just captured.
-    /// </summary>
-    public void SetBranchDepth(int depth)
-    {
-        _branchDepth = depth;
-        UpdateTooltip();
     }
 
     /// <summary>
@@ -140,8 +124,7 @@ public sealed class TrayApp : IDisposable
 
     private void UpdateTooltip()
     {
-        var text = _branchDepth > 0 ? $"{_baseStatusText} · Branches: {_branchDepth}" : _baseStatusText;
-        _notifyIcon.Text = text.Length > 63 ? text[..63] : text;
+        _notifyIcon.Text = _baseStatusText.Length > 63 ? _baseStatusText[..63] : _baseStatusText;
     }
 
     private void OnTrayIconClick(object? sender, MouseEventArgs e)

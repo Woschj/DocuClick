@@ -18,15 +18,20 @@ namespace DocuClick.Services;
 /// Each click is a real mxGraph *container* cell (a "card": rounded
 /// border, shadow, a numbered badge, a caption, and the screenshot as a
 /// child shape) rather than a bare floating image — dragging the card
-/// moves label and screenshot together as one unit. Branches get their
-/// own accent color (cycled from a fixed palette, assigned in the order
-/// they're first marked) so separate paths read apart at a glance, and
-/// edges have real arrowheads colored to match the column they lead into.
+/// moves label and screenshot together as one unit. Paths get their own
+/// accent color (hashed from the path's own node id, so it's stable
+/// without needing a registry) so separate paths read apart at a glance,
+/// and edges have real arrowheads colored to match the path they lead into.
 ///
-/// Layout/branching semantics mirror <see cref="CanvasFlowWriter"/>
-/// (vertical main flow, branches as new columns via a named anchor that
-/// can be revisited any number of times) so behavior is consistent across
-/// both graph-style output modes.
+/// Branching (see <see cref="IFlowWriter"/> for the full model):
+/// <see cref="MarkDecisionPoint"/> adds a gray rhombus connected from the
+/// current card and moves the cursor onto it inline — clicking normally
+/// afterward just continues straight through it. From there,
+/// <see cref="StartNewPath"/> forks a new, colored "↳ Pfad: &lt;name&gt;"
+/// column, or <see cref="ContinuePath"/> resumes one started earlier.
+/// Nothing about a path/decision point is cached in memory — every lookup
+/// walks the actual mxCell graph, so a Stop()/Start() cycle can never
+/// forget or desync from what's really in the file.
 /// </summary>
 public sealed class DrawIoFlowWriter : IFlowWriter
 {
@@ -41,31 +46,19 @@ public sealed class DrawIoFlowWriter : IFlowWriter
     private const double BranchColumnSpacing = 90;
     private const double MarkerWidth = 200;
     private const double MarkerHeight = 80;
-    // Kept in the label text itself (redundant with the rhombus shape
-    // below, which already marks this out as a decision node) purely so
-    // this constant's value stays byte-for-byte identical to the other two
-    // writers' — FlowPreviewBranching.ExtractBranchName in IFlowWriter.cs
-    // has its own single copy of this prefix and must match whichever
-    // writer produced the label it's parsing, whichever one is active.
-    private const string BranchMarkerPrefix = "◆ Branch: ";
+
+    private const string DecisionPointLabel = "◆ Abzweigung";
+    private const string PathStartPrefix = "↳ Pfad: ";
+    private const string DecisionPointColor = "#6B7280"; // neutral gray — decision points aren't tied to any one path's color
     private const string CardIdPrefix = "card_";
-    private const string MarkerIdPrefix = "marker_";
+    private const string DecisionPointIdPrefix = "decision_";
+    private const string PathStartIdPrefix = "pathstart_";
 
     private const string MainColor = "#2563EB";
     private static readonly string[] BranchColors =
     {
         "#D97706", "#059669", "#DB2777", "#7C3AED", "#DC2626", "#0891B2"
     };
-
-    // TipNodeId/TipX/TipY/TipHeight track where this branch's cursor
-    // currently is — initially the marker itself (in its own freshly
-    // opened column, set up by MarkBranchAnchor), then whichever card
-    // AddClickNode most recently added while this branch was active.
-    // Re-visiting a branch via JumpToAnchor always resumes from here, in
-    // the SAME column, instead of re-deriving a stale position from the
-    // marker every time. TipHeight is needed (unlike in CanvasFlowWriter)
-    // because card height here varies with caption length.
-    private sealed record BranchAnchor(string Name, string TipNodeId, double TipX, double TipY, double TipHeight, string Color);
 
     private readonly AppConfig _config;
 
@@ -77,8 +70,15 @@ public sealed class DrawIoFlowWriter : IFlowWriter
     private double _cursorX;
     private double _cursorY;
     private double _nextColumnX;
-    private string? _currentBranchName;
     private int _stepCounter;
+
+    // Which path (if any) the cursor is currently inside — re-derived by
+    // SetCursor every time the cursor moves (walking backward through
+    // edges to the nearest path-start ancestor) rather than tracked ad
+    // hoc, purely so AddClickNode's cards/edges get that path's accent
+    // color. Never persisted; a fresh StartSession simply has no notion of
+    // it until the cursor moves somewhere.
+    private string? _currentPathStartId;
 
     // Tracks the most recently built card's actual height (varies with
     // caption length) so the *next* card's Y position never overlaps it —
@@ -87,7 +87,6 @@ public sealed class DrawIoFlowWriter : IFlowWriter
     private double _lastCardHeight = ImageAreaHeight + MinHeaderHeight + CardMargin;
 
     private readonly Dictionary<string, string> _labels = new();
-    private readonly List<BranchAnchor> _branchAnchors = new();
     private (string NodeId, double X, double Y)? _pendingResumeAnchor;
 
     public DrawIoFlowWriter(AppConfig config)
@@ -95,10 +94,6 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         _config = config;
         (_doc, _root) = NewEmptyDocument();
     }
-
-    public int BranchDepth => _branchAnchors.Count;
-
-    public string? CurrentBranchName => _currentBranchName;
 
     public string? CurrentNodeLabel => _cursorNodeId is null ? null : _labels.GetValueOrDefault(_cursorNodeId);
 
@@ -147,62 +142,34 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         (_doc, _root) = LoadOrCreate(_filePath);
 
         _labels.Clear();
-        _branchAnchors.Clear();
-        _currentBranchName = null;
         _stepCounter = 0;
 
         foreach (var cell in _root.Elements("mxCell"))
         {
             var id = (string?)cell.Attribute("id");
-            if (id is null || !IsCardCell(cell))
+            if (id is null)
             {
                 continue;
             }
 
-            _stepCounter++;
-            var labelCell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == id + "_label");
-            var label = (string?)labelCell?.Attribute("value");
-            if (!string.IsNullOrEmpty(label))
+            if (IsCardCell(cell))
             {
-                _labels[id] = label;
+                _stepCounter++;
+                var labelCell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == id + "_label");
+                var label = (string?)labelCell?.Attribute("value");
+                if (!string.IsNullOrEmpty(label))
+                {
+                    _labels[id] = label;
+                }
             }
-        }
-
-        // Rebuild branch anchors by scanning for their marker cells so a
-        // Stop()/Start() cycle on the same file doesn't lose them. Colors
-        // are re-derived from scan order (not stored), which is stable
-        // because markers are always encountered in the same relative
-        // order across scans. Each anchor's tip is resolved by walking
-        // forward from the marker along whatever's already connected to it
-        // — otherwise every reload would forget how far a branch had
-        // actually grown and reset it back to "just marked".
-        var branchOrder = 0;
-        foreach (var cell in _root.Elements("mxCell")
-            .Where(c => ((string?)c.Attribute("id"))?.StartsWith(MarkerIdPrefix, StringComparison.Ordinal) ?? false))
-        {
-            var id = (string)cell.Attribute("id")!;
-            var value = (string?)cell.Attribute("value") ?? "";
-            if (!value.StartsWith(BranchMarkerPrefix, StringComparison.Ordinal))
+            else if (IsDecisionPointId(id) || IsPathStartId(id))
             {
-                continue;
+                var value = (string?)cell.Attribute("value");
+                if (!string.IsNullOrEmpty(value))
+                {
+                    _labels[id] = value;
+                }
             }
-
-            var branchName = value[BranchMarkerPrefix.Length..].Trim();
-            if (branchName.Length == 0)
-            {
-                continue;
-            }
-
-            var geometry = cell.Element("mxGeometry");
-            var x = ParseDouble(geometry?.Attribute("x"));
-            var y = ParseDouble(geometry?.Attribute("y"));
-            var height = ParseDouble(geometry?.Attribute("height"));
-            var color = BranchColors[branchOrder % BranchColors.Length];
-            branchOrder++;
-
-            _labels[id] = value;
-            var tip = FindBranchTip(id, x, y, height);
-            AddOrReplaceAnchor(new BranchAnchor(branchName, tip.Id, tip.X, tip.Y, tip.Height, color));
         }
 
         _nextColumnX = _root.Elements("mxCell")
@@ -214,15 +181,14 @@ public sealed class DrawIoFlowWriter : IFlowWriter
 
         if (_pendingResumeAnchor is { } resume && _root.Elements("mxCell").Any(c => (string?)c.Attribute("id") == resume.NodeId))
         {
-            _cursorNodeId = resume.NodeId;
-            _cursorX = _nextColumnX;
-            _cursorY = resume.Y;
+            SetCursor(resume.NodeId, _nextColumnX, resume.Y, ImageAreaHeight + MinHeaderHeight + CardMargin);
         }
         else
         {
             _cursorNodeId = null;
             _cursorX = _nextColumnX;
             _cursorY = 0;
+            _currentPathStartId = null;
         }
 
         _pendingResumeAnchor = null;
@@ -231,8 +197,7 @@ public sealed class DrawIoFlowWriter : IFlowWriter
     public void Stop()
     {
         _cursorNodeId = null;
-        _branchAnchors.Clear();
-        _currentBranchName = null;
+        _currentPathStartId = null;
     }
 
     public void AddClickNode(string description, Bitmap screenshot, DateTime timestamp)
@@ -244,10 +209,9 @@ public sealed class DrawIoFlowWriter : IFlowWriter
 
         var newY = _cursorNodeId is null ? _cursorY : _cursorY + _lastCardHeight + SequentialSpacing;
         var cardId = CardIdPrefix + Guid.NewGuid().ToString("N");
-        var accent = GetAccentColor(_currentBranchName);
+        var accent = GetAccentColor();
 
         var cardHeight = BuildCard(cardId, _cursorX, newY, ++_stepCounter, description, screenshot, accent);
-        _lastCardHeight = cardHeight;
 
         if (_cursorNodeId is not null)
         {
@@ -255,102 +219,142 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         }
 
         _labels[cardId] = description;
-        _cursorNodeId = cardId;
-        _cursorY = newY;
-
-        // Keeps the active branch's anchor pointing at wherever it was
-        // actually just extended to, so the next JumpToAnchor to it
-        // resumes from here instead of jumping back to a stale position.
-        if (_currentBranchName is { } branchName)
-        {
-            var existingColor = _branchAnchors.FirstOrDefault(a => a.Name == branchName)?.Color ?? GetAccentColor(branchName);
-            AddOrReplaceAnchor(new BranchAnchor(branchName, cardId, _cursorX, newY, cardHeight, existingColor));
-        }
+        SetCursor(cardId, _cursorX, newY, cardHeight);
 
         Save();
     }
 
     /// <summary>
-    /// Adds a small, visible "Branch: &lt;name&gt;" diamond marker
-    /// connected from the current card — a real, recognizable node in the
-    /// file (not hidden metadata), so it survives a Stop()/Start() cycle
-    /// (see StartSession) — then immediately jumps the cursor onto it (see
-    /// <see cref="JumpToAnchor"/>), so the diamond becomes a real UML-style
-    /// decision node: the very next click attaches under it in a fresh
-    /// column, instead of the main flow continuing to grow past a marker
-    /// that just sits there unconnected to anything new.
-    /// <see cref="JumpToAnchor"/> remains separately useful afterwards, for
-    /// returning to this (or any other) anchor later once the flow has
-    /// moved on elsewhere. Re-marking an existing name adds a fresh marker
-    /// (the newest one wins on reload).
+    /// Adds a gray "◆ Abzweigung" rhombus connected from the current card
+    /// — an explicit, visible waypoint rather than hidden state — and
+    /// moves the cursor onto it inline, so the next regular click still
+    /// just continues straight through it in the same column. Forking an
+    /// actual new path only happens via <see cref="StartNewPath"/>, chosen
+    /// later by clicking this rhombus in the Ablauf-Übersicht; nothing
+    /// here asks for a name upfront, since a decision point can end up
+    /// with any number of differently-named paths over time.
     /// </summary>
-    public BranchActionResult MarkBranchAnchor(string branchName)
+    public BranchActionResult MarkDecisionPoint()
     {
         if (_cursorNodeId is null)
         {
-            return new BranchActionResult(false, _branchAnchors.Count, null);
+            return new BranchActionResult(false);
         }
 
         var markerY = _cursorY + _lastCardHeight + SequentialSpacing;
-        var markerId = MarkerIdPrefix + Guid.NewGuid().ToString("N");
-        var color = BranchColors[_branchAnchors.Count % BranchColors.Length];
+        var markerId = DecisionPointIdPrefix + Guid.NewGuid().ToString("N");
+        var markerX = _cursorX + (CardWidth - MarkerWidth) / 2;
 
         var marker = new XElement("mxCell",
             new XAttribute("id", markerId),
-            new XAttribute("value", $"{BranchMarkerPrefix}{branchName}"),
+            new XAttribute("value", DecisionPointLabel),
             new XAttribute("style",
-                $"rhombus;whiteSpace=wrap;html=1;fillColor=#F5F3FF;strokeColor={color};strokeWidth=2;" +
-                $"fontColor=#3B0764;fontStyle=1;fontSize=12;arcSize=4;"),
+                $"rhombus;whiteSpace=wrap;html=1;fillColor=#F3F4F6;strokeColor={DecisionPointColor};strokeWidth=2;" +
+                $"fontColor=#1F2937;fontStyle=1;fontSize=12;arcSize=4;"),
             new XAttribute("vertex", "1"),
             new XAttribute("parent", "1"),
             new XElement("mxGeometry",
-                new XAttribute("x", Fmt(_cursorX + (CardWidth - MarkerWidth) / 2)),
+                new XAttribute("x", Fmt(markerX)),
                 new XAttribute("y", Fmt(markerY)),
                 new XAttribute("width", Fmt(MarkerWidth)),
                 new XAttribute("height", Fmt(MarkerHeight)),
                 new XAttribute("as", "geometry")));
         _root.Add(marker);
 
-        AddEdge(_cursorNodeId, markerId, GetAccentColor(_currentBranchName));
+        AddEdge(_cursorNodeId, markerId, DecisionPointColor);
+        _labels[markerId] = DecisionPointLabel;
 
-        _labels[markerId] = $"{BranchMarkerPrefix}{branchName}";
-
-        // Opens the branch's own column right here, once, at creation —
-        // see JumpToAnchor's doc comment for why re-visiting the same
-        // branch later must NOT do this again.
-        _nextColumnX += CardWidth + BranchColumnSpacing;
-        AddOrReplaceAnchor(new BranchAnchor(branchName, markerId, _nextColumnX, markerY, MarkerHeight, color));
+        SetCursor(markerId, markerX, markerY, MarkerHeight);
         Save();
-
-        return JumpToAnchor(branchName);
+        return new BranchActionResult(true);
     }
 
-    public List<string> ListBranchAnchorNames() => _branchAnchors.Select(a => a.Name).ToList();
-
-    /// <summary>
-    /// Moves the cursor to the branch's current tip — MarkBranchAnchor
-    /// already opened its column when the branch was created, so this
-    /// only ever resumes there; it must NOT open another new column on
-    /// every visit, which used to both fork a disconnected extra column
-    /// per re-visit AND reset the position back to the marker's original
-    /// spot, overlapping/overwriting whatever had already been added to
-    /// the branch since.
-    /// </summary>
-    public BranchActionResult JumpToAnchor(string branchName)
+    /// <summary>Every path already forking from <paramref name="decisionPointId"/>, resolved fresh from the graph (never cached) — see <see cref="ListPaths"/> on <see cref="IFlowWriter"/>.</summary>
+    public List<PathInfo> ListPaths(string decisionPointId)
     {
-        var anchor = _branchAnchors.FirstOrDefault(a => a.Name == branchName);
-        if (anchor is null)
+        var childIds = _root.Elements("mxCell")
+            .Where(c => (string?)c.Attribute("edge") == "1" && (string?)c.Attribute("source") == decisionPointId)
+            .Select(c => (string?)c.Attribute("target"))
+            .Where(id => id is not null)
+            .Select(id => id!);
+
+        var result = new List<PathInfo>();
+        foreach (var id in childIds.Where(IsPathStartId))
         {
-            return new BranchActionResult(false, _branchAnchors.Count, null);
+            var cell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == id);
+            var value = (string?)cell?.Attribute("value") ?? "";
+            if (cell is null || !value.StartsWith(PathStartPrefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var geometry = cell.Element("mxGeometry");
+            var tip = FindBranchTip(id, ParseDouble(geometry?.Attribute("x")), ParseDouble(geometry?.Attribute("y")), ParseDouble(geometry?.Attribute("height")));
+            result.Add(new PathInfo(id, value[PathStartPrefix.Length..].Trim(), tip.Steps));
         }
 
-        _cursorNodeId = anchor.TipNodeId;
-        _cursorX = anchor.TipX;
-        _cursorY = anchor.TipY;
-        _currentBranchName = branchName;
-        _lastCardHeight = anchor.TipHeight;
+        return result;
+    }
 
-        return new BranchActionResult(true, _branchAnchors.Count, branchName);
+    /// <summary>Forks a brand-new named path from an existing decision point into its own column, and jumps the cursor onto it.</summary>
+    public BranchActionResult StartNewPath(string decisionPointId, string pathName)
+    {
+        var decisionCell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == decisionPointId);
+        if (decisionCell is null || !IsDecisionPointId(decisionPointId))
+        {
+            return new BranchActionResult(false);
+        }
+
+        var decisionY = ParseDouble(decisionCell.Element("mxGeometry")?.Attribute("y"));
+
+        _nextColumnX += CardWidth + BranchColumnSpacing;
+        var pathStartId = PathStartIdPrefix + Guid.NewGuid().ToString("N");
+        var color = BranchColors[Math.Abs(pathStartId.GetHashCode()) % BranchColors.Length];
+        var pathStartX = _nextColumnX + (CardWidth - MarkerWidth) / 2;
+
+        var pathStart = new XElement("mxCell",
+            new XAttribute("id", pathStartId),
+            new XAttribute("value", $"{PathStartPrefix}{pathName}"),
+            new XAttribute("style",
+                $"rounded=1;arcSize=30;whiteSpace=wrap;html=1;fillColor=#F0FDF4;strokeColor={color};strokeWidth=2;" +
+                $"fontColor=#14532D;fontStyle=1;fontSize=12;"),
+            new XAttribute("vertex", "1"),
+            new XAttribute("parent", "1"),
+            new XElement("mxGeometry",
+                new XAttribute("x", Fmt(pathStartX)),
+                new XAttribute("y", Fmt(decisionY)),
+                new XAttribute("width", Fmt(MarkerWidth)),
+                new XAttribute("height", Fmt(MarkerHeight)),
+                new XAttribute("as", "geometry")));
+        _root.Add(pathStart);
+
+        AddEdge(decisionPointId, pathStartId, color);
+        _labels[pathStartId] = $"{PathStartPrefix}{pathName}";
+
+        SetCursor(pathStartId, pathStartX, decisionY, MarkerHeight);
+        Save();
+        return new BranchActionResult(true);
+    }
+
+    /// <summary>Resumes an existing path at wherever it currently ends (walked fresh from the graph — see <see cref="FindBranchTip"/>), in its own already-established column.</summary>
+    public BranchActionResult ContinuePath(string pathStartNodeId)
+    {
+        if (!IsPathStartId(pathStartNodeId))
+        {
+            return new BranchActionResult(false);
+        }
+
+        var startCell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == pathStartNodeId);
+        if (startCell is null)
+        {
+            return new BranchActionResult(false);
+        }
+
+        var geometry = startCell.Element("mxGeometry");
+        var tip = FindBranchTip(pathStartNodeId, ParseDouble(geometry?.Attribute("x")), ParseDouble(geometry?.Attribute("y")), ParseDouble(geometry?.Attribute("height")));
+        SetCursor(tip.Id, tip.X, tip.Y, tip.Height);
+
+        return new BranchActionResult(true);
     }
 
     public FlowPreview GetPreview()
@@ -364,9 +368,10 @@ public sealed class DrawIoFlowWriter : IFlowWriter
                 continue;
             }
 
-            var isMarker = id.StartsWith(MarkerIdPrefix, StringComparison.Ordinal);
+            var isDecisionPoint = IsDecisionPointId(id);
+            var isPathStart = IsPathStartId(id);
             var isCard = IsCardCell(cell);
-            if (!isMarker && !isCard)
+            if (!isDecisionPoint && !isPathStart && !isCard)
             {
                 continue;
             }
@@ -376,9 +381,11 @@ public sealed class DrawIoFlowWriter : IFlowWriter
             var y = ParseDouble(geometry?.Attribute("y"));
             var w = ParseDouble(geometry?.Attribute("width"));
             var h = ParseDouble(geometry?.Attribute("height"));
-            var label = _labels.GetValueOrDefault(id) ?? "(ohne Beschreibung)";
+            var rawLabel = _labels.GetValueOrDefault(id) ?? "(ohne Beschreibung)";
+            var pathName = isPathStart ? rawLabel[PathStartPrefix.Length..].Trim() : null;
+            var label = isDecisionPoint ? "Abzweigung" : isPathStart ? $"↳ {pathName}" : rawLabel;
 
-            nodes.Add(new PreviewNode(id, label, x, y, w, h, id == _cursorNodeId, isMarker));
+            nodes.Add(new PreviewNode(id, label, x, y, w, h, id == _cursorNodeId, isDecisionPoint, isPathStart, PathName: pathName));
         }
 
         var edges = _root.Elements("mxCell")
@@ -390,14 +397,14 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         return FlowPreviewBranching.TagBranches(new FlowPreview(nodes, edges));
     }
 
-    /// <summary>Jumps the cursor to an arbitrary existing card/marker cell, opening a new column — same mechanics as <see cref="JumpToAnchor"/>, just not limited to named branch markers.</summary>
+    /// <summary>Jumps the cursor to an arbitrary existing card/decision-point/path-start cell, opening a new column — for regular nodes; decision points are handled separately by the Ablauf-Übersicht's path popup (<see cref="StartNewPath"/>/<see cref="ContinuePath"/>).</summary>
     public BranchActionResult JumpToNode(string nodeId)
     {
         var cell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == nodeId);
-        var isMarker = nodeId.StartsWith(MarkerIdPrefix, StringComparison.Ordinal);
-        if (cell is null || !(isMarker || IsCardCell(cell)))
+        var isMarkerLike = IsDecisionPointId(nodeId) || IsPathStartId(nodeId);
+        if (cell is null || !(isMarkerLike || IsCardCell(cell)))
         {
-            return new BranchActionResult(false, _branchAnchors.Count, null);
+            return new BranchActionResult(false);
         }
 
         var geometry = cell.Element("mxGeometry");
@@ -405,38 +412,49 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         var height = ParseDouble(geometry?.Attribute("height"));
 
         _nextColumnX += CardWidth + BranchColumnSpacing;
+        SetCursor(nodeId, _nextColumnX, y, isMarkerLike ? MarkerHeight : height);
+
+        return new BranchActionResult(true);
+    }
+
+    /// <summary>Moves the cursor and re-derives which path (if any) it's now inside, by walking backward through edges to the nearest path-start ancestor — see <see cref="_currentPathStartId"/>.</summary>
+    private void SetCursor(string nodeId, double x, double y, double height)
+    {
         _cursorNodeId = nodeId;
-        _cursorX = _nextColumnX;
+        _cursorX = x;
         _cursorY = y;
-        _currentBranchName = _branchAnchors.FirstOrDefault(a => a.TipNodeId == nodeId)?.Name;
-        _lastCardHeight = isMarker ? MarkerHeight : height;
-
-        return new BranchActionResult(true, _branchAnchors.Count, _currentBranchName);
+        _lastCardHeight = height;
+        _currentPathStartId = FindOwningPathStart(nodeId);
     }
 
-    private string GetAccentColor(string? branchName)
+    private string? FindOwningPathStart(string nodeId)
     {
-        if (branchName is null)
+        var currentId = nodeId;
+        var guard = 0;
+        while (guard++ < 10_000) // defensive: a real flow never has cycles, but never hang if one somehow existed
         {
-            return MainColor;
+            if (IsPathStartId(currentId))
+            {
+                return currentId;
+            }
+
+            var inboundEdge = _root.Elements("mxCell")
+                .FirstOrDefault(c => (string?)c.Attribute("edge") == "1" && (string?)c.Attribute("target") == currentId);
+            var sourceId = (string?)inboundEdge?.Attribute("source");
+            if (sourceId is null)
+            {
+                return null;
+            }
+
+            currentId = sourceId;
         }
 
-        var anchor = _branchAnchors.FirstOrDefault(a => a.Name == branchName);
-        return anchor?.Color ?? BranchColors[_branchAnchors.Count % BranchColors.Length];
+        return null;
     }
 
-    private void AddOrReplaceAnchor(BranchAnchor anchor)
-    {
-        var existingIndex = _branchAnchors.FindIndex(a => a.Name == anchor.Name);
-        if (existingIndex >= 0)
-        {
-            _branchAnchors[existingIndex] = anchor;
-        }
-        else
-        {
-            _branchAnchors.Add(anchor);
-        }
-    }
+    private string GetAccentColor() => _currentPathStartId is { } id
+        ? BranchColors[Math.Abs(id.GetHashCode()) % BranchColors.Length]
+        : MainColor;
 
     /// <summary>
     /// Builds one "card": a rounded, shadowed container with a numbered
@@ -560,6 +578,10 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         ((string?)cell.Attribute("id"))?.StartsWith(CardIdPrefix, StringComparison.Ordinal) == true
         && (((string?)cell.Attribute("style"))?.Contains("container=1") ?? false);
 
+    private static bool IsDecisionPointId(string id) => id.StartsWith(DecisionPointIdPrefix, StringComparison.Ordinal);
+
+    private static bool IsPathStartId(string id) => id.StartsWith(PathStartIdPrefix, StringComparison.Ordinal);
+
     private static string ToBase64Png(Bitmap bitmap)
     {
         using var ms = new MemoryStream();
@@ -577,13 +599,14 @@ public sealed class DrawIoFlowWriter : IFlowWriter
             ? value
             : 0;
 
-    /// <summary>Follows the single-child edge chain from the marker cell <paramref name="startId"/> as far as it goes, for rebuilding a branch's tip after a Stop()/Start() cycle (see StartSession).</summary>
-    private (string Id, double X, double Y, double Height) FindBranchTip(string startId, double startX, double startY, double startHeight)
+    /// <summary>Follows the single-child edge chain from <paramref name="startId"/> as far as it goes, resolving a path's current tip fresh from the graph every time (never cached, so it can never desync from what's actually in the file).</summary>
+    private (string Id, double X, double Y, double Height, int Steps) FindBranchTip(string startId, double startX, double startY, double startHeight)
     {
         var currentId = startId;
         var currentX = startX;
         var currentY = startY;
         var currentHeight = startHeight;
+        var steps = 0;
         while (true)
         {
             var edge = _root.Elements("mxCell")
@@ -592,7 +615,7 @@ public sealed class DrawIoFlowWriter : IFlowWriter
             var targetCell = targetId is null ? null : _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == targetId);
             if (targetCell is null)
             {
-                return (currentId, currentX, currentY, currentHeight);
+                return (currentId, currentX, currentY, currentHeight, steps);
             }
 
             var geometry = targetCell.Element("mxGeometry");
@@ -600,6 +623,7 @@ public sealed class DrawIoFlowWriter : IFlowWriter
             currentX = ParseDouble(geometry?.Attribute("x"));
             currentY = ParseDouble(geometry?.Attribute("y"));
             currentHeight = ParseDouble(geometry?.Attribute("height"));
+            steps++;
         }
     }
 

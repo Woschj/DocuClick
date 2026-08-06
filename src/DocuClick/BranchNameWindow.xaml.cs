@@ -2,7 +2,7 @@ using System.Windows;
 
 namespace DocuClick;
 
-/// <summary>Small always-on-top prompt for naming a branch anchor when it's marked.</summary>
+/// <summary>Small always-on-top prompt for naming a new path when it's started from a decision point in the Ablauf-Übersicht.</summary>
 public partial class BranchNameWindow : Window
 {
     public string? BranchName { get; private set; }

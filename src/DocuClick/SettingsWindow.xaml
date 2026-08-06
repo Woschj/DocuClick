@@ -32,7 +32,7 @@
                                      Checked="OnOutputModeChanged"/>
 
                         <TextBlock Style="{StaticResource HintText}"
-                                   Text="Canvas schreibt jeden Klick als verbundenen Knoten auf einer Fläche (vertikaler Hauptfluss, Abzweigungen als neue Spalten über die Hotkeys unten) — gut für kurze Abläufe, wird bei sehr langen Abläufen aber schnell unübersichtlich. Excalidraw funktioniert wie Canvas (Knoten + Abzweigungen), aber im freien Skizzen-Look statt fester Boxen — experimentell, benötigt zusätzlich das kostenlose Excalidraw-Community-Plugin (anders als Canvas, das in Obsidian bereits eingebaut ist). draw.io zeichnet wie Canvas ein Flussdiagramm (Hauptfluss + Abzweigungen als Spalten), aber als echte Karten mit Nummer-Badge, Beschriftung und Screenshot als eine verschiebbare Einheit, mit farbigen Pfeilen je Abzweigung — öffnet in der kostenlosen draw.io/diagrams.net-App, ganz ohne Obsidian. Canvas/Excalidraw/draw.io betten Screenshots direkt in die Datei ein — kein separater Attachments-Ordner nötig — und sind voll editierbar."/>
+                                   Text="Canvas schreibt jeden Klick als verbundenen Knoten auf einer Fläche (vertikaler Hauptfluss, Abzweigungspunkte mit neuen Pfaden als Spalten, gesteuert über die Ablauf-Übersicht) — gut für kurze Abläufe, wird bei sehr langen Abläufen aber schnell unübersichtlich. Excalidraw funktioniert wie Canvas (Knoten + Abzweigungen), aber im freien Skizzen-Look statt fester Boxen — experimentell, benötigt zusätzlich das kostenlose Excalidraw-Community-Plugin (anders als Canvas, das in Obsidian bereits eingebaut ist). draw.io zeichnet wie Canvas ein Flussdiagramm (Hauptfluss + Abzweigungen als Spalten), aber als echte Karten mit Nummer-Badge, Beschriftung und Screenshot als eine verschiebbare Einheit, mit farbigen Pfeilen je Pfad — öffnet in der kostenlosen draw.io/diagrams.net-App, ganz ohne Obsidian. Canvas/Excalidraw/draw.io betten Screenshots direkt in die Datei ein — kein separater Attachments-Ordner nötig — und sind voll editierbar."/>
                     </StackPanel>
                 </Border>
 
@@ -95,7 +95,7 @@
                             <Button Grid.Column="1" Content="Ändern" Style="{StaticResource ModernButton}" Click="OnRecordStartStopClicked"/>
                         </Grid>
 
-                        <TextBlock Text="Branch setzen" Style="{StaticResource FieldLabel}"/>
+                        <TextBlock Text="Abzweigung setzen" Style="{StaticResource FieldLabel}"/>
                         <Grid Margin="0,0,0,12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -104,16 +104,8 @@
                             <TextBox x:Name="BranchMarkDisplayBox" Grid.Column="0" Margin="0,0,8,0" IsReadOnly="True" Style="{StaticResource ModernTextBox}"/>
                             <Button Grid.Column="1" Content="Ändern" Style="{StaticResource ModernButton}" Click="OnRecordBranchMarkClicked"/>
                         </Grid>
-
-                        <TextBlock Text="Branch auswählen" Style="{StaticResource FieldLabel}"/>
-                        <Grid Margin="0,0,0,12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="110"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="BranchJumpDisplayBox" Grid.Column="0" Margin="0,0,8,0" IsReadOnly="True" Style="{StaticResource ModernTextBox}"/>
-                            <Button Grid.Column="1" Content="Ändern" Style="{StaticResource ModernButton}" Click="OnRecordBranchJumpClicked"/>
-                        </Grid>
+                        <TextBlock Style="{StaticResource HintText}" Margin="0,-8,0,12"
+                                   Text="Markiert den aktuellen Knoten als Abzweigungspunkt. Neuen Pfad starten oder bestehenden fortsetzen: in der Ablauf-Übersicht auf den Abzweigungspunkt klicken."/>
 
                         <TextBlock Text="Zoom-auf-Cursor umschalten" Style="{StaticResource FieldLabel}"/>
                         <Grid Margin="0,0,0,4">

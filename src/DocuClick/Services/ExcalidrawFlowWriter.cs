@@ -14,8 +14,8 @@ namespace DocuClick.Services;
 ///
 /// Each click becomes a rounded rectangle "card" (bound text label above
 /// an embedded screenshot image), connected to the previous card with an
-/// arrow. Layout/branching mirrors <see cref="CanvasFlowWriter"/> exactly
-/// (vertical main flow, named branch anchors, new column per branch).
+/// arrow. Layout/branching mirrors <see cref="CanvasFlowWriter"/> — see
+/// <see cref="IFlowWriter"/> for the full decision-point/path model.
 ///
 /// Text uses fontFamily=2 (Excalidraw's built-in clean "Normal"/sans-serif
 /// family) instead of the default hand-drawn "Virgil" family, for a more
@@ -31,23 +31,17 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
     private const double SequentialSpacing = 50;
     private const double BranchColumnSpacing = 80;
     private const int FontFamilyNormal = 2;
-    private const string BranchMarkerColor = "#7C3AED";
-    // Leading "◆" gives the marker a distinct at-a-glance icon — Excalidraw
-    // markers are plain text elements, with no built-in shape of their own
-    // to mark them out the way draw.io's rhombus does.
-    private const string BranchMarkerPrefix = "◆ Branch: ";
 
-    // TipNodeId/TipX/TipY track where this branch's cursor currently is —
-    // initially the marker itself (in its own freshly opened column, set
-    // up by MarkBranchAnchor), then whichever rectangle AddClickNode most
-    // recently added while this branch was active. Re-visiting a branch
-    // via JumpToAnchor always resumes from here, in the SAME column,
-    // instead of re-deriving a stale position from the marker every time.
-    // No separate tip-height field needed (unlike DrawIoFlowWriter):
-    // AddClickNode already re-derives the previous element's height from
-    // whatever _cursorNodeId currently points to (see ImageHeightOf), so
-    // keeping TipNodeId in sync is enough.
-    private sealed record BranchAnchor(string Name, string TipNodeId, double TipX, double TipY);
+    // Leading icons give both kinds of marker a distinct at-a-glance look
+    // — Excalidraw markers are plain text elements, with no built-in shape
+    // of their own the way draw.io's rhombus has.
+    private const string DecisionPointLabel = "◆ Abzweigung";
+    private const string PathStartPrefix = "↳ Pfad: ";
+    private const string DecisionPointColor = "#6B7280"; // neutral gray — decision points aren't tied to any one path's color
+    private static readonly string[] PathColors =
+    {
+        "#D97706", "#059669", "#DB2777", "#7C3AED", "#DC2626", "#0891B2"
+    };
 
     private readonly AppConfig _config;
     private readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
@@ -58,18 +52,12 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
     private double _cursorX;
     private double _cursorY;
     private double _nextColumnX;
-    private string? _currentBranchName;
-    private readonly List<BranchAnchor> _branchAnchors = new();
     private (string NodeId, double X, double Y)? _pendingResumeAnchor;
 
     public ExcalidrawFlowWriter(AppConfig config)
     {
         _config = config;
     }
-
-    public int BranchDepth => _branchAnchors.Count;
-
-    public string? CurrentBranchName => _currentBranchName;
 
     public string? CurrentNodeLabel => _cursorNodeId is null ? null : GetNodeLabel(_cursorNodeId);
 
@@ -105,30 +93,6 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
         var rectangles = _doc.Elements.Where(e => e.Type == "rectangle").ToList();
         _nextColumnX = rectangles.Count > 0 ? rectangles.Max(e => e.X) + NodeWidth + BranchColumnSpacing : 0;
 
-        _currentBranchName = null;
-
-        // Rebuild branch anchors by scanning for their marker text elements
-        // (see MarkBranchAnchor) instead of relying on in-memory state, so
-        // a Stop()/Start() cycle on the same file doesn't lose them. Each
-        // anchor's tip is resolved by walking forward from the marker
-        // along whatever's already connected to it — otherwise every
-        // reload would forget how far a branch had actually grown and
-        // reset it back to "just marked".
-        _branchAnchors.Clear();
-        foreach (var el in _doc.Elements
-            .Where(e => e.Type == "text" && e.OriginalText is not null && e.OriginalText.StartsWith(BranchMarkerPrefix, StringComparison.Ordinal))
-            .OrderBy(e => e.Y).ThenBy(e => e.X))
-        {
-            var branchName = el.OriginalText![BranchMarkerPrefix.Length..].Trim();
-            if (branchName.Length == 0)
-            {
-                continue;
-            }
-
-            var tip = FindBranchTip(el);
-            AddOrReplaceAnchor(new BranchAnchor(branchName, tip.Id, tip.X, tip.Y));
-        }
-
         if (_pendingResumeAnchor is { } resume && rectangles.Any(e => e.Id == resume.NodeId))
         {
             _cursorNodeId = resume.NodeId;
@@ -145,12 +109,7 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
         _pendingResumeAnchor = null;
     }
 
-    public void Stop()
-    {
-        _cursorNodeId = null;
-        _branchAnchors.Clear();
-        _currentBranchName = null;
-    }
+    public void Stop() => _cursorNodeId = null;
 
     public void AddClickNode(string description, Bitmap screenshot, DateTime timestamp)
     {
@@ -212,45 +171,33 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
         _cursorNodeId = rectangleId;
         _cursorY = newY;
 
-        // Keeps the active branch's anchor pointing at wherever it was
-        // actually just extended to, so the next JumpToAnchor to it
-        // resumes from here instead of jumping back to a stale position.
-        if (_currentBranchName is { } branchName)
-        {
-            AddOrReplaceAnchor(new BranchAnchor(branchName, rectangleId, _cursorX, newY));
-        }
-
         Save();
     }
 
     /// <summary>
-    /// Adds a small, visible "Branch: &lt;name&gt;" text marker connected
-    /// from the current node with an arrow — an explicit waypoint object
-    /// rather than hidden state, so it shows up in the scene itself and
-    /// survives a Stop()/Start() cycle (see StartSession) — then
-    /// immediately jumps the cursor onto it (see <see cref="JumpToAnchor"/>),
-    /// so the marker becomes a real branch point: the very next click
-    /// attaches under it in a fresh column, instead of the main flow
-    /// continuing to grow past a marker that just sits there unconnected to
-    /// anything new. <see cref="JumpToAnchor"/> remains separately useful
-    /// afterwards, for returning to this (or any other) anchor later once
-    /// the flow has moved on elsewhere. Re-marking an existing name adds a
-    /// fresh marker (the newest one wins on the next reload, same as
-    /// in-memory re-marking).
+    /// Adds a small, visible "◆ Abzweigung" text marker connected from the
+    /// current node with an arrow — an explicit waypoint rather than
+    /// hidden state — and moves the cursor onto it inline, so the next
+    /// regular click still just continues straight through it in the same
+    /// column. Forking an actual new path only happens via
+    /// <see cref="StartNewPath"/>, chosen later by clicking this marker in
+    /// the Ablauf-Übersicht; nothing here asks for a name upfront, since a
+    /// decision point can end up with any number of differently-named
+    /// paths over time.
     /// </summary>
-    public BranchActionResult MarkBranchAnchor(string branchName)
+    public BranchActionResult MarkDecisionPoint()
     {
         if (_cursorNodeId is null)
         {
-            return new BranchActionResult(false, _branchAnchors.Count, null);
+            return new BranchActionResult(false);
         }
 
-        var markerId = "branch" + Guid.NewGuid().ToString("N");
+        var markerId = "decision" + Guid.NewGuid().ToString("N");
         var markerY = _cursorY + LabelHeight + LabelGap + ImageHeightOf(_cursorNodeId) + SequentialSpacing;
 
         var marker = NewElement("text", markerId, _cursorX, markerY, NodeWidth, LabelHeight);
-        marker.StrokeColor = BranchMarkerColor;
-        marker.Text = $"{BranchMarkerPrefix}{branchName}";
+        marker.StrokeColor = DecisionPointColor;
+        marker.Text = DecisionPointLabel;
         marker.OriginalText = marker.Text;
         marker.FontSize = 16;
         marker.FontFamily = FontFamilyNormal;
@@ -260,54 +207,76 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
         _doc.Elements.Add(marker);
         _doc.Elements.Add(BuildArrow(_cursorNodeId, markerId));
 
-        // Opens the branch's own column right here, once, at creation —
-        // see JumpToAnchor's doc comment for why re-visiting the same
-        // branch later must NOT do this again.
-        _nextColumnX += NodeWidth + BranchColumnSpacing;
-        AddOrReplaceAnchor(new BranchAnchor(branchName, markerId, _nextColumnX, markerY));
+        _cursorNodeId = markerId;
+        _cursorX = marker.X;
+        _cursorY = markerY;
+
         Save();
-
-        return JumpToAnchor(branchName);
+        return new BranchActionResult(true);
     }
 
-    public List<string> ListBranchAnchorNames() => _branchAnchors.Select(a => a.Name).ToList();
-
-    private void AddOrReplaceAnchor(BranchAnchor anchor)
+    /// <summary>Every path already forking from <paramref name="decisionPointId"/>, resolved fresh from the graph (never cached) — see <see cref="ListPaths"/> on <see cref="IFlowWriter"/>.</summary>
+    public List<PathInfo> ListPaths(string decisionPointId)
     {
-        var existingIndex = _branchAnchors.FindIndex(a => a.Name == anchor.Name);
-        if (existingIndex >= 0)
-        {
-            _branchAnchors[existingIndex] = anchor;
-        }
-        else
-        {
-            _branchAnchors.Add(anchor);
-        }
+        var childIds = _doc.Elements
+            .Where(e => e.Type == "arrow" && e.StartBinding?.ElementId == decisionPointId && e.EndBinding is not null)
+            .Select(e => e.EndBinding!.ElementId)
+            .ToHashSet();
+
+        return _doc.Elements
+            .Where(e => childIds.Contains(e.Id) && IsPathStart(e))
+            .Select(e => new PathInfo(e.Id, ExtractPathName(e), FindBranchTip(e).Steps))
+            .ToList();
     }
 
-    /// <summary>
-    /// Moves the cursor to the branch's current tip — MarkBranchAnchor
-    /// already opened its column when the branch was created, so this
-    /// only ever resumes there; it must NOT open another new column on
-    /// every visit, which used to both fork a disconnected extra column
-    /// per re-visit AND reset the position back to the marker's original
-    /// spot, overlapping/overwriting whatever had already been added to
-    /// the branch since.
-    /// </summary>
-    public BranchActionResult JumpToAnchor(string branchName)
+    /// <summary>Forks a brand-new named path from an existing decision point into its own column, and jumps the cursor onto it.</summary>
+    public BranchActionResult StartNewPath(string decisionPointId, string pathName)
     {
-        var anchor = _branchAnchors.FirstOrDefault(a => a.Name == branchName);
-        if (anchor is null)
+        var decisionElement = _doc.Elements.FirstOrDefault(e => e.Id == decisionPointId && IsDecisionPoint(e));
+        if (decisionElement is null)
         {
-            return new BranchActionResult(false, _branchAnchors.Count, null);
+            return new BranchActionResult(false);
         }
 
-        _cursorNodeId = anchor.TipNodeId;
-        _cursorX = anchor.TipX;
-        _cursorY = anchor.TipY;
-        _currentBranchName = branchName;
+        _nextColumnX += NodeWidth + BranchColumnSpacing;
+        var pathStartId = "pathstart" + Guid.NewGuid().ToString("N");
+        var color = PathColors[Math.Abs(pathStartId.GetHashCode()) % PathColors.Length];
 
-        return new BranchActionResult(true, _branchAnchors.Count, branchName);
+        var pathStart = NewElement("text", pathStartId, _nextColumnX, decisionElement.Y, NodeWidth, LabelHeight);
+        pathStart.StrokeColor = color;
+        pathStart.Text = $"{PathStartPrefix}{pathName}";
+        pathStart.OriginalText = pathStart.Text;
+        pathStart.FontSize = 16;
+        pathStart.FontFamily = FontFamilyNormal;
+        pathStart.TextAlign = "left";
+        pathStart.VerticalAlign = "top";
+
+        _doc.Elements.Add(pathStart);
+        _doc.Elements.Add(BuildArrow(decisionPointId, pathStartId));
+
+        _cursorNodeId = pathStartId;
+        _cursorX = pathStart.X;
+        _cursorY = pathStart.Y;
+
+        Save();
+        return new BranchActionResult(true);
+    }
+
+    /// <summary>Resumes an existing path at wherever it currently ends (walked fresh from the graph — see <see cref="FindBranchTip"/>), in its own already-established column.</summary>
+    public BranchActionResult ContinuePath(string pathStartNodeId)
+    {
+        var pathStart = _doc.Elements.FirstOrDefault(e => e.Id == pathStartNodeId && IsPathStart(e));
+        if (pathStart is null)
+        {
+            return new BranchActionResult(false);
+        }
+
+        var tip = FindBranchTip(pathStart);
+        _cursorNodeId = tip.Id;
+        _cursorX = tip.X;
+        _cursorY = tip.Y;
+
+        return new BranchActionResult(true);
     }
 
     public FlowPreview GetPreview()
@@ -315,13 +284,15 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
         var nodes = new List<PreviewNode>();
         foreach (var el in _doc.Elements.Where(e => e.Type == "rectangle"))
         {
-            nodes.Add(new PreviewNode(el.Id, GetNodeLabel(_doc, el.Id), el.X, el.Y, el.Width, el.Height, el.Id == _cursorNodeId, false));
+            nodes.Add(new PreviewNode(el.Id, GetNodeLabel(_doc, el.Id), el.X, el.Y, el.Width, el.Height, el.Id == _cursorNodeId, false, false));
         }
 
-        foreach (var el in _doc.Elements.Where(e =>
-            e.Type == "text" && e.OriginalText is not null && e.OriginalText.StartsWith(BranchMarkerPrefix, StringComparison.Ordinal)))
+        foreach (var el in _doc.Elements.Where(e => e.Type == "text" && (IsDecisionPoint(e) || IsPathStart(e))))
         {
-            nodes.Add(new PreviewNode(el.Id, el.OriginalText!, el.X, el.Y, el.Width, el.Height, el.Id == _cursorNodeId, true));
+            var isDecisionPoint = IsDecisionPoint(el);
+            var pathName = isDecisionPoint ? null : ExtractPathName(el);
+            var label = isDecisionPoint ? "Abzweigung" : $"↳ {pathName}";
+            nodes.Add(new PreviewNode(el.Id, label, el.X, el.Y, el.Width, el.Height, el.Id == _cursorNodeId, isDecisionPoint, !isDecisionPoint, PathName: pathName));
         }
 
         var edges = _doc.Elements
@@ -332,24 +303,22 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
         return FlowPreviewBranching.TagBranches(new FlowPreview(nodes, edges));
     }
 
-    /// <summary>Jumps the cursor to an arbitrary existing rectangle/marker node, opening a new column — same mechanics as <see cref="JumpToAnchor"/>, just not limited to named branch markers.</summary>
+    /// <summary>Jumps the cursor to an arbitrary existing rectangle/decision-point/path-start element, opening a new column — for regular nodes; decision points are handled separately by the Ablauf-Übersicht's path popup (<see cref="StartNewPath"/>/<see cref="ContinuePath"/>).</summary>
     public BranchActionResult JumpToNode(string nodeId)
     {
         var target = _doc.Elements.FirstOrDefault(e =>
-            e.Id == nodeId && (e.Type == "rectangle" ||
-                (e.Type == "text" && e.OriginalText is not null && e.OriginalText.StartsWith(BranchMarkerPrefix, StringComparison.Ordinal))));
+            e.Id == nodeId && (e.Type == "rectangle" || IsDecisionPoint(e) || IsPathStart(e)));
         if (target is null)
         {
-            return new BranchActionResult(false, _branchAnchors.Count, null);
+            return new BranchActionResult(false);
         }
 
         _nextColumnX += NodeWidth + BranchColumnSpacing;
         _cursorNodeId = nodeId;
         _cursorX = _nextColumnX;
         _cursorY = target.Y;
-        _currentBranchName = _branchAnchors.FirstOrDefault(a => a.TipNodeId == nodeId)?.Name;
 
-        return new BranchActionResult(true, _branchAnchors.Count, _currentBranchName);
+        return new BranchActionResult(true);
     }
 
     private ExcalidrawElement BuildArrow(string fromRectangleId, string toRectangleId)
@@ -377,10 +346,18 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
         return arrow;
     }
 
-    /// <summary>Follows the single-child arrow-binding chain from <paramref name="start"/> as far as it goes, for rebuilding a branch's tip after a Stop()/Start() cycle (see StartSession).</summary>
-    private (string Id, double X, double Y) FindBranchTip(ExcalidrawElement start)
+    private static bool IsDecisionPoint(ExcalidrawElement e) => e.Type == "text" && e.OriginalText == DecisionPointLabel;
+
+    private static bool IsPathStart(ExcalidrawElement e) =>
+        e.Type == "text" && (e.OriginalText?.StartsWith(PathStartPrefix, StringComparison.Ordinal) ?? false);
+
+    private static string ExtractPathName(ExcalidrawElement e) => e.OriginalText![PathStartPrefix.Length..].Trim();
+
+    /// <summary>Follows the single-child arrow-binding chain from <paramref name="start"/> as far as it goes, resolving a path's current tip fresh from the graph every time (never cached, so it can never desync from what's actually in the file).</summary>
+    private (string Id, double X, double Y, int Steps) FindBranchTip(ExcalidrawElement start)
     {
         var current = start;
+        var steps = 0;
         while (true)
         {
             var arrow = _doc.Elements.FirstOrDefault(e => e.Type == "arrow" && e.StartBinding?.ElementId == current.Id);
@@ -388,10 +365,11 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
             var next = nextId is null ? null : _doc.Elements.FirstOrDefault(e => e.Id == nextId);
             if (next is null)
             {
-                return (current.Id, current.X, current.Y);
+                return (current.Id, current.X, current.Y, steps);
             }
 
             current = next;
+            steps++;
         }
     }
 

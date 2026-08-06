@@ -2,8 +2,17 @@ using System.Drawing;
 
 namespace DocuClick.Services;
 
-/// <summary>One node in a flow, for the tree-preview overlay's minimap rendering. <see cref="BranchName"/> is filled in after the fact by <see cref="FlowPreviewBranching.TagBranches"/>, not by the individual writers.</summary>
-public sealed record PreviewNode(string Id, string Label, double X, double Y, double Width, double Height, bool IsCurrent, bool IsBranchMarker, string? BranchName = null);
+/// <summary>
+/// One node in a flow, for the tree-preview overlay's minimap rendering.
+/// <see cref="PathId"/>/<see cref="PathName"/> are filled in after the fact
+/// by <see cref="FlowPreviewBranching.TagBranches"/>, which propagates them
+/// forward from whichever <see cref="IsPathStart"/> node reaches a given
+/// node first — not by the individual writers.
+/// </summary>
+public sealed record PreviewNode(
+    string Id, string Label, double X, double Y, double Width, double Height,
+    bool IsCurrent, bool IsDecisionPoint, bool IsPathStart,
+    string? PathId = null, string? PathName = null);
 
 /// <summary>One connector line between two nodes, for the tree-preview overlay.</summary>
 public sealed record PreviewEdge(string FromId, string ToId);
@@ -13,62 +22,51 @@ public sealed record FlowPreview(List<PreviewNode> Nodes, List<PreviewEdge> Edge
 
 /// <summary>
 /// Shared post-processing for every <see cref="IFlowWriter.GetPreview"/>
-/// implementation: tags every node reachable (via edges, forward only)
-/// from a branch-marker node with that branch's name, so the tree-preview
-/// overlay's minimap can give each branch its own color instead of only
-/// distinguishing "is a marker" from "isn't". A node reachable from more
-/// than one branch keeps whichever branch reaches it first (markers are
-/// visited in the order they appear in <see cref="FlowPreview.Nodes"/>,
-/// which every writer already produces in position order).
+/// implementation: propagates each path-start node's identity (its own id,
+/// used as <see cref="PreviewNode.PathId"/>) and display name forward
+/// through everything reachable from it, so the tree-preview overlay's
+/// minimap can give each path its own color/label instead of only
+/// distinguishing "is a path start" from "isn't". Decision points
+/// themselves are ordinary pass-through nodes here — they belong to
+/// whichever path led into them; only their own path-start *children* mark
+/// the start of a new, distinctly colored path.
 /// </summary>
 public static class FlowPreviewBranching
 {
-    // Must stay byte-for-byte identical to every writer's own copy of this
-    // same constant (CanvasFlowWriter/DrawIoFlowWriter/ExcalidrawFlowWriter)
-    // — this one strips it back off whichever writer's marker label is
-    // being parsed here, so a mismatch would silently break branch-name
-    // extraction (and therefore per-branch minimap coloring) for that
-    // writer's output.
-    private const string BranchMarkerPrefix = "◆ Branch: ";
-
     public static FlowPreview TagBranches(FlowPreview preview)
     {
         var forward = preview.Edges
             .GroupBy(e => e.FromId)
             .ToDictionary(g => g.Key, g => g.Select(e => e.ToId).ToList());
-        var markerIds = preview.Nodes.Where(n => n.IsBranchMarker).Select(n => n.Id).ToHashSet();
+        var pathStartIds = preview.Nodes.Where(n => n.IsPathStart).Select(n => n.Id).ToHashSet();
 
-        var branchNameOf = new Dictionary<string, string>();
+        var pathIdOf = new Dictionary<string, string>();
+        var pathNameOf = new Dictionary<string, string>();
 
-        // Pass 1: every marker owns its own name, taken directly from its
-        // own label. This must happen before any propagation below —
-        // branching off from *within* another branch (a nested branch
-        // marker sitting downstream of an earlier one) is a normal thing
-        // to do, and the nested marker's own identity must never be
-        // clobbered by the outer branch's name reaching it first.
-        foreach (var marker in preview.Nodes.Where(n => n.IsBranchMarker))
+        // Pass 1: every path-start owns its own identity (its own node id)
+        // and display name, set directly by the writer that created it —
+        // this must happen before any propagation below, so a nested path
+        // starting *within* another path never has its own identity
+        // clobbered by the outer path's identity reaching it first.
+        foreach (var start in preview.Nodes.Where(n => n.IsPathStart))
         {
-            var branchName = ExtractBranchName(marker.Label);
-            if (branchName is not null)
+            pathIdOf[start.Id] = start.Id;
+            if (start.PathName is { } name)
             {
-                branchNameOf[marker.Id] = branchName;
+                pathNameOf[start.Id] = name;
             }
         }
 
-        // Pass 2: propagate each branch's name forward through its
-        // descendants, but stop at any *other* marker — that's where a
-        // different (possibly nested) branch starts, and its own name
-        // from pass 1 already stands there.
-        foreach (var marker in preview.Nodes.Where(n => n.IsBranchMarker))
+        // Pass 2: propagate each path's identity forward through its
+        // descendants (decision points included — they're just pass-
+        // through here), but stop at any *other* path-start — that's
+        // where a different (possibly nested) path begins, and its own
+        // identity from pass 1 already stands there.
+        foreach (var start in preview.Nodes.Where(n => n.IsPathStart))
         {
-            if (!branchNameOf.TryGetValue(marker.Id, out var branchName))
-            {
-                continue;
-            }
-
             var queue = new Queue<string>();
-            queue.Enqueue(marker.Id);
-            var visited = new HashSet<string> { marker.Id };
+            queue.Enqueue(start.Id);
+            var visited = new HashSet<string> { start.Id };
             while (queue.Count > 0)
             {
                 var id = queue.Dequeue();
@@ -85,46 +83,57 @@ public static class FlowPreviewBranching
                         continue;
                     }
 
-                    if (markerIds.Contains(child) && child != marker.Id)
+                    if (pathStartIds.Contains(child) && child != start.Id)
                     {
-                        continue; // boundary: a different branch starts here
+                        continue; // boundary: a different (nested) path starts here
                     }
 
-                    branchNameOf.TryAdd(child, branchName);
+                    pathIdOf.TryAdd(child, start.Id);
+                    if (pathNameOf.TryGetValue(start.Id, out var name))
+                    {
+                        pathNameOf.TryAdd(child, name);
+                    }
+
                     queue.Enqueue(child);
                 }
             }
         }
 
-        if (branchNameOf.Count == 0)
+        if (pathIdOf.Count == 0)
         {
             return preview;
         }
 
         var taggedNodes = preview.Nodes
-            .Select(n => branchNameOf.TryGetValue(n.Id, out var name) ? n with { BranchName = name } : n)
+            .Select(n => pathIdOf.TryGetValue(n.Id, out var pathId)
+                ? n with { PathId = pathId, PathName = pathNameOf.GetValueOrDefault(pathId) }
+                : n)
             .ToList();
 
         return new FlowPreview(taggedNodes, preview.Edges);
     }
-
-    private static string? ExtractBranchName(string label)
-    {
-        if (!label.StartsWith(BranchMarkerPrefix, StringComparison.Ordinal))
-        {
-            return null;
-        }
-
-        var name = label[BranchMarkerPrefix.Length..].Trim();
-        return name.Length == 0 ? null : name;
-    }
 }
+
+/// <summary>Result of a branch-related action, for user-facing feedback.</summary>
+public readonly record struct BranchActionResult(bool Success);
+
+/// <summary>One path forking from a decision point — for the Ablauf-Übersicht's "bestehenden Pfad fortsetzen" popup.</summary>
+public readonly record struct PathInfo(string PathStartNodeId, string Name, int StepCount);
 
 /// <summary>
 /// Common contract for the branching output modes (Obsidian Canvas, draw.io,
 /// Excalidraw) so SessionManager doesn't need to know which one is active.
 /// The plain note mode (ObsidianWriter) has no branching concept and
 /// deliberately does not implement this.
+///
+/// Branching model: <see cref="MarkDecisionPoint"/> turns the current node
+/// into a small diamond — a decision point — without moving the cursor;
+/// the ongoing flow keeps recording normally. From a decision point (found
+/// by clicking its diamond in the Ablauf-Übersicht), the user picks
+/// <see cref="StartNewPath"/> to fork a brand-new named path in its own
+/// column, or <see cref="ContinuePath"/> to resume a path started earlier —
+/// mirroring a UML activity diagram's decision nodes and their outgoing
+/// flows, screenshots instead of activity labels.
 /// </summary>
 public interface IFlowWriter
 {
@@ -132,29 +141,26 @@ public interface IFlowWriter
     void Stop();
     void AddClickNode(string description, Bitmap screenshot, DateTime timestamp);
 
-    /// <summary>Bookmarks the current node under a user-chosen name (re-marking an existing name replaces its target).</summary>
-    BranchActionResult MarkBranchAnchor(string branchName);
+    /// <summary>Marks the current node as a decision point (a small diamond marker) — does not move the cursor.</summary>
+    BranchActionResult MarkDecisionPoint();
 
-    /// <summary>Moves the cursor to a previously named anchor.</summary>
-    BranchActionResult JumpToAnchor(string branchName);
+    /// <summary>Every path already forking from a given decision point, for the Ablauf-Übersicht's "bestehenden Pfad fortsetzen" popup.</summary>
+    List<PathInfo> ListPaths(string decisionPointId);
+
+    /// <summary>Starts a brand-new named path from an existing decision point, in its own column, and jumps the cursor onto it.</summary>
+    BranchActionResult StartNewPath(string decisionPointId, string pathName);
+
+    /// <summary>Resumes an existing path at wherever it currently ends (not necessarily where it started).</summary>
+    BranchActionResult ContinuePath(string pathStartNodeId);
 
     /// <summary>Snapshot of every node currently in the flow (position + size + which one the cursor is on) for the live tree-preview overlay.</summary>
     FlowPreview GetPreview();
 
-    /// <summary>Moves the cursor to an arbitrary existing node (not just a named branch anchor) — the tree-preview overlay's click-to-navigate.</summary>
+    /// <summary>Moves the cursor to an arbitrary existing node (not a decision point/path action) — the tree-preview overlay's click-to-navigate for regular nodes.</summary>
     BranchActionResult JumpToNode(string nodeId);
-
-    /// <summary>All currently defined branch names, in the order they were first marked.</summary>
-    List<string> ListBranchAnchorNames();
 
     List<ResumableNode> ListNodesForResume(string fileName);
     void SetResumeAnchor(ResumableNode node);
-
-    /// <summary>How many named branch anchors are currently defined.</summary>
-    int BranchDepth { get; }
-
-    /// <summary>Name of the branch the cursor is currently positioned in, or null for the main flow.</summary>
-    string? CurrentBranchName { get; }
 
     string? CurrentNodeLabel { get; }
 }

@@ -42,7 +42,6 @@ public sealed class SessionManager : IDisposable
 
     public event Action<string>? ErrorOccurred;
     public event Action<string>? InfoOccurred;
-    public event Action<int>? BranchDepthChanged;
     public event Action<string?>? CanvasStatusChanged;
     public event Action<bool>? ZoomToCursorChanged;
 
@@ -256,7 +255,6 @@ public sealed class SessionManager : IDisposable
         // cursor state out from under a click still being processed.
         RunOnWriterQueue(() => ActiveFlowWriter?.Stop());
         _isRunning = false;
-        BranchDepthChanged?.Invoke(0);
         CanvasStatusChanged?.Invoke(null);
         // Deliberately NOT FlowPreviewChanged?.Invoke(null) — that would
         // hide the Ablauf-Übersicht minimap on every Stop. Leaving it
@@ -280,21 +278,12 @@ public sealed class SessionManager : IDisposable
     private string BuildStatusText()
     {
         var writer = ActiveFlowWriter!;
-        var branches = writer.ListBranchAnchorNames();
-        var currentBranch = writer.CurrentBranchName ?? "Hauptablauf";
-        var branchesInfo = branches.Count > 0 ? $"Branches: {string.Join(", ", branches)}" : "Keine Branches gesetzt";
         var label = writer.CurrentNodeLabel ?? "(noch kein Klick)";
-        return $"{_config.OutputMode}: {currentBranch}\n{branchesInfo}\nZuletzt: {label}";
+        return $"{_config.OutputMode}\nZuletzt: {label}";
     }
 
-    /// <summary>Names of all currently defined branch anchors, for the "Branch auswählen" picker.</summary>
-    public List<string> ListBranchAnchorNames() => ActiveFlowWriter?.ListBranchAnchorNames() ?? new List<string>();
-
-    /// <summary>Name of the branch the cursor is currently positioned in, or null for the main flow.</summary>
-    public string? CurrentBranchName => ActiveFlowWriter?.CurrentBranchName;
-
-    /// <summary>Hotkey/button action: turn the current node into a named branch point and jump the cursor onto it — the next click attaches under it in a new column.</summary>
-    public void MarkBranchAnchor(string branchName)
+    /// <summary>Hotkey/button action: turns the current node into a decision point (a small diamond) — the flow keeps recording normally afterward. Forking an actual new path, or resuming one, happens later by clicking the diamond in the Ablauf-Übersicht (see <see cref="ListPaths"/>/<see cref="StartNewPath"/>/<see cref="ContinuePath"/>).</summary>
+    public void MarkDecisionPoint()
     {
         if (!_isRunning || ActiveFlowWriter is not { } writer)
         {
@@ -309,26 +298,29 @@ public sealed class SessionManager : IDisposable
         // showing state that doesn't match what was just done.
         var (result, snapshot) = RunOnWriterQueue(() =>
         {
-            var actionResult = writer.MarkBranchAnchor(branchName);
+            var actionResult = writer.MarkDecisionPoint();
             var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
             return (actionResult, statusSnapshot);
         });
 
         if (result.Success)
         {
-            BranchDepthChanged?.Invoke(result.Depth);
             CanvasStatusChanged?.Invoke(snapshot.StatusText);
             FlowPreviewChanged?.Invoke(snapshot.Preview);
-            InfoOccurred?.Invoke($"Branch \"{branchName}\" gesetzt — nächster Klick beginnt dort eine neue Spalte/einen neuen Abschnitt.");
+            InfoOccurred?.Invoke("Abzweigungspunkt gesetzt — in der Ablauf-Übersicht anklicken, um einen Pfad zu starten oder fortzusetzen.");
         }
         else
         {
-            InfoOccurred?.Invoke("Noch kein Klick vorhanden, der als Branch-Punkt markiert werden könnte.");
+            InfoOccurred?.Invoke("Noch kein Klick vorhanden, der als Abzweigungspunkt markiert werden könnte.");
         }
     }
 
-    /// <summary>Hotkey/button action: move the cursor to a previously named branch anchor.</summary>
-    public void JumpToAnchor(string branchName)
+    /// <summary>Ablauf-Übersicht popup: every path already forking from a clicked decision point.</summary>
+    public List<PathInfo> ListPaths(string decisionPointId) =>
+        ActiveFlowWriter is { } writer ? RunOnWriterQueue(() => writer.ListPaths(decisionPointId)) : new List<PathInfo>();
+
+    /// <summary>Ablauf-Übersicht popup action: forks a brand-new named path from a decision point.</summary>
+    public void StartNewPath(string decisionPointId, string pathName)
     {
         if (!_isRunning || ActiveFlowWriter is not { } writer)
         {
@@ -338,25 +330,52 @@ public sealed class SessionManager : IDisposable
 
         var (result, snapshot) = RunOnWriterQueue(() =>
         {
-            var actionResult = writer.JumpToAnchor(branchName);
+            var actionResult = writer.StartNewPath(decisionPointId, pathName);
             var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
             return (actionResult, statusSnapshot);
         });
 
         if (result.Success)
         {
-            BranchDepthChanged?.Invoke(result.Depth);
             CanvasStatusChanged?.Invoke(snapshot.StatusText);
             FlowPreviewChanged?.Invoke(snapshot.Preview);
-            InfoOccurred?.Invoke($"Zu Branch \"{branchName}\" gesprungen — nächster Klick beginnt dort eine neue Spalte/einen neuen Abschnitt.");
+            InfoOccurred?.Invoke($"Neuer Pfad \"{pathName}\" gestartet — nächster Klick beginnt dort.");
         }
         else
         {
-            InfoOccurred?.Invoke($"Branch \"{branchName}\" nicht gefunden.");
+            InfoOccurred?.Invoke("Abzweigungspunkt nicht gefunden.");
         }
     }
 
-    /// <summary>Tree-preview overlay's click-to-navigate: jumps the cursor to an arbitrary existing node (not just a named branch anchor).</summary>
+    /// <summary>Ablauf-Übersicht popup action: resumes an existing path at wherever it currently ends.</summary>
+    public void ContinuePath(string pathStartNodeId)
+    {
+        if (!_isRunning || ActiveFlowWriter is not { } writer)
+        {
+            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Abzweigungen.");
+            return;
+        }
+
+        var (result, snapshot) = RunOnWriterQueue(() =>
+        {
+            var actionResult = writer.ContinuePath(pathStartNodeId);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
+            return (actionResult, statusSnapshot);
+        });
+
+        if (result.Success)
+        {
+            CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            FlowPreviewChanged?.Invoke(snapshot.Preview);
+            InfoOccurred?.Invoke("Pfad fortgesetzt — nächster Klick knüpft hier an.");
+        }
+        else
+        {
+            InfoOccurred?.Invoke("Pfad nicht gefunden.");
+        }
+    }
+
+    /// <summary>Tree-preview overlay's click-to-navigate: jumps the cursor to an arbitrary existing (non-decision-point) node.</summary>
     public void JumpToNode(string nodeId)
     {
         if (!_isRunning || ActiveFlowWriter is not { } writer)
@@ -375,7 +394,6 @@ public sealed class SessionManager : IDisposable
 
         if (result.Success)
         {
-            BranchDepthChanged?.Invoke(result.Depth);
             CanvasStatusChanged?.Invoke(snapshot.StatusText);
             FlowPreviewChanged?.Invoke(snapshot.Preview);
             InfoOccurred?.Invoke($"Zu \"{currentLabel ?? "(ohne Beschreibung)"}\" gesprungen — nächster Klick knüpft hier an.");
@@ -386,7 +404,7 @@ public sealed class SessionManager : IDisposable
         }
     }
 
-    /// <summary>For the "Ablauf fortsetzen ab Punkt..." picker: nodes already in <paramref name="fileName"/>.</summary>
+    /// <summary>For the Ablauf-Übersicht's resume-while-stopped flow: nodes already in <paramref name="fileName"/>.</summary>
     public List<ResumableNode> ListResumableCanvasNodes(string fileName) =>
         ActiveFlowWriter?.ListNodesForResume(fileName) ?? new List<ResumableNode>();
 

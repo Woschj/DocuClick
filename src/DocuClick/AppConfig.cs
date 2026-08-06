@@ -26,17 +26,19 @@ public sealed class AppConfig
     /// card-shaped nodes with numbered badges, per-branch accent colors,
     /// and arrowed connectors — opens in the free draw.io/diagrams.net
     /// app, no Obsidian needed). Canvas, Excalidraw, and DrawIo all
-    /// support branching via the hotkeys below.
+    /// support branching via the decision-point hotkey below.
     /// </summary>
     public string OutputMode { get; set; } = "Note";
 
-    /// <summary>Global hotkey: bookmark the current node as a branch point.</summary>
+    /// <summary>
+    /// Global hotkey: marks the current node as a decision point. Starting
+    /// a new path from it, or resuming one, then happens by clicking the
+    /// decision point's diamond in the Ablauf-Übersicht — there's no
+    /// second hotkey for that anymore (property name kept as "BranchMark"
+    /// for config-file compatibility with earlier versions).
+    /// </summary>
     public string BranchMarkModifiers { get; set; } = "";
     public string BranchMarkKey { get; set; } = "F9";
-
-    /// <summary>Global hotkey: rewind the cursor to the last bookmarked branch point.</summary>
-    public string BranchJumpModifiers { get; set; } = "";
-    public string BranchJumpKey { get; set; } = "F10";
 
     /// <summary>Global hotkey: toggle recording on/off (same as clicking the tray icon).</summary>
     public string StartStopModifiers { get; set; } = "Control+Alt";

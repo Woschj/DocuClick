@@ -48,7 +48,6 @@ public partial class App : Application
         _sessionManager = new SessionManager(_config);
         _sessionManager.ErrorOccurred += OnSessionError;
         _sessionManager.InfoOccurred += OnSessionInfo;
-        _sessionManager.BranchDepthChanged += OnBranchDepthChanged;
         _sessionManager.CanvasStatusChanged += OnCanvasStatusChanged;
         _sessionManager.LastScreenshotCaptured += OnLastScreenshotCaptured;
         _sessionManager.FlowPreviewChanged += OnFlowPreviewChanged;
@@ -61,8 +60,7 @@ public partial class App : Application
         // so there is always an at-a-glance answer to "is it running".
         _topBar = new TopBarWindow();
         _topBar.ToggleRecordingRequested += () => _trayApp?.ToggleRecording();
-        _topBar.MarkBranchRequested += OnMarkBranchRequested;
-        _topBar.JumpBranchRequested += OnSelectBranchRequested;
+        _topBar.DecisionPointRequested += OnDecisionPointRequested;
         _topBar.NewSessionRequested += OnNewSessionRequested;
         _topBar.ZoomToCursorToggleRequested += () => _sessionManager?.ToggleZoomToCursor();
         _topBar.Show();
@@ -113,10 +111,8 @@ public partial class App : Application
         _hotkeyService = new HotkeyService();
         _hotkeyService.Initialize();
 
-        RegisterHotkey(_config!.BranchMarkModifiers, _config.BranchMarkKey, "Branch setzen",
-            OnMarkBranchRequested);
-        RegisterHotkey(_config.BranchJumpModifiers, _config.BranchJumpKey, "Branch auswählen",
-            OnSelectBranchRequested);
+        RegisterHotkey(_config!.BranchMarkModifiers, _config.BranchMarkKey, "Abzweigung setzen",
+            OnDecisionPointRequested);
         RegisterHotkey(_config.StartStopModifiers, _config.StartStopKey, "Aufnahme starten/stoppen",
             () => _trayApp?.ToggleRecording());
         RegisterHotkey(_config.ZoomToCursorModifiers, _config.ZoomToCursorKey, "Zoom-auf-Cursor umschalten",
@@ -155,75 +151,14 @@ public partial class App : Application
         Dispatcher.BeginInvoke(() => _trayApp?.ShowInfo(message));
     }
 
-    private void OnBranchDepthChanged(int depth)
-    {
-        Dispatcher.BeginInvoke(() =>
-        {
-            _trayApp?.SetBranchDepth(depth);
-            var currentBranch = _sessionManager!.CurrentBranchName;
-            var detail = currentBranch is not null
-                ? $"Branch: {currentBranch}"
-                : depth > 0 ? $"{depth} Branch(es) gesetzt" : null;
-            _topBar?.UpdateStatus(_trayApp!.IsRecording, detail, _sessionManager.SupportsBranching);
-        });
-    }
+    /// <summary>TopBar button/hotkey: marks the current node as a decision point — SessionManager itself shows the "not running"/"mode doesn't support this" info balloon if that's not currently possible.</summary>
+    private void OnDecisionPointRequested() => _sessionManager?.MarkDecisionPoint();
 
-    /// <summary>Prompts for a branch name; null means the user cancelled.</summary>
-    private string? PromptForBranchName()
-    {
-        var window = new BranchNameWindow();
-        return window.ShowDialog() == true ? window.BranchName : null;
-    }
+    /// <summary>Ablauf-Übersicht popup: "+ Neuer Pfad" was chosen and named.</summary>
+    private void OnNewPathRequested(string decisionPointId, string pathName) => _sessionManager?.StartNewPath(decisionPointId, pathName);
 
-    private void OnMarkBranchRequested()
-    {
-        if (_sessionManager is null)
-        {
-            return;
-        }
-
-        if (!_sessionManager.IsRunning || !_sessionManager.SupportsBranching)
-        {
-            // Still routes through SessionManager so the usual "not
-            // running"/"mode doesn't support branching" info balloon fires
-            // — no point showing a naming prompt first in that case.
-            _sessionManager.MarkBranchAnchor(string.Empty);
-            return;
-        }
-
-        var name = PromptForBranchName();
-        if (name is not null)
-        {
-            _sessionManager.MarkBranchAnchor(name);
-        }
-    }
-
-    private void OnSelectBranchRequested()
-    {
-        if (_sessionManager is null)
-        {
-            return;
-        }
-
-        if (!_sessionManager.IsRunning || !_sessionManager.SupportsBranching)
-        {
-            _sessionManager.JumpToAnchor(string.Empty);
-            return;
-        }
-
-        var names = _sessionManager.ListBranchAnchorNames();
-        if (names.Count == 0)
-        {
-            _trayApp!.ShowInfo("Noch keine Branches gesetzt (erst mit \"Branch setzen\" einen anlegen).");
-            return;
-        }
-
-        var picker = new BranchPickerWindow(names);
-        if (picker.ShowDialog() == true && picker.SelectedBranchName is not null)
-        {
-            _sessionManager.JumpToAnchor(picker.SelectedBranchName);
-        }
-    }
+    /// <summary>Ablauf-Übersicht popup: an existing path was chosen to continue.</summary>
+    private void OnContinuePathRequested(string pathStartNodeId) => _sessionManager?.ContinuePath(pathStartNodeId);
 
     private void OnCanvasStatusChanged(string? statusText)
     {
@@ -275,6 +210,9 @@ public partial class App : Application
             {
                 _flowPreviewOverlay = new FlowPreviewOverlay();
                 _flowPreviewOverlay.NodeClicked += OnFlowPreviewNodeClicked;
+                _flowPreviewOverlay.PathsProvider = decisionPointId => _sessionManager?.ListPaths(decisionPointId) ?? new List<PathInfo>();
+                _flowPreviewOverlay.NewPathRequested += OnNewPathRequested;
+                _flowPreviewOverlay.ContinuePathRequested += OnContinuePathRequested;
             }
 
             _flowPreviewOverlay.UpdatePreview(preview);
