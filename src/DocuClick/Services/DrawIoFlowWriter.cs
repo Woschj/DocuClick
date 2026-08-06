@@ -185,10 +185,43 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         }
         else
         {
-            _cursorNodeId = null;
-            _cursorX = _nextColumnX;
-            _cursorY = 0;
-            _currentPathStartId = null;
+            // No explicit resume point chosen ("Bestehende Datei
+            // fortsetzen" without picking a node): still resume the main
+            // flow's actual current tip rather than leaving the cursor
+            // null. A null cursor meant every node-relative action
+            // (MarkDecisionPoint included) failed with "kein Klick
+            // vorhanden" until a throwaway click created *some* card first
+            // — confusing right after deliberately resuming a file that
+            // already has content. Still placed in a fresh column so it
+            // never visually collides with whatever's already in the file.
+            var targetIds = _root.Elements("mxCell")
+                .Where(c => (string?)c.Attribute("edge") == "1")
+                .Select(c => (string?)c.Attribute("target"))
+                .Where(id => id is not null)
+                .Select(id => id!)
+                .ToHashSet();
+
+            var rootCell = _root.Elements("mxCell")
+                .Where(c => IsCardCell(c) && !targetIds.Contains((string)c.Attribute("id")!))
+                .OrderBy(c => ParseDouble(c.Element("mxGeometry")?.Attribute("y")))
+                .ThenBy(c => ParseDouble(c.Element("mxGeometry")?.Attribute("x")))
+                .FirstOrDefault();
+
+            if (rootCell is not null)
+            {
+                var rootId = (string)rootCell.Attribute("id")!;
+                var geometry = rootCell.Element("mxGeometry");
+                var tip = FindBranchTip(rootId, ParseDouble(geometry?.Attribute("x")), ParseDouble(geometry?.Attribute("y")), ParseDouble(geometry?.Attribute("height")));
+                SetCursor(tip.Id, _nextColumnX, tip.Y, tip.Height);
+            }
+            else
+            {
+                // Truly empty file — nothing yet to attach to.
+                _cursorNodeId = null;
+                _cursorX = _nextColumnX;
+                _cursorY = 0;
+                _currentPathStartId = null;
+            }
         }
 
         _pendingResumeAnchor = null;

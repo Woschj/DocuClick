@@ -101,9 +101,39 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
         }
         else
         {
-            _cursorNodeId = null;
-            _cursorX = _nextColumnX;
-            _cursorY = 0;
+            // No explicit resume point chosen ("Bestehende Datei
+            // fortsetzen" without picking a node): still resume the main
+            // flow's actual current tip rather than leaving the cursor
+            // null. A null cursor meant every node-relative action
+            // (MarkDecisionPoint included) failed with "kein Klick
+            // vorhanden" until a throwaway click created *some* rectangle
+            // first — confusing right after deliberately resuming a file
+            // that already has content. Still placed in a fresh column so
+            // it never visually collides with whatever's already in the file.
+            var targetIds = _doc.Elements
+                .Where(e => e.Type == "arrow" && e.EndBinding is not null)
+                .Select(e => e.EndBinding!.ElementId)
+                .ToHashSet();
+
+            var root = rectangles
+                .Where(r => !targetIds.Contains(r.Id))
+                .OrderBy(r => r.Y).ThenBy(r => r.X)
+                .FirstOrDefault();
+
+            if (root is not null)
+            {
+                var tip = FindBranchTip(root);
+                _cursorNodeId = tip.Id;
+                _cursorX = _nextColumnX;
+                _cursorY = tip.Y;
+            }
+            else
+            {
+                // Truly empty file — nothing yet to attach to.
+                _cursorNodeId = null;
+                _cursorX = _nextColumnX;
+                _cursorY = 0;
+            }
         }
 
         _pendingResumeAnchor = null;

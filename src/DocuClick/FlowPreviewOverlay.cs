@@ -51,24 +51,23 @@ public sealed class FlowPreviewOverlay : Window
     private const double HeaderHeight = 26;
     private const double CollapsedMinHeight = HeaderHeight + 16;
 
-    // Node dimensions at the default (un-resized) panel size — wider than
-    // tall (real content nodes are cards, not squares) and, per node size,
-    // scaled up together with the window in UpdatePreview so enlarging the
-    // minimap via the resize grip actually gives bigger, easier-to-click
-    // targets instead of only spreading them further apart.
-    private const double NodeWidth = 22;
-    private const double NodeHeight = 14;
-    private const double CurrentNodeWidth = 32;
-    private const double CurrentNodeHeight = 20;
-    private const double MinSizeScale = 0.8;
-    private const double MaxSizeScale = 2.5;
-
-    // Floors for the grid layout in UpdatePreview: below these, rows/columns
-    // stop shrinking and the canvas grows past the visible panel instead —
-    // scrolling to see more beats every node shrinking into an unreadable,
-    // unclickable smear once a flow has enough steps or branches.
-    private const double MinRowSpacing = 24;
-    private const double MinColumnSpacing = 60;
+    // Fixed node sizes and grid spacing — deliberately NOT derived from the
+    // panel's current size. An earlier version stretched spacing to always
+    // fill the viewport (rowSpacing = viewportHeight / rowCount), which
+    // looked fine for a flow that happened to match the panel's aspect
+    // ratio but left huge, inconsistent gaps between nodes for anything
+    // shorter than the panel was tall — "the layout doesn't scale
+    // properly" in user testing. A constant, comfortable spacing means one
+    // step is always the same visual distance regardless of window size;
+    // resizing the panel (via the grip) or scrolling/panning changes how
+    // much of that fixed-scale layout is visible at once, never how far
+    // apart the nodes themselves are.
+    private const double NodeWidth = 46;
+    private const double NodeHeight = 20;
+    private const double CurrentNodeWidth = 60;
+    private const double CurrentNodeHeight = 28;
+    private const double RowSpacing = 42;
+    private const double ColumnSpacing = 110;
 
     // Same accent palette as DrawIoFlowWriter's branch colors, reused here
     // so a branch's minimap dot and its actual card color line up in
@@ -400,16 +399,17 @@ public sealed class FlowPreviewOverlay : Window
     /// output writer (Canvas/draw.io/Excalidraw) uses for its own file.
     /// Those real coordinates reflect actual card sizes and spacing in that
     /// file, which vary wildly and are dominated by whichever two nodes
-    /// happen to be furthest apart; normalizing directly against them (the
-    /// previous approach) meant one distant outlier could compress every
-    /// other node into an unreadable sliver. Instead: every node's row is
-    /// its depth from the flow's start (one step down per edge) and its
-    /// column is which branch it belongs to (0 = main flow, 1.. = each
-    /// named branch in first-seen order) — spacing is then derived purely
-    /// from row/column counts, so it fills the panel evenly regardless of
-    /// how the real file happens to be laid out. Rows/columns below a
-    /// legible minimum stop shrinking and the canvas scrolls instead (see
-    /// <see cref="MinRowSpacing"/>/<see cref="MinColumnSpacing"/>).
+    /// happen to be furthest apart; normalizing directly against them meant
+    /// one distant outlier could compress every other node into an
+    /// unreadable sliver. Instead: every node's row is its depth from the
+    /// flow's start (one step down per edge) and its column is which path
+    /// it belongs to (0 = main flow, 1.. = each path in first-seen order),
+    /// with fixed, constant spacing between rows/columns (<see cref="RowSpacing"/>/
+    /// <see cref="ColumnSpacing"/>) regardless of panel size — a flow
+    /// smaller than the panel leaves the rest empty rather than stretching
+    /// to fill it, and one larger than the panel scrolls/pans (see the
+    /// ScrollViewer setup in the constructor) rather than shrinking nodes
+    /// down to illegibility.
     /// </summary>
     public void UpdatePreview(FlowPreview preview)
     {
@@ -514,38 +514,22 @@ public sealed class FlowPreviewOverlay : Window
         var columnCount = columnOfPath.Count + 1;
         var maxRow = rowOf.Values.Max();
 
-        // Slot sizes never shrink below a legible floor — once the panel
-        // is too small to fit every row/column at that floor, the canvas
-        // grows past the viewport and the ScrollViewer around it takes
-        // over instead of squeezing nodes into an unreadable smear.
-        var rowSpacing = Math.Max(MinRowSpacing, viewportHeight / Math.Max(1, maxRow));
-        var columnSpacing = Math.Max(MinColumnSpacing, viewportWidth / columnCount);
+        // Fixed spacing (see the constants' own doc comment for why) — the
+        // canvas is sized to whatever the content actually needs, never
+        // stretched to match the viewport; a flow smaller than the panel
+        // just leaves the rest of the panel empty rather than spreading
+        // its nodes out to fill it.
+        var halfExtentX = CurrentNodeWidth / 2 + 8;
+        var halfExtentY = CurrentNodeHeight / 2 + 8;
 
-        // Node size still grows with the window (bigger panel → bigger,
-        // easier-to-click nodes), but is now also capped by whichever slot
-        // dimension (row or column) is currently tightest, using the
-        // bigger current-node box as the worst case so a regular node
-        // (which is smaller) is guaranteed to fit too.
-        var windowSizeScale = Math.Clamp(Math.Min(viewportWidth / PanelWidth, viewportHeight / PanelHeight), MinSizeScale, MaxSizeScale);
-        var slotFitScale = Math.Min(rowSpacing / CurrentNodeHeight, columnSpacing / CurrentNodeWidth) * 0.7;
-        var sizeScale = Math.Clamp(Math.Min(windowSizeScale, slotFitScale), 0.5, MaxSizeScale);
-
-        var nodeWidth = NodeWidth * sizeScale;
-        var nodeHeight = NodeHeight * sizeScale;
-        var currentNodeWidth = CurrentNodeWidth * sizeScale;
-        var currentNodeHeight = CurrentNodeHeight * sizeScale;
-
-        var halfExtentX = Math.Max(currentNodeWidth, nodeWidth) / 2 + 6;
-        var halfExtentY = Math.Max(currentNodeHeight, nodeHeight) / 2 + 6;
-
-        var contentWidth = Math.Max(viewportWidth, columnCount * columnSpacing + halfExtentX * 2);
-        var contentHeight = Math.Max(viewportHeight, maxRow * rowSpacing + halfExtentY * 2);
+        var contentWidth = Math.Max(viewportWidth, columnCount * ColumnSpacing + halfExtentX * 2);
+        var contentHeight = Math.Max(viewportHeight, maxRow * RowSpacing + halfExtentY * 2);
         _canvas.Width = contentWidth;
         _canvas.Height = contentHeight;
 
         (double X, double Y) GridPosition(string nodeId) => (
-            halfExtentX + columnOf[nodeId] * columnSpacing + columnSpacing / 2,
-            halfExtentY + rowOf[nodeId] * rowSpacing);
+            halfExtentX + columnOf[nodeId] * ColumnSpacing + ColumnSpacing / 2,
+            halfExtentY + rowOf[nodeId] * RowSpacing);
 
         var centers = preview.Nodes.ToDictionary(n => n.Id, n => GridPosition(n.Id));
 
@@ -584,7 +568,7 @@ public sealed class FlowPreviewOverlay : Window
             var uy = dy / length;
             var midX = (from.X + to.X) / 2;
             var midY = (from.Y + to.Y) / 2;
-            var arrowLength = Math.Clamp(6 * sizeScale, 4, 10);
+            const double arrowLength = 8;
             var arrowHalfWidth = arrowLength * 0.4;
             var tip = new Point(midX + ux * arrowLength / 2, midY + uy * arrowLength / 2);
             var baseCenter = new Point(midX - ux * arrowLength / 2, midY - uy * arrowLength / 2);
@@ -608,8 +592,8 @@ public sealed class FlowPreviewOverlay : Window
         foreach (var node in preview.Nodes)
         {
             var center = centers[node.Id];
-            var width = node.IsCurrent ? currentNodeWidth : nodeWidth;
-            var height = node.IsCurrent ? currentNodeHeight : nodeHeight;
+            var width = node.IsCurrent ? CurrentNodeWidth : NodeWidth;
+            var height = node.IsCurrent ? CurrentNodeHeight : NodeHeight;
 
             // Decision points and path starts render as pill/oval shapes
             // (RadiusX/Y = half the dimension) instead of the sharper-
@@ -643,7 +627,16 @@ public sealed class FlowPreviewOverlay : Window
                 e.Handled = true;
                 if (isDecisionPoint)
                 {
-                    ShowPathPopup(nodeId, square);
+                    // Deferred, not opened synchronously right here: a
+                    // StaysOpen=false Popup created inside the same
+                    // MouseLeftButtonDown that's about to be followed by
+                    // this same click's MouseUp can treat that MouseUp as
+                    // an "outside click" and immediately dismiss itself —
+                    // the popup would only ever stay open if the user held
+                    // the button down well past the original click. Letting
+                    // the current input event finish first (Background
+                    // priority) before opening it decouples the two.
+                    Dispatcher.BeginInvoke(new Action(() => ShowPathPopup(nodeId, square)), System.Windows.Threading.DispatcherPriority.Background);
                 }
                 else
                 {
