@@ -122,7 +122,7 @@ public sealed class FlowPreviewOverlay : Window
             VerticalAlignment = VerticalAlignment.Center
         };
 
-        var infoIcon = CreateHeaderIcon("i", "Ziehbar/größenverstellbar (Ecke unten rechts). Knoten anklicken, um dorthin zu springen.");
+        var infoIcon = CreateHeaderIcon("i", "Panel per Kopfzeile ziehbar, per Ecke unten rechts größenverstellbar. Diagramm im Panel per Ziehen verschieben. Knoten anklicken, um dorthin zu springen.");
 
         _collapseIcon = new TextBlock
         {
@@ -166,13 +166,51 @@ public sealed class FlowPreviewOverlay : Window
 
         // The canvas itself is now content-sized (see UpdatePreview) rather
         // than stretched to fill the panel, so a flow with more steps/
-        // branches than comfortably fit can grow past the visible area and
-        // scroll instead of every node shrinking to illegibility.
+        // branches than comfortably fit can grow past the visible area —
+        // reachable by click-and-drag panning (below) instead of scrollbars,
+        // which read as clutter on a small floating HUD panel. Bars stay
+        // Hidden (not Disabled): panning still needs programmatic scrolling
+        // (ScrollToHorizontalOffset/VerticalOffset) to actually work, and
+        // BringIntoView's auto-scroll-to-current-node relies on it too —
+        // Disabled would turn off scrolling entirely, not just the chrome.
         var scrollViewer = new ScrollViewer
         {
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Hidden,
+            Cursor = Cursors.SizeAll,
             Content = _canvas
+        };
+
+        var panning = false;
+        var panMouseStart = default(Point);
+        var panOffsetStart = default(Point);
+        scrollViewer.MouseLeftButtonDown += (_, e) =>
+        {
+            // Only reaches here for clicks that didn't land on a node
+            // square — those mark the event Handled in their own handler
+            // first, and a standard (non-"handled events too") subscription
+            // like this one never sees an already-handled event.
+            e.Handled = true; // don't also start a window-drag via the border handler below
+            panning = true;
+            scrollViewer.CaptureMouse();
+            panMouseStart = e.GetPosition(scrollViewer);
+            panOffsetStart = new Point(scrollViewer.HorizontalOffset, scrollViewer.VerticalOffset);
+        };
+        scrollViewer.MouseMove += (_, e) =>
+        {
+            if (!panning)
+            {
+                return;
+            }
+
+            var current = e.GetPosition(scrollViewer);
+            scrollViewer.ScrollToHorizontalOffset(panOffsetStart.X - (current.X - panMouseStart.X));
+            scrollViewer.ScrollToVerticalOffset(panOffsetStart.Y - (current.Y - panMouseStart.Y));
+        };
+        scrollViewer.MouseLeftButtonUp += (_, _) =>
+        {
+            panning = false;
+            scrollViewer.ReleaseMouseCapture();
         };
 
         var canvasArea = new Grid { ClipToBounds = true };

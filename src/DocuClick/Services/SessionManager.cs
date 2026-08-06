@@ -157,7 +157,12 @@ public sealed class SessionManager : IDisposable
         _isRunning = false;
         BranchDepthChanged?.Invoke(0);
         CanvasStatusChanged?.Invoke(null);
-        FlowPreviewChanged?.Invoke(null);
+        // Deliberately NOT FlowPreviewChanged?.Invoke(null) — that would
+        // hide the Ablauf-Übersicht minimap on every Stop. Leaving it
+        // showing its last state lets it double as a reference while
+        // reviewing/planning the next session; it only actually closes via
+        // JumpToNode's own !_isRunning guard already making clicks in it a
+        // no-op, so nothing breaks by it staying open.
         LogService.Log("Session gestoppt.");
     }
 
@@ -184,7 +189,7 @@ public sealed class SessionManager : IDisposable
     /// <summary>Name of the branch the cursor is currently positioned in, or null for the main flow.</summary>
     public string? CurrentBranchName => ActiveFlowWriter?.CurrentBranchName;
 
-    /// <summary>Hotkey/button action: bookmark the current node under a user-chosen name.</summary>
+    /// <summary>Hotkey/button action: turn the current node into a named branch point and jump the cursor onto it — the next click attaches under it in a new column.</summary>
     public void MarkBranchAnchor(string branchName)
     {
         if (!_isRunning || ActiveFlowWriter is not { } writer)
@@ -199,7 +204,7 @@ public sealed class SessionManager : IDisposable
             BranchDepthChanged?.Invoke(result.Depth);
             CanvasStatusChanged?.Invoke(BuildStatusText());
             FlowPreviewChanged?.Invoke(writer.GetPreview());
-            InfoOccurred?.Invoke($"Branch \"{branchName}\" gesetzt bei: {writer.CurrentNodeLabel ?? "(ohne Beschreibung)"}");
+            InfoOccurred?.Invoke($"Branch \"{branchName}\" gesetzt — nächster Klick beginnt dort eine neue Spalte/einen neuen Abschnitt.");
         }
         else
         {

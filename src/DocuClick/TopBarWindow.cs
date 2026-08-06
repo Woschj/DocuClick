@@ -101,7 +101,7 @@ public sealed class TopBarWindow : Window
         _toggleRecordingButton = CreateButton(buttonStyle, "Start", "Aufnahme starten/stoppen (wie der Tray-Menüpunkt bzw. der Start/Stop-Hotkey).");
         _toggleRecordingButton.Click += (_, _) => ToggleRecordingRequested?.Invoke();
 
-        _markBranchButton = CreateButton(buttonStyle, "Branch setzen", "Aktuellen Knoten/Abschnitt unter einem Namen als Branch-Punkt markieren (fragt nach dem Namen).");
+        _markBranchButton = CreateButton(buttonStyle, "Branch setzen", "Aktuellen Knoten/Abschnitt unter einem Namen als Branch-Punkt markieren (fragt nach dem Namen) und direkt dorthin springen — der nächste Klick beginnt eine neue Spalte.");
         _markBranchButton.Click += (_, _) => MarkBranchRequested?.Invoke();
 
         _jumpBranchButton = CreateButton(buttonStyle, "Branch auswählen", "Zu einem benannten Branch-Punkt springen: der nächste Klick beginnt dort eine neue Abzweigung.");

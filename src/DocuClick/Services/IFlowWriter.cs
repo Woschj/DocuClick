@@ -23,7 +23,13 @@ public sealed record FlowPreview(List<PreviewNode> Nodes, List<PreviewEdge> Edge
 /// </summary>
 public static class FlowPreviewBranching
 {
-    private const string BranchMarkerPrefix = "Branch: ";
+    // Must stay byte-for-byte identical to every writer's own copy of this
+    // same constant (CanvasFlowWriter/DrawIoFlowWriter/ExcalidrawFlowWriter)
+    // — this one strips it back off whichever writer's marker label is
+    // being parsed here, so a mismatch would silently break branch-name
+    // extraction (and therefore per-branch minimap coloring) for that
+    // writer's output.
+    private const string BranchMarkerPrefix = "◆ Branch: ";
 
     public static FlowPreview TagBranches(FlowPreview preview)
     {

@@ -39,7 +39,10 @@ public sealed class CanvasFlowWriter : IFlowWriter
     private const double MarkerHeight = 60;
     private const double SequentialSpacing = 60; // gap between consecutive nodes along the main (vertical) flow
     private const double BranchColumnSpacing = 80; // gap between branch columns
-    private const string BranchMarkerPrefix = "Branch: ";
+    // Leading "◆" gives the marker a distinct at-a-glance icon in Obsidian
+    // Canvas, which — unlike draw.io's rhombus shape — has no concept of
+    // node shapes at all, only plain text/file/link/group nodes.
+    private const string BranchMarkerPrefix = "◆ Branch: ";
     private const string BranchMarkerColor = "6"; // Obsidian canvas preset color slot ("purple"), just to stand out
 
     private sealed record BranchAnchor(string Name, string NodeId, double X, double Y);
@@ -222,11 +225,16 @@ public sealed class CanvasFlowWriter : IFlowWriter
     /// Adds a small, visible "Branch: &lt;name&gt;" marker node connected
     /// from the current node — an explicit waypoint object rather than a
     /// hidden field, so it shows up in the canvas itself and survives a
-    /// Stop()/Start() cycle (see StartSession). Doesn't move the cursor;
-    /// the ongoing flow keeps recording from where it was — only
-    /// <see cref="JumpToAnchor"/> actually jumps to a marker.
-    /// Re-marking an existing name adds a fresh marker (the newest one
-    /// wins on the next reload, same as in-memory re-marking).
+    /// Stop()/Start() cycle (see StartSession) — then immediately jumps the
+    /// cursor onto it (see <see cref="JumpToAnchor"/>), so the marker
+    /// becomes a real decision-node-style branch point: the very next click
+    /// attaches under it in a fresh column, instead of the main flow
+    /// continuing to grow past a marker that just sits there unconnected to
+    /// anything new. <see cref="JumpToAnchor"/> remains separately useful
+    /// afterwards, for returning to this (or any other) anchor later once
+    /// the flow has moved on elsewhere. Re-marking an existing name adds a
+    /// fresh marker (the newest one wins on the next reload, same as
+    /// in-memory re-marking).
     /// </summary>
     public BranchActionResult MarkBranchAnchor(string branchName)
     {
@@ -258,7 +266,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
         AddOrReplaceAnchor(new BranchAnchor(branchName, marker.Id, marker.X, marker.Y));
         Save();
 
-        return new BranchActionResult(true, _branchAnchors.Count, branchName);
+        return JumpToAnchor(branchName);
     }
 
     public List<string> ListBranchAnchorNames() => _branchAnchors.Select(a => a.Name).ToList();

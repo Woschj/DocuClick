@@ -41,7 +41,13 @@ public sealed class DrawIoFlowWriter : IFlowWriter
     private const double BranchColumnSpacing = 90;
     private const double MarkerWidth = 200;
     private const double MarkerHeight = 80;
-    private const string BranchMarkerPrefix = "Branch: ";
+    // Kept in the label text itself (redundant with the rhombus shape
+    // below, which already marks this out as a decision node) purely so
+    // this constant's value stays byte-for-byte identical to the other two
+    // writers' — FlowPreviewBranching.ExtractBranchName in IFlowWriter.cs
+    // has its own single copy of this prefix and must match whichever
+    // writer produced the label it's parsing, whichever one is active.
+    private const string BranchMarkerPrefix = "◆ Branch: ";
     private const string CardIdPrefix = "card_";
     private const string MarkerIdPrefix = "marker_";
 
@@ -246,9 +252,15 @@ public sealed class DrawIoFlowWriter : IFlowWriter
     /// Adds a small, visible "Branch: &lt;name&gt;" diamond marker
     /// connected from the current card — a real, recognizable node in the
     /// file (not hidden metadata), so it survives a Stop()/Start() cycle
-    /// (see StartSession). Doesn't move the cursor; only
-    /// <see cref="JumpToAnchor"/> actually jumps to a marker. Re-marking an
-    /// existing name adds a fresh marker (the newest one wins on reload).
+    /// (see StartSession) — then immediately jumps the cursor onto it (see
+    /// <see cref="JumpToAnchor"/>), so the diamond becomes a real UML-style
+    /// decision node: the very next click attaches under it in a fresh
+    /// column, instead of the main flow continuing to grow past a marker
+    /// that just sits there unconnected to anything new.
+    /// <see cref="JumpToAnchor"/> remains separately useful afterwards, for
+    /// returning to this (or any other) anchor later once the flow has
+    /// moved on elsewhere. Re-marking an existing name adds a fresh marker
+    /// (the newest one wins on reload).
     /// </summary>
     public BranchActionResult MarkBranchAnchor(string branchName)
     {
@@ -283,7 +295,7 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         AddOrReplaceAnchor(new BranchAnchor(branchName, markerId, _cursorX + (CardWidth - MarkerWidth) / 2, markerY, color));
         Save();
 
-        return new BranchActionResult(true, _branchAnchors.Count, branchName);
+        return JumpToAnchor(branchName);
     }
 
     public List<string> ListBranchAnchorNames() => _branchAnchors.Select(a => a.Name).ToList();

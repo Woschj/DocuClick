@@ -32,7 +32,10 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
     private const double BranchColumnSpacing = 80;
     private const int FontFamilyNormal = 2;
     private const string BranchMarkerColor = "#7C3AED";
-    private const string BranchMarkerPrefix = "Branch: ";
+    // Leading "◆" gives the marker a distinct at-a-glance icon — Excalidraw
+    // markers are plain text elements, with no built-in shape of their own
+    // to mark them out the way draw.io's rhombus does.
+    private const string BranchMarkerPrefix = "◆ Branch: ";
 
     private sealed record BranchAnchor(string Name, string NodeId, double X, double Y);
 
@@ -201,10 +204,16 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
     /// Adds a small, visible "Branch: &lt;name&gt;" text marker connected
     /// from the current node with an arrow — an explicit waypoint object
     /// rather than hidden state, so it shows up in the scene itself and
-    /// survives a Stop()/Start() cycle (see StartSession). Doesn't move
-    /// the cursor; only <see cref="JumpToAnchor"/> actually jumps to a
-    /// marker. Re-marking an existing name adds a fresh marker (the
-    /// newest one wins on the next reload, same as in-memory re-marking).
+    /// survives a Stop()/Start() cycle (see StartSession) — then
+    /// immediately jumps the cursor onto it (see <see cref="JumpToAnchor"/>),
+    /// so the marker becomes a real branch point: the very next click
+    /// attaches under it in a fresh column, instead of the main flow
+    /// continuing to grow past a marker that just sits there unconnected to
+    /// anything new. <see cref="JumpToAnchor"/> remains separately useful
+    /// afterwards, for returning to this (or any other) anchor later once
+    /// the flow has moved on elsewhere. Re-marking an existing name adds a
+    /// fresh marker (the newest one wins on the next reload, same as
+    /// in-memory re-marking).
     /// </summary>
     public BranchActionResult MarkBranchAnchor(string branchName)
     {
@@ -231,7 +240,7 @@ public sealed class ExcalidrawFlowWriter : IFlowWriter
         AddOrReplaceAnchor(new BranchAnchor(branchName, markerId, marker.X, marker.Y));
         Save();
 
-        return new BranchActionResult(true, _branchAnchors.Count, branchName);
+        return JumpToAnchor(branchName);
     }
 
     public List<string> ListBranchAnchorNames() => _branchAnchors.Select(a => a.Name).ToList();
