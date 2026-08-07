@@ -18,6 +18,7 @@ public partial class App : Application
     private HotkeyService? _hotkeyService;
     private FlowPreviewOverlay? _flowPreviewOverlay;
     private TopBarWindow? _topBar;
+    private ZoomCursorBoxOverlay? _zoomCursorBox;
 
     /// <summary>Set when the user closes the Ablauf-Übersicht via its own header ✕ — stops <see cref="OnFlowPreviewChanged"/> from popping it back open on the very next click, until the TopBar's "Übersicht" button explicitly asks for it again.</summary>
     private bool _flowPreviewManuallyHidden;
@@ -57,14 +58,28 @@ public partial class App : Application
 
         // Visible for the app's whole lifetime (not just while recording),
         // so there is always an at-a-glance answer to "is it running".
-        _topBar = new TopBarWindow();
+        _topBar = new TopBarWindow(_config.ZoomToCursorRadius);
         _topBar.ToggleRecordingRequested += () => _trayApp?.ToggleRecording();
         _topBar.ShowFlowPreviewRequested += OnShowFlowPreviewRequested;
         _topBar.NewSessionRequested += OnNewSessionRequested;
         _topBar.ZoomToCursorToggleRequested += () => _sessionManager?.ToggleZoomToCursor();
+        _topBar.ZoomRadiusChanged += radius =>
+        {
+            _config.ZoomToCursorRadius = radius;
+            _zoomCursorBox ??= new ZoomCursorBoxOverlay(radius);
+            _zoomCursorBox.Preview(radius);
+        };
+        _topBar.ZoomRadiusCommitted += () => ConfigService.Save(_config);
         _topBar.Show();
 
-        _sessionManager.ZoomToCursorChanged += active => Dispatcher.BeginInvoke(() => _topBar?.UpdateZoomToCursorState(active));
+        _sessionManager.ZoomToCursorChanged += active => Dispatcher.BeginInvoke(() =>
+        {
+            _topBar?.UpdateZoomToCursorState(active);
+            if (!active)
+            {
+                _zoomCursorBox?.Cancel();
+            }
+        });
 
         // Clicks on any of DocuClick's own interactive windows (top bar,
         // branch dialogs, session-start picker, settings, ...) or the tray
@@ -79,11 +94,15 @@ public partial class App : Application
 
             foreach (Window window in Windows)
             {
-                // The recording dot / canvas-status HUD are deliberately
-                // click-through (WS_EX_TRANSPARENT) — a click "on" them
-                // actually lands on whatever's underneath and must still
-                // be recorded normally, so they're excluded from this check.
-                if (window is RecordingIndicatorOverlay or CanvasStatusOverlay || !window.IsVisible)
+                // The zoom-cursor preview box is deliberately click-through
+                // (WS_EX_TRANSPARENT) — a click "on" it actually lands on
+                // whatever's underneath and must still be recorded normally,
+                // so it's excluded from this check. It's also centered
+                // exactly on the cursor by design, so without this every
+                // single click while it's showing would otherwise be
+                // swallowed as "clicked DocuClick's own UI" — no screenshot
+                // ever taken (confirmed in testing).
+                if (window is ZoomCursorBoxOverlay || !window.IsVisible)
                 {
                     continue;
                 }
@@ -424,6 +443,7 @@ public partial class App : Application
         _sessionManager?.Dispose();
         _trayApp?.Dispose();
         _topBar?.Close();
+        _zoomCursorBox?.Close();
         _singleInstanceMutex?.ReleaseMutex();
         _singleInstanceMutex?.Dispose();
         base.OnExit(e);

@@ -39,6 +39,7 @@ public sealed class TopBarWindow : Window
     private readonly Button _showFlowPreviewButton;
     private readonly Button _newSessionButton;
     private readonly Button _zoomToCursorButton;
+    private readonly Slider _zoomRadiusSlider;
 
     public event Action? ToggleRecordingRequested;
 
@@ -55,7 +56,16 @@ public sealed class TopBarWindow : Window
     public event Action? NewSessionRequested;
     public event Action? ZoomToCursorToggleRequested;
 
-    public TopBarWindow()
+    /// <summary>Fired live while the zoom-radius slider is being dragged/adjusted — the new radius in pixels. Not persisted to disk yet, see <see cref="ZoomRadiusCommitted"/>.</summary>
+    public event Action<int>? ZoomRadiusChanged;
+
+    /// <summary>Fired once the slider drag/keyboard adjustment settles — the point at which the caller should actually save the new radius to config.json, instead of on every intermediate tick.</summary>
+    public event Action? ZoomRadiusCommitted;
+
+    private const int ZoomRadiusMin = 50;
+    private const int ZoomRadiusMax = 600;
+
+    public TopBarWindow(int initialZoomRadius)
     {
         var bounds = System.Windows.Forms.Screen.PrimaryScreen!.Bounds;
 
@@ -120,8 +130,33 @@ public sealed class TopBarWindow : Window
         // hotkey/Settings, so switching between "whole window" and "just
         // around the cursor" doesn't require leaving the flow to open a menu.
         _zoomToCursorButton = CreateButton(buttonStyle, "Zoom: Aus", "Zoom-auf-Cursor umschalten: die nächsten Screenshots erfassen nur den Bereich um den Mauszeiger statt des ganzen Fensters (auch per Hotkey möglich, siehe Einstellungen).");
-        _zoomToCursorButton.Margin = new Thickness(0, 0, 8, 0);
         _zoomToCursorButton.Click += (_, _) => ZoomToCursorToggleRequested?.Invoke();
+
+        // Only shown while zoom-to-cursor is active — keeps the bar compact
+        // the rest of the time instead of permanently reserving space for a
+        // control that does nothing until then. A box overlay (see
+        // ZoomCursorBoxOverlay) tracks the cursor to preview the resulting
+        // capture area live while this is being dragged.
+        _zoomRadiusSlider = new Slider
+        {
+            Minimum = ZoomRadiusMin,
+            Maximum = ZoomRadiusMax,
+            Value = Math.Clamp(initialZoomRadius, ZoomRadiusMin, ZoomRadiusMax),
+            Width = 70,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(6, 0, 8, 0),
+            Visibility = Visibility.Collapsed,
+            Foreground = Brushes.White,
+            ToolTip = "Größe des Zoom-auf-Cursor-Bereichs"
+        };
+        _zoomRadiusSlider.ValueChanged += (_, e) =>
+        {
+            var radius = (int)e.NewValue;
+            _zoomRadiusSlider.ToolTip = $"Zoom-Bereich: {radius * 2}×{radius * 2}px";
+            ZoomRadiusChanged?.Invoke(radius);
+        };
+        _zoomRadiusSlider.PreviewMouseUp += (_, _) => ZoomRadiusCommitted?.Invoke();
+        _zoomRadiusSlider.KeyUp += (_, _) => ZoomRadiusCommitted?.Invoke();
 
         var panel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         panel.Children.Add(statusGroup);
@@ -132,6 +167,7 @@ public sealed class TopBarWindow : Window
         panel.Children.Add(_newSessionButton);
         panel.Children.Add(CreateSeparator());
         panel.Children.Add(_zoomToCursorButton);
+        panel.Children.Add(_zoomRadiusSlider);
 
         // A subtle top-to-bottom gradient (instead of a flat fill) plus a
         // glossy highlight strip across the upper half give the pill some
@@ -203,11 +239,12 @@ public sealed class TopBarWindow : Window
         UpdateZoomToCursorState(active: false);
 
         // Draggable, but not when the click originates on one of the
-        // buttons — otherwise a button press would also start a drag and
-        // the click could get lost.
+        // buttons or the zoom-radius slider — otherwise a button press (or
+        // a drag along the slider's track) would also start a window drag
+        // and the click/drag could get lost.
         border.MouseLeftButtonDown += (_, e) =>
         {
-            if (!IsWithinButton(e.OriginalSource as DependencyObject))
+            if (!IsWithinInteractiveControl(e.OriginalSource as DependencyObject))
             {
                 // ShowActivated is false (this bar must never steal focus
                 // just by appearing), but DragMove()'s underlying SC_MOVE
@@ -257,11 +294,11 @@ public sealed class TopBarWindow : Window
         };
     }
 
-    private static bool IsWithinButton(DependencyObject? element)
+    private static bool IsWithinInteractiveControl(DependencyObject? element)
     {
         while (element is not null)
         {
-            if (element is Button)
+            if (element is Button or Slider)
             {
                 return true;
             }
@@ -367,5 +404,6 @@ public sealed class TopBarWindow : Window
         _zoomToCursorButton.Background = active
             ? new SolidColorBrush(Color.FromArgb(160, 0x22, 0xC5, 0x5E))
             : new SolidColorBrush(Color.FromArgb(40, 255, 255, 255));
+        _zoomRadiusSlider.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
     }
 }
