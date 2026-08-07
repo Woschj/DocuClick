@@ -303,11 +303,11 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         return StartNewPath(markerId, firstPathName);
     }
 
-    /// <summary>Every path already forking from <paramref name="decisionPointId"/>, resolved fresh from the graph (never cached) — see <see cref="ListPaths"/> on <see cref="IFlowWriter"/>.</summary>
-    public List<PathInfo> ListPaths(string decisionPointId)
+    /// <summary>Every path already forking from <paramref name="originNodeId"/>, resolved fresh from the graph (never cached) — see <see cref="ListPaths"/> on <see cref="IFlowWriter"/>.</summary>
+    public List<PathInfo> ListPaths(string originNodeId)
     {
         var childIds = _root.Elements("mxCell")
-            .Where(c => (string?)c.Attribute("edge") == "1" && (string?)c.Attribute("source") == decisionPointId)
+            .Where(c => (string?)c.Attribute("edge") == "1" && (string?)c.Attribute("source") == originNodeId)
             .Select(c => (string?)c.Attribute("target"))
             .Where(id => id is not null)
             .Select(id => id!);
@@ -330,16 +330,22 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         return result;
     }
 
-    /// <summary>Forks a brand-new named path from an existing decision point into its own column, and jumps the cursor onto it.</summary>
-    public BranchActionResult StartNewPath(string decisionPointId, string pathName)
+    /// <summary>
+    /// Forks a brand-new named path from an existing node into its own
+    /// column, and jumps the cursor onto it. The origin doesn't have to be
+    /// a decision-point rhombus — any card/marker can be the retroactive
+    /// start of an alternate branch (see <see cref="JumpToNode"/>'s doc
+    /// comment for why that's now required instead of silently forking).
+    /// </summary>
+    public BranchActionResult StartNewPath(string originNodeId, string pathName)
     {
-        var decisionCell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == decisionPointId);
-        if (decisionCell is null || !IsDecisionPointId(decisionPointId))
+        var originCell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == originNodeId);
+        if (originCell is null)
         {
             return new BranchActionResult(false);
         }
 
-        var decisionY = ParseDouble(decisionCell.Element("mxGeometry")?.Attribute("y"));
+        var originY = ParseDouble(originCell.Element("mxGeometry")?.Attribute("y"));
 
         _nextColumnX += CardWidth + BranchColumnSpacing;
         var pathStartId = PathStartIdPrefix + Guid.NewGuid().ToString("N");
@@ -356,16 +362,16 @@ public sealed class DrawIoFlowWriter : IFlowWriter
             new XAttribute("parent", "1"),
             new XElement("mxGeometry",
                 new XAttribute("x", Fmt(pathStartX)),
-                new XAttribute("y", Fmt(decisionY)),
+                new XAttribute("y", Fmt(originY)),
                 new XAttribute("width", Fmt(MarkerWidth)),
                 new XAttribute("height", Fmt(MarkerHeight)),
                 new XAttribute("as", "geometry")));
         _root.Add(pathStart);
 
-        AddEdge(decisionPointId, pathStartId, color);
+        AddEdge(originNodeId, pathStartId, color);
         _labels[pathStartId] = $"{PathStartPrefix}{pathName}";
 
-        SetCursor(pathStartId, pathStartX, decisionY, MarkerHeight);
+        SetCursor(pathStartId, pathStartX, originY, MarkerHeight);
         Save();
         return new BranchActionResult(true);
     }
@@ -431,7 +437,16 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         return FlowPreviewBranching.TagBranches(new FlowPreview(nodes, edges));
     }
 
-    /// <summary>Jumps the cursor to an arbitrary existing card/decision-point/path-start cell, opening a new column — for regular nodes; decision points are handled separately by the Ablauf-Übersicht's path popup (<see cref="StartNewPath"/>/<see cref="ContinuePath"/>).</summary>
+    /// <summary>
+    /// Jumps the cursor to an arbitrary existing card/decision-point/path-
+    /// start cell — always resolved forward to that branch's current tip
+    /// (via <see cref="FindBranchTip"/>) and resumed exactly there, in the
+    /// same column. Never opens a new column and never adds a second
+    /// outgoing edge from a cell that already has one — see the matching
+    /// doc comment on <see cref="IFlowWriter.JumpToNode"/> for why. A
+    /// deliberate new branch from a non-tip cell goes through
+    /// <see cref="StartNewPath"/> instead.
+    /// </summary>
     public BranchActionResult JumpToNode(string nodeId)
     {
         var cell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == nodeId);
@@ -442,13 +457,288 @@ public sealed class DrawIoFlowWriter : IFlowWriter
         }
 
         var geometry = cell.Element("mxGeometry");
+        var x = ParseDouble(geometry?.Attribute("x"));
         var y = ParseDouble(geometry?.Attribute("y"));
-        var height = ParseDouble(geometry?.Attribute("height"));
+        var height = isMarkerLike ? MarkerHeight : ParseDouble(geometry?.Attribute("height"));
 
-        _nextColumnX += CardWidth + BranchColumnSpacing;
-        SetCursor(nodeId, _nextColumnX, y, isMarkerLike ? MarkerHeight : height);
+        var tip = FindBranchTip(nodeId, x, y, height);
+        SetCursor(tip.Id, tip.X, tip.Y, tip.Height);
 
         return new BranchActionResult(true);
+    }
+
+    public BranchActionResult RenameNode(string nodeId, string newLabel)
+    {
+        if (IsDecisionPointId(nodeId))
+        {
+            return new BranchActionResult(false);
+        }
+
+        var cell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == nodeId);
+        if (cell is null)
+        {
+            return new BranchActionResult(false);
+        }
+
+        if (IsPathStartId(nodeId))
+        {
+            var value = $"{PathStartPrefix}{newLabel}";
+            cell.SetAttributeValue("value", value);
+            _labels[nodeId] = value;
+        }
+        else if (IsCardCell(cell))
+        {
+            // Only the caption text changes — the card's header height
+            // stays whatever it was sized to for the *original* description
+            // (see BuildCard); a much longer new label can visually run
+            // past it. Re-flowing the header (and every node below it, in
+            // the same column) on rename is not implemented.
+            var labelCell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == nodeId + "_label");
+            if (labelCell is null)
+            {
+                return new BranchActionResult(false);
+            }
+
+            labelCell.SetAttributeValue("value", newLabel);
+            _labels[nodeId] = newLabel;
+        }
+        else
+        {
+            return new BranchActionResult(false);
+        }
+
+        Save();
+        return new BranchActionResult(true);
+    }
+
+    /// <summary>
+    /// Exactly one outgoing edge: the parent is reconnected straight to
+    /// that child so the branch below isn't orphaned. More than one (a
+    /// decision point, or any node a path was forked from): the whole
+    /// downstream subtree goes with it — the caller (the Ablauf-Übersicht)
+    /// is responsible for confirming that with the user first, since there
+    /// is no single "the" continuation to stitch to here.
+    /// </summary>
+    public BranchActionResult DeleteNode(string nodeId)
+    {
+        var cell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == nodeId);
+        if (cell is null)
+        {
+            return new BranchActionResult(false);
+        }
+
+        var childEdges = _root.Elements("mxCell")
+            .Where(c => (string?)c.Attribute("edge") == "1" && (string?)c.Attribute("source") == nodeId)
+            .ToList();
+        var parentEdge = _root.Elements("mxCell")
+            .FirstOrDefault(c => (string?)c.Attribute("edge") == "1" && (string?)c.Attribute("target") == nodeId);
+
+        // A path-start cell's single child is never itself tagged with the
+        // path's identity (only the path-start cell is — see
+        // FlowPreviewBranching.TagBranches) — stitching parent straight to
+        // that child like an ordinary 1-child cell would silently erase
+        // which path it belonged to, collapsing it back onto whatever the
+        // path forked from. Same shape as the bug JumpToNode used to cause
+        // (see its own doc comment), so a path-start with a child must
+        // cascade just like a >1-child cell does, even with just the one.
+        var toRemove = new HashSet<string> { nodeId };
+        if (childEdges.Count > 1 || (childEdges.Count == 1 && IsPathStartId(nodeId)))
+        {
+            var queue = new Queue<string>(childEdges.Select(e => (string)e.Attribute("target")!));
+            while (queue.Count > 0)
+            {
+                var id = queue.Dequeue();
+                if (!toRemove.Add(id))
+                {
+                    continue;
+                }
+
+                foreach (var e in _root.Elements("mxCell")
+                    .Where(c => (string?)c.Attribute("edge") == "1" && (string?)c.Attribute("source") == id)
+                    .ToList())
+                {
+                    queue.Enqueue((string)e.Attribute("target")!);
+                }
+            }
+        }
+
+        foreach (var id in toRemove)
+        {
+            RemoveCardChildren(id); // no-op for decision-point/path-start markers, which have none
+            _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == id)?.Remove();
+            _labels.Remove(id);
+        }
+
+        _root.Elements("mxCell")
+            .Where(c => (string?)c.Attribute("edge") == "1" &&
+                (toRemove.Contains((string?)c.Attribute("source") ?? "") || toRemove.Contains((string?)c.Attribute("target") ?? "")))
+            .ToList()
+            .ForEach(e => e.Remove());
+
+        if (childEdges.Count == 1 && parentEdge is not null && !IsPathStartId(nodeId))
+        {
+            AddEdge((string)parentEdge.Attribute("source")!, (string)childEdges[0].Attribute("target")!, GetAccentColor());
+        }
+
+        if (_cursorNodeId is not null && toRemove.Contains(_cursorNodeId))
+        {
+            if (parentEdge is not null)
+            {
+                var parentId = (string)parentEdge.Attribute("source")!;
+                var parentCell = _root.Elements("mxCell").First(c => (string?)c.Attribute("id") == parentId);
+                var g = parentCell.Element("mxGeometry");
+                var isParentMarkerLike = IsDecisionPointId(parentId) || IsPathStartId(parentId);
+                var tip = FindBranchTip(parentId, ParseDouble(g?.Attribute("x")), ParseDouble(g?.Attribute("y")),
+                    isParentMarkerLike ? MarkerHeight : ParseDouble(g?.Attribute("height")));
+                SetCursor(tip.Id, tip.X, tip.Y, tip.Height);
+            }
+            else
+            {
+                _cursorNodeId = null;
+                _currentPathStartId = null;
+            }
+        }
+
+        Save();
+        return new BranchActionResult(true);
+    }
+
+    /// <summary>Only ordinary content cards qualify, on both ends — see <see cref="IFlowWriter.ReparentNode"/>.</summary>
+    public BranchActionResult ReparentNode(string nodeId, string newParentId)
+    {
+        if (nodeId == newParentId)
+        {
+            return new BranchActionResult(false);
+        }
+
+        var cell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == nodeId);
+        var newParentCell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == newParentId);
+        if (cell is null || newParentCell is null || !IsCardCell(cell) || !IsCardCell(newParentCell))
+        {
+            return new BranchActionResult(false);
+        }
+
+        // Cycle guard: newParentId must not be a descendant of nodeId.
+        var descendants = new HashSet<string>();
+        var descendantQueue = new Queue<string>(_root.Elements("mxCell")
+            .Where(c => (string?)c.Attribute("edge") == "1" && (string?)c.Attribute("source") == nodeId)
+            .Select(c => (string)c.Attribute("target")!));
+        while (descendantQueue.Count > 0)
+        {
+            var id = descendantQueue.Dequeue();
+            if (!descendants.Add(id))
+            {
+                continue;
+            }
+
+            foreach (var e in _root.Elements("mxCell")
+                .Where(c => (string?)c.Attribute("edge") == "1" && (string?)c.Attribute("source") == id)
+                .ToList())
+            {
+                descendantQueue.Enqueue((string)e.Attribute("target")!);
+            }
+        }
+
+        if (descendants.Contains(newParentId))
+        {
+            return new BranchActionResult(false);
+        }
+
+        var oldParentEdge = _root.Elements("mxCell")
+            .FirstOrDefault(c => (string?)c.Attribute("edge") == "1" && (string?)c.Attribute("target") == nodeId);
+        oldParentEdge?.Remove();
+
+        AddEdge(newParentId, nodeId, GetAccentColor());
+
+        Save();
+        return new BranchActionResult(true);
+    }
+
+    /// <summary>Only ordinary content cards qualify, on both ends — see <see cref="IFlowWriter.ConnectNodes"/>.</summary>
+    public BranchActionResult ConnectNodes(string fromNodeId, string toNodeId)
+    {
+        if (fromNodeId == toNodeId)
+        {
+            return new BranchActionResult(false);
+        }
+
+        var fromCell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == fromNodeId);
+        var toCell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == toNodeId);
+        if (fromCell is null || toCell is null || !IsCardCell(fromCell) || !IsCardCell(toCell))
+        {
+            return new BranchActionResult(false);
+        }
+
+        var alreadyConnected = _root.Elements("mxCell").Any(c =>
+            (string?)c.Attribute("edge") == "1" && (string?)c.Attribute("source") == fromNodeId && (string?)c.Attribute("target") == toNodeId);
+        if (alreadyConnected)
+        {
+            return new BranchActionResult(false);
+        }
+
+        // Cycle guard: toNodeId must not already be able to reach fromNodeId.
+        var reachableFromTo = new HashSet<string>();
+        var queue = new Queue<string>(_root.Elements("mxCell")
+            .Where(c => (string?)c.Attribute("edge") == "1" && (string?)c.Attribute("source") == toNodeId)
+            .Select(c => (string)c.Attribute("target")!));
+        while (queue.Count > 0)
+        {
+            var id = queue.Dequeue();
+            if (!reachableFromTo.Add(id))
+            {
+                continue;
+            }
+
+            foreach (var e in _root.Elements("mxCell")
+                .Where(c => (string?)c.Attribute("edge") == "1" && (string?)c.Attribute("source") == id)
+                .ToList())
+            {
+                queue.Enqueue((string)e.Attribute("target")!);
+            }
+        }
+
+        if (reachableFromTo.Contains(fromNodeId))
+        {
+            return new BranchActionResult(false);
+        }
+
+        // Neutral gray, same as a decision point — visually distinguishes a
+        // manually drawn connection from the accent-colored edges the
+        // recording itself produces.
+        AddEdge(fromNodeId, toNodeId, DecisionPointColor);
+
+        Save();
+        return new BranchActionResult(true);
+    }
+
+    /// <summary>Only ordinary content cards qualify, on both ends — see <see cref="IFlowWriter.DisconnectNodes"/>.</summary>
+    public BranchActionResult DisconnectNodes(string fromNodeId, string toNodeId)
+    {
+        var fromCell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == fromNodeId);
+        var toCell = _root.Elements("mxCell").FirstOrDefault(c => (string?)c.Attribute("id") == toNodeId);
+        if (fromCell is null || toCell is null || !IsCardCell(fromCell) || !IsCardCell(toCell))
+        {
+            return new BranchActionResult(false);
+        }
+
+        var edge = _root.Elements("mxCell").FirstOrDefault(c =>
+            (string?)c.Attribute("edge") == "1" && (string?)c.Attribute("source") == fromNodeId && (string?)c.Attribute("target") == toNodeId);
+        if (edge is null)
+        {
+            return new BranchActionResult(false);
+        }
+
+        edge.Remove();
+
+        Save();
+        return new BranchActionResult(true);
+    }
+
+    /// <summary>A card's badge/label/image children (see <see cref="BuildCard"/>) — siblings at the XML root with <c>parent="cardId"</c>, rather than nested, since mxGraph cells are always flat at this level. No-op for decision-point/path-start markers, which are single cells with no children.</summary>
+    private void RemoveCardChildren(string cardId)
+    {
+        _root.Elements("mxCell").Where(c => (string?)c.Attribute("parent") == cardId).ToList().ForEach(c => c.Remove());
+        _root.Elements("UserObject").Where(uo => (string?)uo.Element("mxCell")?.Attribute("parent") == cardId).ToList().ForEach(uo => uo.Remove());
     }
 
     /// <summary>Moves the cursor and re-derives which path (if any) it's now inside, by walking backward through edges to the nearest path-start ancestor — see <see cref="_currentPathStartId"/>.</summary>
@@ -722,7 +1012,10 @@ public sealed class DrawIoFlowWriter : IFlowWriter
 
     private void Save()
     {
-        using var writer = XmlWriter.Create(_filePath!, SaveSettings);
-        _doc.Save(writer);
+        FileSaveRetry.Save(_filePath!, () =>
+        {
+            using var writer = XmlWriter.Create(_filePath!, SaveSettings);
+            _doc.Save(writer);
+        });
     }
 }

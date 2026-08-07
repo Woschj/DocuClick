@@ -121,8 +121,8 @@ public readonly record struct BranchActionResult(bool Success);
 public readonly record struct PathInfo(string PathStartNodeId, string Name, int StepCount);
 
 /// <summary>
-/// Common contract for the branching output modes (Obsidian Canvas, draw.io,
-/// Excalidraw) so SessionManager doesn't need to know which one is active.
+/// Common contract for the branching output modes (Obsidian Canvas, draw.io)
+/// so SessionManager doesn't need to know which one is active.
 /// The plain note mode (ObsidianWriter) has no branching concept and
 /// deliberately does not implement this.
 ///
@@ -148,11 +148,18 @@ public interface IFlowWriter
     /// <summary>Marks the current node as a decision point (a small diamond marker) and immediately forks+jumps onto its first named path — see the type's own doc comment for why there's no unnamed default continuation.</summary>
     BranchActionResult MarkDecisionPoint(string firstPathName);
 
-    /// <summary>Every path already forking from a given decision point, for the Ablauf-Übersicht's "bestehenden Pfad fortsetzen" popup.</summary>
-    List<PathInfo> ListPaths(string decisionPointId);
+    /// <summary>Every path already forking directly from a given node (decision point or otherwise), for the Ablauf-Übersicht's per-node popup.</summary>
+    List<PathInfo> ListPaths(string originNodeId);
 
-    /// <summary>Starts a brand-new named path from an existing decision point, in its own column, and jumps the cursor onto it.</summary>
-    BranchActionResult StartNewPath(string decisionPointId, string pathName);
+    /// <summary>
+    /// Starts a brand-new named path from an existing node, in its own
+    /// column, and jumps the cursor onto it. The origin doesn't have to be
+    /// a decision point — any node can be the retroactive start of an
+    /// alternate branch (see <see cref="JumpToNode"/>'s doc comment for why
+    /// this is the only way to branch from a node that already has
+    /// downstream content).
+    /// </summary>
+    BranchActionResult StartNewPath(string originNodeId, string pathName);
 
     /// <summary>Resumes an existing path at wherever it currently ends (not necessarily where it started).</summary>
     BranchActionResult ContinuePath(string pathStartNodeId);
@@ -160,11 +167,89 @@ public interface IFlowWriter
     /// <summary>Snapshot of every node currently in the flow (position + size + which one the cursor is on) for the live tree-preview overlay.</summary>
     FlowPreview GetPreview();
 
-    /// <summary>Moves the cursor to an arbitrary existing node (not a decision point/path action) — the tree-preview overlay's click-to-navigate for regular nodes.</summary>
+    /// <summary>
+    /// Moves the cursor to an arbitrary existing node — always resolved
+    /// forward to that node's branch's current tip and resumed exactly
+    /// there (never opens a new column, never risks a second, untracked
+    /// outgoing edge from a node that already has one). The Ablauf-
+    /// Übersicht's click-to-navigate for a node that's already a tip (no
+    /// downstream content); for a node with existing children it instead
+    /// shows a popup offering this ("→ Weiter") alongside
+    /// <see cref="StartNewPath"/> ("+ Neuer Pfad ab hier").
+    /// </summary>
     BranchActionResult JumpToNode(string nodeId);
 
     List<ResumableNode> ListNodesForResume(string fileName);
     void SetResumeAnchor(ResumableNode node);
 
     string? CurrentNodeLabel { get; }
+
+    /// <summary>
+    /// Renames a node's label (or, for a path-start marker, its path name —
+    /// the "↳ Pfad: " prefix is kept). Decision-point diamonds can't be
+    /// renamed — their fixed "◆ Abzweigung" text is how every writer
+    /// recognizes one as a decision point in the first place.
+    /// </summary>
+    BranchActionResult RenameNode(string nodeId, string newLabel);
+
+    /// <summary>
+    /// Deletes a node. Exactly one outgoing edge: the gap is stitched shut
+    /// (the node's own parent connects directly to its former child)
+    /// instead of leaving that branch orphaned. More than one outgoing edge
+    /// (a decision point, or any node a path was forked from): the whole
+    /// downstream subtree is deleted with it — the UI must confirm this
+    /// with the user first, since there's no single "the" continuation to
+    /// stitch to. If the deleted node (or one of its cascaded descendants)
+    /// was the current cursor, the cursor moves to the parent's branch tip
+    /// (or null, if the deleted node was a root).
+    /// </summary>
+    BranchActionResult DeleteNode(string nodeId);
+
+    /// <summary>
+    /// Re-parents a node: moves its single incoming edge from its current
+    /// parent to <paramref name="newParentId"/>, for the Ablauf-Übersicht's
+    /// drag-to-rewire. Only ordinary content nodes qualify, on both ends —
+    /// a decision point's/path-start's role as a branch hub or a path's own
+    /// identity would break if either could be dragged or dropped onto.
+    /// Refuses (returns failure) if <paramref name="newParentId"/> is
+    /// <paramref name="nodeId"/> itself or one of its own descendants, which
+    /// would create a cycle.
+    /// </summary>
+    BranchActionResult ReparentNode(string nodeId, string newParentId);
+
+    /// <summary>
+    /// Manually connects two existing nodes with a new edge — for the
+    /// Ablauf-Übersicht's "Verbinden" toolbar gesture, when the recorded
+    /// flow itself doesn't already capture some real transition (e.g. a
+    /// step that loops back to an earlier one). Additive, unlike
+    /// <see cref="ReparentNode"/>: no existing edge is removed, so
+    /// <paramref name="toNodeId"/> can end up with more than one incoming
+    /// edge — a genuine merge point, not a bug (the Ablauf-Übersicht's
+    /// row/column layout just picks whichever parent it reaches <paramref name="toNodeId"/>
+    /// from first). Only ordinary content nodes qualify, on both ends —
+    /// same reasoning as <see cref="ReparentNode"/>: a decision point's/
+    /// path-start's role as a branch hub or a path's own identity would
+    /// break if either could be connected into or out of arbitrarily.
+    /// Refuses (returns failure) if <paramref name="toNodeId"/> can already
+    /// reach <paramref name="fromNodeId"/>, which would create a cycle.
+    /// </summary>
+    BranchActionResult ConnectNodes(string fromNodeId, string toNodeId);
+
+    /// <summary>
+    /// Removes an existing edge between two ordinary content nodes — the
+    /// undo counterpart to <see cref="ConnectNodes"/>, for the Ablauf-
+    /// Übersicht's right-click-an-edge gesture. Same marker restriction as
+    /// <see cref="ConnectNodes"/>/<see cref="ReparentNode"/>: a decision
+    /// point's/path-start's structural edges (into it, or its own fork out
+    /// of a decision point) can't be removed this way, since that would
+    /// silently detach a whole path from <see cref="ListPaths"/> while
+    /// leaving its nodes behind, unreachable but not deleted — a confusing
+    /// half-state. Deliberately does *not* refuse just because a node would
+    /// end up with no remaining edges at all (fully isolated) — the caller
+    /// doesn't have to reconnect it to anything else; the Ablauf-Übersicht's
+    /// layout places an isolated node in its own row/column rather than
+    /// overlapping it onto whatever else happens to sit at the origin.
+    /// Refuses (returns failure) if no such edge exists.
+    /// </summary>
+    BranchActionResult DisconnectNodes(string fromNodeId, string toNodeId);
 }

@@ -36,12 +36,22 @@ public sealed class TopBarWindow : Window
     private readonly Ellipse _statusDot;
     private readonly TextBlock _statusText;
     private readonly Button _toggleRecordingButton;
-    private readonly Button _decisionPointButton;
+    private readonly Button _showFlowPreviewButton;
     private readonly Button _newSessionButton;
     private readonly Button _zoomToCursorButton;
 
     public event Action? ToggleRecordingRequested;
-    public event Action? DecisionPointRequested;
+
+    /// <summary>
+    /// "Übersicht" button — reopens the Ablauf-Übersicht panel if the user
+    /// closed it via its own header ✕. Replaced the old dedicated
+    /// "Abzweigung"-button here: marking a decision point moved into the
+    /// panel's own toolbar (reachable right where the rest of the editing
+    /// — rename/delete/reparent/connect — already lives), so this bar only
+    /// needed a way back in, not a duplicate control for the same action.
+    /// </summary>
+    public event Action? ShowFlowPreviewRequested;
+
     public event Action? NewSessionRequested;
     public event Action? ZoomToCursorToggleRequested;
 
@@ -99,10 +109,9 @@ public sealed class TopBarWindow : Window
         _toggleRecordingButton = CreateButton(buttonStyle, "Start", "Aufnahme starten/stoppen (wie der Tray-Menüpunkt bzw. der Start/Stop-Hotkey).");
         _toggleRecordingButton.Click += (_, _) => ToggleRecordingRequested?.Invoke();
 
-        _decisionPointButton = CreateButton(buttonStyle, "Abzweigung",
-            "Markiert den aktuellen Knoten als Abzweigungspunkt (Raute) und fragt nach dem Namen des ersten Pfads — der nächste Klick beginnt dort. " +
-            "Weitere Pfade: in der Ablauf-Übersicht auf die Raute klicken, um einen weiteren neuen Pfad zu starten oder einen bestehenden fortzusetzen.");
-        _decisionPointButton.Click += (_, _) => DecisionPointRequested?.Invoke();
+        _showFlowPreviewButton = CreateButton(buttonStyle, "Übersicht",
+            "Öffnet die Ablauf-Übersicht wieder, falls sie geschlossen wurde. Abzweigungen setzen, umbenennen, löschen, verbinden und verschieben passiert jetzt direkt im Panel.");
+        _showFlowPreviewButton.Click += (_, _) => ShowFlowPreviewRequested?.Invoke();
 
         _newSessionButton = CreateButton(buttonStyle, "Neue Session", "Startet eine neue Aufnahme-Session (fragt nach Zieldatei) — schließt bei laufender Aufnahme zuerst die aktuelle Datei ab.");
         _newSessionButton.Click += (_, _) => NewSessionRequested?.Invoke();
@@ -118,7 +127,7 @@ public sealed class TopBarWindow : Window
         panel.Children.Add(statusGroup);
         panel.Children.Add(CreateSeparator());
         panel.Children.Add(_toggleRecordingButton);
-        panel.Children.Add(_decisionPointButton);
+        panel.Children.Add(_showFlowPreviewButton);
         panel.Children.Add(CreateSeparator());
         panel.Children.Add(_newSessionButton);
         panel.Children.Add(CreateSeparator());
@@ -223,6 +232,28 @@ public sealed class TopBarWindow : Window
         {
             var hwnd = new WindowInteropHelper(this).Handle;
             NativeMethods.ExcludeFromScreenCapture(hwnd);
+            HwndSource.FromHwnd(hwnd)?.AddHook(NativeMethods.DeliverActivatingClick);
+        };
+
+        // ShowActivated=false means this bar starts out inactive whenever
+        // focus was last on whatever's being documented — the normal case.
+        // WPF marks the routed MouseButtonEventArgs for the very click that
+        // re-activates an inactive window as Handled=true unconditionally,
+        // before any button ever sees it (Click never fires) — confirmed
+        // via diagnostic logging on the Ablauf-Übersicht's pan gesture,
+        // which shares this exact window setup; answering WM_MOUSEACTIVATE
+        // with MA_ACTIVATE (see NativeMethods.DeliverActivatingClick) does
+        // NOT prevent this, since it's WPF's own activation bookkeeping,
+        // not the Win32 message. Activating pre-emptively on hover, before
+        // any click happens, sidesteps it: by the time a click actually
+        // lands, the bar is already active, so there's no "activating
+        // click" left to eat.
+        MouseEnter += (_, _) =>
+        {
+            if (!IsActive)
+            {
+                Activate();
+            }
         };
     }
 
@@ -308,9 +339,12 @@ public sealed class TopBarWindow : Window
     public void UpdateStatus(bool isRecording, string? detail, bool supportsBranching)
     {
         _toggleRecordingButton.Content = isRecording ? "Stop" : "Start";
-        _decisionPointButton.IsEnabled = isRecording && supportsBranching;
-        // "Neue Session" is always clickable: with no recording running it
-        // just behaves like Start (see App.OnNewSessionRequested).
+        // "Übersicht" and "Neue Session" are always clickable regardless of
+        // supportsBranching/recording state — reopening the panel (or
+        // starting a session that turns out not to support branching) are
+        // both meaningful either way; SessionManager/FlowPreviewOverlay
+        // themselves already handle the "doesn't apply right now" case via
+        // an info balloon instead of a disabled button.
 
         // Same red as RecordingIndicatorOverlay/the minimap's "current node"
         // box when active; a dim translucent white at rest so it reads as

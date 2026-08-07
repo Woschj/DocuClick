@@ -1,0 +1,111 @@
+/* Transparent background: the WPF host window is itself semi-transparent
+   (AllowsTransparency) and paints the panel's dark background via its own
+   Border — the WebView2 content only needs to fill the diagram area, not
+   redraw a background behind it. */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: "Segoe UI", sans-serif;
+  cursor: default;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+#cy {
+  flex: 1 1 auto;
+  min-height: 0; /* a flex child otherwise refuses to shrink below its content's natural size */
+  width: 100%;
+}
+
+/* Drag-to-connect gesture: a plain line from the fixed source node to the
+   cursor, drawn over #cy — never actually moves the node underneath. */
+.hud-connect-line {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 999;
+}
+
+.hud-connect-line line {
+  stroke: #22C55E;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.hud-empty-hint {
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  color: #ffffff;
+  opacity: 0.6;
+  font-size: 11px;
+  pointer-events: none;
+}
+
+/* display:flex must only apply while visible — putting it on the bare
+   class above would out-rank the UA stylesheet's [hidden]{display:none}
+   (same specificity, author sheet wins), so toggling the `hidden`
+   attribute from JS would silently stop working. */
+.hud-empty-hint:not([hidden]) {
+  display: flex;
+}
+
+/* Shared "frosted glass" look for both the hover tooltip and the node
+   popup/context menu — matches the WPF host's own panel chrome
+   (Color.FromArgb(170/235, 25, 25, 28) background, translucent white
+   border) so the WebView content doesn't look like a foreign insert. */
+.hud-tooltip,
+.hud-menu {
+  position: absolute;
+  z-index: 1000;
+  background: rgba(25, 25, 28, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.31);
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.hud-tooltip {
+  padding: 4px 7px;
+  white-space: nowrap;
+}
+
+.hud-menu {
+  padding: 4px;
+  pointer-events: auto;
+  min-width: 140px;
+}
+
+.hud-menu-item {
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.hud-menu-item:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.hud-menu-item.primary {
+  font-weight: 700;
+}
+
+.hud-menu-separator {
+  height: 1px;
+  margin: 4px 2px;
+  background: rgba(255, 255, 255, 0.16);
+}

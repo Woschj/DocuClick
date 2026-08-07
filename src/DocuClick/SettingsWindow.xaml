@@ -24,15 +24,12 @@
                         <RadioButton x:Name="OutputModeCanvasRadio" GroupName="OutputMode" Margin="0,0,0,8"
                                      Content="Obsidian-Canvas (.canvas, Ablaufdiagramm mit Abzweigungen)"
                                      Checked="OnOutputModeChanged"/>
-                        <RadioButton x:Name="OutputModeExcalidrawRadio" GroupName="OutputMode" Margin="0,0,0,8"
-                                     Content="Excalidraw (.excalidraw, Skizzen-Look, experimentell — benötigt das Excalidraw-Plugin)"
-                                     Checked="OnOutputModeChanged"/>
                         <RadioButton x:Name="OutputModeDrawIoRadio" GroupName="OutputMode" Margin="0,0,0,4"
                                      Content="draw.io (.drawio, echtes editierbares Flowchart mit Kartenlayout, kein Obsidian nötig)"
                                      Checked="OnOutputModeChanged"/>
 
                         <TextBlock Style="{StaticResource HintText}"
-                                   Text="Canvas schreibt jeden Klick als verbundenen Knoten auf einer Fläche (vertikaler Hauptfluss, Abzweigungspunkte mit neuen Pfaden als Spalten, gesteuert über die Ablauf-Übersicht) — gut für kurze Abläufe, wird bei sehr langen Abläufen aber schnell unübersichtlich. Excalidraw funktioniert wie Canvas (Knoten + Abzweigungen), aber im freien Skizzen-Look statt fester Boxen — experimentell, benötigt zusätzlich das kostenlose Excalidraw-Community-Plugin (anders als Canvas, das in Obsidian bereits eingebaut ist). draw.io zeichnet wie Canvas ein Flussdiagramm (Hauptfluss + Abzweigungen als Spalten), aber als echte Karten mit Nummer-Badge, Beschriftung und Screenshot als eine verschiebbare Einheit, mit farbigen Pfeilen je Pfad — öffnet in der kostenlosen draw.io/diagrams.net-App, ganz ohne Obsidian. Canvas/Excalidraw/draw.io betten Screenshots direkt in die Datei ein — kein separater Attachments-Ordner nötig — und sind voll editierbar."/>
+                                   Text="Canvas schreibt jeden Klick als verbundenen Knoten auf einer Fläche (vertikaler Hauptfluss, Abzweigungspunkte mit neuen Pfaden als Spalten, gesteuert über die Ablauf-Übersicht) — gut für kurze Abläufe, wird bei sehr langen Abläufen aber schnell unübersichtlich. draw.io zeichnet wie Canvas ein Flussdiagramm (Hauptfluss + Abzweigungen als Spalten), aber als echte Karten mit Nummer-Badge, Beschriftung und Screenshot als eine verschiebbare Einheit, mit farbigen Pfeilen je Pfad — öffnet in der kostenlosen draw.io/diagrams.net-App, ganz ohne Obsidian. Canvas/draw.io betten Screenshots direkt in die Datei ein — kein separater Attachments-Ordner nötig — und sind voll editierbar."/>
                     </StackPanel>
                 </Border>
 

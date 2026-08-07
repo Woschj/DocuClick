@@ -16,10 +16,11 @@ public partial class App : Application
     private SessionManager? _sessionManager;
     private AppConfig? _config;
     private HotkeyService? _hotkeyService;
-    private RecordingIndicatorOverlay? _recordingOverlay;
-    private CanvasStatusOverlay? _canvasStatusOverlay;
     private FlowPreviewOverlay? _flowPreviewOverlay;
     private TopBarWindow? _topBar;
+
+    /// <summary>Set when the user closes the Ablauf-Übersicht via its own header ✕ — stops <see cref="OnFlowPreviewChanged"/> from popping it back open on the very next click, until the TopBar's "Übersicht" button explicitly asks for it again.</summary>
+    private bool _flowPreviewManuallyHidden;
 
     /// <summary>Set by clicking a node in the Ablauf-Übersicht while stopped (see <see cref="OnFlowPreviewNodeClicked"/>), consumed once by the next session-start file picker.</summary>
     private string? _pendingResumeFileName;
@@ -48,8 +49,6 @@ public partial class App : Application
         _sessionManager = new SessionManager(_config);
         _sessionManager.ErrorOccurred += OnSessionError;
         _sessionManager.InfoOccurred += OnSessionInfo;
-        _sessionManager.CanvasStatusChanged += OnCanvasStatusChanged;
-        _sessionManager.LastScreenshotCaptured += OnLastScreenshotCaptured;
         _sessionManager.FlowPreviewChanged += OnFlowPreviewChanged;
 
         _trayApp = new TrayApp();
@@ -60,7 +59,7 @@ public partial class App : Application
         // so there is always an at-a-glance answer to "is it running".
         _topBar = new TopBarWindow();
         _topBar.ToggleRecordingRequested += () => _trayApp?.ToggleRecording();
-        _topBar.DecisionPointRequested += OnDecisionPointRequested;
+        _topBar.ShowFlowPreviewRequested += OnShowFlowPreviewRequested;
         _topBar.NewSessionRequested += OnNewSessionRequested;
         _topBar.ZoomToCursorToggleRequested += () => _sessionManager?.ToggleZoomToCursor();
         _topBar.Show();
@@ -174,10 +173,21 @@ public partial class App : Application
             return;
         }
 
-        var nameWindow = new BranchNameWindow();
-        if (nameWindow.ShowDialog() == true && nameWindow.BranchName is { } name)
+        var nameWindow = new BranchNameWindow
         {
-            _sessionManager.MarkDecisionPoint(name);
+            Owner = _flowPreviewOverlay is { IsVisible: true } ? _flowPreviewOverlay : null
+        };
+        NativeMethods.ModalDialogDepth++;
+        try
+        {
+            if (nameWindow.ShowDialog() == true && nameWindow.BranchName is { } name)
+            {
+                _sessionManager.MarkDecisionPoint(name);
+            }
+        }
+        finally
+        {
+            NativeMethods.ModalDialogDepth--;
         }
     }
 
@@ -186,39 +196,6 @@ public partial class App : Application
 
     /// <summary>Ablauf-Übersicht popup: an existing path was chosen to continue.</summary>
     private void OnContinuePathRequested(string pathStartNodeId) => _sessionManager?.ContinuePath(pathStartNodeId);
-
-    private void OnCanvasStatusChanged(string? statusText)
-    {
-        Dispatcher.BeginInvoke(() =>
-        {
-            if (statusText is null)
-            {
-                _canvasStatusOverlay?.Hide();
-                return;
-            }
-
-            _canvasStatusOverlay ??= new CanvasStatusOverlay();
-            _canvasStatusOverlay.UpdateText(statusText);
-            _canvasStatusOverlay.Show();
-        });
-    }
-
-    private void OnLastScreenshotCaptured(byte[] pngBytes)
-    {
-        // This event fires from SessionManager's dedicated writer thread;
-        // the overlay is WPF UI and must only be touched from its own
-        // thread. Only relevant to modes that show the status overlay in
-        // the first place (see OnCanvasStatusChanged) — for plain Note
-        // mode the overlay is never shown, so updating a hidden thumbnail
-        // would be pointless work on every single click.
-        Dispatcher.BeginInvoke(() =>
-        {
-            if (_canvasStatusOverlay is { IsVisible: true })
-            {
-                _canvasStatusOverlay.UpdateThumbnail(pngBytes);
-            }
-        });
-    }
 
     private void OnFlowPreviewChanged(FlowPreview? preview)
     {
@@ -240,11 +217,37 @@ public partial class App : Application
                 _flowPreviewOverlay.PathsProvider = decisionPointId => _sessionManager?.ListPaths(decisionPointId) ?? new List<PathInfo>();
                 _flowPreviewOverlay.NewPathRequested += OnNewPathRequested;
                 _flowPreviewOverlay.ContinuePathRequested += OnContinuePathRequested;
+                _flowPreviewOverlay.RenameRequested += (nodeId, newLabel) => _sessionManager?.RenameNode(nodeId, newLabel);
+                _flowPreviewOverlay.DeleteRequested += nodeId => _sessionManager?.DeleteNode(nodeId);
+                _flowPreviewOverlay.ReparentRequested += (nodeId, newParentId) => _sessionManager?.ReparentNode(nodeId, newParentId);
+                _flowPreviewOverlay.ConnectRequested += (fromId, toId) => _sessionManager?.ConnectNodes(fromId, toId);
+                _flowPreviewOverlay.DisconnectRequested += (fromId, toId) => _sessionManager?.DisconnectNodes(fromId, toId);
+                _flowPreviewOverlay.CloseRequested += () =>
+                {
+                    _flowPreviewManuallyHidden = true;
+                    _flowPreviewOverlay?.Hide();
+                };
             }
 
             _flowPreviewOverlay.UpdatePreview(preview);
-            _flowPreviewOverlay.Show();
+            if (!_flowPreviewManuallyHidden)
+            {
+                _flowPreviewOverlay.Show();
+            }
         });
+    }
+
+    /// <summary>TopBar "Übersicht" button: reopens the Ablauf-Übersicht after the user closed it via its own header ✕. A no-op info balloon (not an error) if nothing has ever been recorded yet — there's simply nothing to show.</summary>
+    private void OnShowFlowPreviewRequested()
+    {
+        _flowPreviewManuallyHidden = false;
+        if (_flowPreviewOverlay is null)
+        {
+            _trayApp?.ShowInfo("Noch keine Ablauf-Übersicht vorhanden — sie erscheint mit dem ersten aufgezeichneten Klick.");
+            return;
+        }
+
+        _flowPreviewOverlay.Show();
     }
 
     /// <summary>
@@ -337,8 +340,6 @@ public partial class App : Application
             {
                 _sessionManager!.Start(fileName);
                 RememberLastSession(fileName);
-                _recordingOverlay ??= new RecordingIndicatorOverlay();
-                _recordingOverlay.Show();
             }
             catch (Exception ex)
             {
@@ -352,8 +353,6 @@ public partial class App : Application
         else
         {
             _sessionManager!.Stop();
-            _recordingOverlay?.Hide();
-            _canvasStatusOverlay?.Hide();
         }
 
         _topBar?.UpdateStatus(isRecording, detail: null, _sessionManager!.SupportsBranching);
@@ -382,8 +381,6 @@ public partial class App : Application
             else
             {
                 _sessionManager.Start(fileName);
-                _recordingOverlay ??= new RecordingIndicatorOverlay();
-                _recordingOverlay.Show();
                 // Sync tray icon/tooltip without re-firing RecordingStateChanged
                 // (that would re-enter here via OnRecordingStateChanged's own
                 // start logic — this session is already started).
@@ -426,8 +423,6 @@ public partial class App : Application
         _hotkeyService?.Dispose();
         _sessionManager?.Dispose();
         _trayApp?.Dispose();
-        _recordingOverlay?.Close();
-        _canvasStatusOverlay?.Close();
         _topBar?.Close();
         _singleInstanceMutex?.ReleaseMutex();
         _singleInstanceMutex?.Dispose();

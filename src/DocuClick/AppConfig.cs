@@ -20,12 +20,10 @@ public sealed class AppConfig
 
     /// <summary>
     /// Where clicks get written to: "Note" (linear Markdown), "Canvas"
-    /// (Obsidian .canvas flow diagram), "Excalidraw" (.excalidraw
-    /// sketch-style diagram, experimental — needs the free Excalidraw
-    /// Obsidian plugin), or "DrawIo" (.drawio, a real editable flowchart:
-    /// card-shaped nodes with numbered badges, per-branch accent colors,
-    /// and arrowed connectors — opens in the free draw.io/diagrams.net
-    /// app, no Obsidian needed). Canvas, Excalidraw, and DrawIo all
+    /// (Obsidian .canvas flow diagram), or "DrawIo" (.drawio, a real
+    /// editable flowchart: card-shaped nodes with numbered badges,
+    /// per-branch accent colors, and arrowed connectors — opens in the free
+    /// draw.io/diagrams.net app, no Obsidian needed). Canvas and DrawIo both
     /// support branching via the decision-point hotkey below.
     /// </summary>
     public string OutputMode { get; set; } = "Note";

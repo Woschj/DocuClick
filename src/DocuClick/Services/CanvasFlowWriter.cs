@@ -34,6 +34,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
     private const double TextToImageGap = 10;
     private const double ImageNodeHeight = NodeHeight - TextNodeHeight - TextToImageGap;
     private const double MarkerHeight = 60;
+    private const double GroupPadding = 8; // margin between a card's group-node border and its text+image children
     private const double SequentialSpacing = 60; // gap between consecutive nodes along the main (vertical) flow
     private const double BranchColumnSpacing = 80; // gap between path columns
 
@@ -171,6 +172,24 @@ public sealed class CanvasFlowWriter : IFlowWriter
 
         var newY = _cursorNodeId is null ? _cursorY : _cursorY + NodeHeight + SequentialSpacing;
 
+        // A visible bounding group behind the text+image pair — Canvas
+        // edges only ever connect text nodes (see FindImageSibling's doc
+        // comment), so without this the screenshot reads as a disconnected
+        // element floating below the description instead of clearly
+        // belonging with it. Dragging the group in Obsidian also moves both
+        // children together, same idea as draw.io mode's container=1 card.
+        // Added first so it renders behind its text/image children.
+        var groupNode = new CanvasNode
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Type = "group",
+            X = _cursorX - GroupPadding,
+            Y = newY - GroupPadding,
+            Width = NodeWidth + GroupPadding * 2,
+            Height = TextNodeHeight + TextToImageGap + ImageNodeHeight + GroupPadding * 2
+        };
+        _doc.Nodes.Add(groupNode);
+
         var textNode = new CanvasNode
         {
             Id = Guid.NewGuid().ToString("N"),
@@ -257,21 +276,27 @@ public sealed class CanvasFlowWriter : IFlowWriter
         return StartNewPath(marker.Id, firstPathName);
     }
 
-    /// <summary>Every path already forking from <paramref name="decisionPointId"/>, resolved fresh from the graph (never cached) — see <see cref="ListPaths"/> on <see cref="IFlowWriter"/>.</summary>
-    public List<PathInfo> ListPaths(string decisionPointId)
+    /// <summary>Every path already forking from <paramref name="originNodeId"/>, resolved fresh from the graph (never cached) — see <see cref="ListPaths"/> on <see cref="IFlowWriter"/>.</summary>
+    public List<PathInfo> ListPaths(string originNodeId)
     {
-        var childIds = _doc.Edges.Where(e => e.FromNode == decisionPointId).Select(e => e.ToNode).ToHashSet();
+        var childIds = _doc.Edges.Where(e => e.FromNode == originNodeId).Select(e => e.ToNode).ToHashSet();
         return _doc.Nodes
             .Where(n => childIds.Contains(n.Id) && IsPathStartNode(n))
             .Select(n => new PathInfo(n.Id, ExtractPathName(n), FindBranchTip(n).Steps))
             .ToList();
     }
 
-    /// <summary>Forks a brand-new named path from an existing decision point into its own column, and jumps the cursor onto it.</summary>
-    public BranchActionResult StartNewPath(string decisionPointId, string pathName)
+    /// <summary>
+    /// Forks a brand-new named path from an existing node into its own
+    /// column, and jumps the cursor onto it. The origin no longer has to be
+    /// a decision-point diamond — any existing node can be the start of a
+    /// retroactive alternate branch (see <see cref="JumpToNode"/> for why
+    /// that's now required instead of silently forking).
+    /// </summary>
+    public BranchActionResult StartNewPath(string originNodeId, string pathName)
     {
-        var decisionNode = _doc.Nodes.FirstOrDefault(n => n.Id == decisionPointId && IsDecisionPointNode(n));
-        if (decisionNode is null)
+        var originNode = _doc.Nodes.FirstOrDefault(n => n.Id == originNodeId && n.Type == "text");
+        if (originNode is null)
         {
             return new BranchActionResult(false);
         }
@@ -283,7 +308,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
             Type = "text",
             Text = $"{PathStartPrefix}{pathName}",
             X = _nextColumnX,
-            Y = decisionNode.Y,
+            Y = originNode.Y,
             Width = NodeWidth,
             Height = MarkerHeight,
             Color = PathStartColor
@@ -292,7 +317,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
         _doc.Edges.Add(new CanvasEdge
         {
             Id = Guid.NewGuid().ToString("N"),
-            FromNode = decisionNode.Id,
+            FromNode = originNode.Id,
             ToNode = pathStart.Id
         });
 
@@ -340,7 +365,22 @@ public sealed class CanvasFlowWriter : IFlowWriter
         return FlowPreviewBranching.TagBranches(new FlowPreview(nodes, edges));
     }
 
-    /// <summary>Jumps the cursor to an arbitrary existing node, opening a new column so the new content doesn't overlap the existing flow — for regular nodes and path-start nodes; decision points are handled separately by the Ablauf-Übersicht's path popup (<see cref="StartNewPath"/>/<see cref="ContinuePath"/>).</summary>
+    /// <summary>
+    /// Jumps the cursor to an arbitrary existing node — always resolved
+    /// forward to that branch's current tip (via <see cref="FindBranchTip"/>)
+    /// and resumed exactly there, in the same column. Never opens a new
+    /// column and never adds a second outgoing edge from a node that
+    /// already has one: clicking a node that already has downstream
+    /// content is "continue where this branch left off", not "silently
+    /// fork a second, untracked branch from here" — that used to create a
+    /// second edge with no <see cref="PreviewNode.PathId"/> of its own,
+    /// which the Ablauf-Übersicht's graph-based layout then collapsed onto
+    /// the same grid cell as whatever else followed that node, drawing two
+    /// unrelated nodes on top of each other. A deliberate new branch from a
+    /// non-tip node now goes through <see cref="StartNewPath"/> instead
+    /// (see the Ablauf-Übersicht's per-node popup), which gives it a real
+    /// name and its own <see cref="PreviewNode.PathId"/>/column.
+    /// </summary>
     public BranchActionResult JumpToNode(string nodeId)
     {
         var node = _doc.Nodes.FirstOrDefault(n => n.Id == nodeId && n.Type == "text");
@@ -349,13 +389,261 @@ public sealed class CanvasFlowWriter : IFlowWriter
             return new BranchActionResult(false);
         }
 
-        _nextColumnX += NodeWidth + BranchColumnSpacing;
-        _cursorNodeId = node.Id;
-        _cursorX = _nextColumnX;
-        _cursorY = node.Y;
+        var tip = FindBranchTip(node);
+        _cursorNodeId = tip.Id;
+        _cursorX = tip.X;
+        _cursorY = tip.Y;
 
         return new BranchActionResult(true);
     }
+
+    public BranchActionResult RenameNode(string nodeId, string newLabel)
+    {
+        var node = _doc.Nodes.FirstOrDefault(n => n.Id == nodeId && n.Type == "text");
+        if (node is null || IsDecisionPointNode(node))
+        {
+            return new BranchActionResult(false);
+        }
+
+        node.Text = IsPathStartNode(node) ? $"{PathStartPrefix}{newLabel}" : newLabel;
+        Save();
+        return new BranchActionResult(true);
+    }
+
+    /// <summary>
+    /// Exactly one outgoing edge: the parent is reconnected straight to
+    /// that child so the branch below isn't orphaned. More than one (a
+    /// decision point, or any node a path was forked from): the whole
+    /// downstream subtree goes with it — the caller (the Ablauf-Übersicht)
+    /// is responsible for confirming that with the user first, since there
+    /// is no single "the" continuation to stitch to here.
+    /// </summary>
+    public BranchActionResult DeleteNode(string nodeId)
+    {
+        var node = _doc.Nodes.FirstOrDefault(n => n.Id == nodeId && n.Type == "text");
+        if (node is null)
+        {
+            return new BranchActionResult(false);
+        }
+
+        var childEdges = _doc.Edges.Where(e => e.FromNode == nodeId).ToList();
+        var parentEdge = _doc.Edges.FirstOrDefault(e => e.ToNode == nodeId);
+
+        // A path-start node's single child is never itself tagged with the
+        // path's identity (only the path-start node is — see
+        // FlowPreviewBranching.TagBranches) — stitching parent straight to
+        // that child like an ordinary 1-child node would silently erase
+        // which path it belonged to, collapsing it back onto whatever the
+        // path forked from. That's the exact same "second, untracked branch
+        // with no PathId" shape JumpToNode used to create by accident (see
+        // its own doc comment) — so a path-start with a child must cascade
+        // just like a >1-child node does, even though it only has the one.
+        var toRemove = new HashSet<string> { nodeId };
+        if (childEdges.Count > 1 || (childEdges.Count == 1 && IsPathStartNode(node)))
+        {
+            var queue = new Queue<string>(childEdges.Select(e => e.ToNode));
+            while (queue.Count > 0)
+            {
+                var id = queue.Dequeue();
+                if (!toRemove.Add(id))
+                {
+                    continue;
+                }
+
+                foreach (var e in _doc.Edges.Where(e => e.FromNode == id))
+                {
+                    queue.Enqueue(e.ToNode);
+                }
+            }
+        }
+
+        foreach (var id in toRemove)
+        {
+            var n = _doc.Nodes.FirstOrDefault(x => x.Id == id);
+            if (n is null)
+            {
+                continue;
+            }
+
+            var imageSibling = FindImageSibling(n);
+            if (imageSibling is not null)
+            {
+                _doc.Nodes.Remove(imageSibling);
+            }
+
+            var groupSibling = FindGroupSibling(n);
+            if (groupSibling is not null)
+            {
+                _doc.Nodes.Remove(groupSibling);
+            }
+
+            _doc.Nodes.Remove(n);
+        }
+
+        _doc.Edges.RemoveAll(e => toRemove.Contains(e.FromNode) || toRemove.Contains(e.ToNode));
+
+        if (childEdges.Count == 1 && parentEdge is not null && !IsPathStartNode(node))
+        {
+            _doc.Edges.Add(new CanvasEdge
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                FromNode = parentEdge.FromNode,
+                ToNode = childEdges[0].ToNode
+            });
+        }
+
+        if (_cursorNodeId is not null && toRemove.Contains(_cursorNodeId))
+        {
+            if (parentEdge is not null)
+            {
+                var parentNode = _doc.Nodes.First(n => n.Id == parentEdge.FromNode);
+                var tip = FindBranchTip(parentNode);
+                _cursorNodeId = tip.Id;
+                _cursorX = tip.X;
+                _cursorY = tip.Y;
+            }
+            else
+            {
+                _cursorNodeId = null;
+            }
+        }
+
+        Save();
+        return new BranchActionResult(true);
+    }
+
+    /// <summary>Only ordinary content nodes qualify, on both ends — see <see cref="IFlowWriter.ReparentNode"/>.</summary>
+    public BranchActionResult ReparentNode(string nodeId, string newParentId)
+    {
+        if (nodeId == newParentId)
+        {
+            return new BranchActionResult(false);
+        }
+
+        var node = _doc.Nodes.FirstOrDefault(n => n.Id == nodeId && n.Type == "text");
+        var newParent = _doc.Nodes.FirstOrDefault(n => n.Id == newParentId && n.Type == "text");
+        if (node is null || newParent is null
+            || IsDecisionPointNode(node) || IsPathStartNode(node)
+            || IsDecisionPointNode(newParent) || IsPathStartNode(newParent))
+        {
+            return new BranchActionResult(false);
+        }
+
+        // Cycle guard: newParentId must not be a descendant of nodeId.
+        var descendants = new HashSet<string>();
+        var descendantQueue = new Queue<string>(_doc.Edges.Where(e => e.FromNode == nodeId).Select(e => e.ToNode));
+        while (descendantQueue.Count > 0)
+        {
+            var id = descendantQueue.Dequeue();
+            if (!descendants.Add(id))
+            {
+                continue;
+            }
+
+            foreach (var e in _doc.Edges.Where(e => e.FromNode == id))
+            {
+                descendantQueue.Enqueue(e.ToNode);
+            }
+        }
+
+        if (descendants.Contains(newParentId))
+        {
+            return new BranchActionResult(false);
+        }
+
+        var oldParentEdge = _doc.Edges.FirstOrDefault(e => e.ToNode == nodeId);
+        if (oldParentEdge is not null)
+        {
+            _doc.Edges.Remove(oldParentEdge);
+        }
+
+        _doc.Edges.Add(new CanvasEdge { Id = Guid.NewGuid().ToString("N"), FromNode = newParentId, ToNode = nodeId });
+
+        Save();
+        return new BranchActionResult(true);
+    }
+
+    /// <summary>Only ordinary content nodes qualify, on both ends — see <see cref="IFlowWriter.ConnectNodes"/>.</summary>
+    public BranchActionResult ConnectNodes(string fromNodeId, string toNodeId)
+    {
+        if (fromNodeId == toNodeId)
+        {
+            return new BranchActionResult(false);
+        }
+
+        var from = _doc.Nodes.FirstOrDefault(n => n.Id == fromNodeId && n.Type == "text");
+        var to = _doc.Nodes.FirstOrDefault(n => n.Id == toNodeId && n.Type == "text");
+        if (from is null || to is null
+            || IsDecisionPointNode(from) || IsPathStartNode(from)
+            || IsDecisionPointNode(to) || IsPathStartNode(to))
+        {
+            return new BranchActionResult(false);
+        }
+
+        if (_doc.Edges.Any(e => e.FromNode == fromNodeId && e.ToNode == toNodeId))
+        {
+            return new BranchActionResult(false); // already connected, nothing to do
+        }
+
+        // Cycle guard: toNodeId must not already be able to reach fromNodeId.
+        var reachableFromTo = new HashSet<string>();
+        var queue = new Queue<string>(_doc.Edges.Where(e => e.FromNode == toNodeId).Select(e => e.ToNode));
+        while (queue.Count > 0)
+        {
+            var id = queue.Dequeue();
+            if (!reachableFromTo.Add(id))
+            {
+                continue;
+            }
+
+            foreach (var e in _doc.Edges.Where(e => e.FromNode == id))
+            {
+                queue.Enqueue(e.ToNode);
+            }
+        }
+
+        if (reachableFromTo.Contains(fromNodeId))
+        {
+            return new BranchActionResult(false);
+        }
+
+        _doc.Edges.Add(new CanvasEdge { Id = Guid.NewGuid().ToString("N"), FromNode = fromNodeId, ToNode = toNodeId });
+
+        Save();
+        return new BranchActionResult(true);
+    }
+
+    /// <summary>Only ordinary content nodes qualify, on both ends — see <see cref="IFlowWriter.DisconnectNodes"/>.</summary>
+    public BranchActionResult DisconnectNodes(string fromNodeId, string toNodeId)
+    {
+        var from = _doc.Nodes.FirstOrDefault(n => n.Id == fromNodeId && n.Type == "text");
+        var to = _doc.Nodes.FirstOrDefault(n => n.Id == toNodeId && n.Type == "text");
+        if (from is null || to is null
+            || IsDecisionPointNode(from) || IsPathStartNode(from)
+            || IsDecisionPointNode(to) || IsPathStartNode(to))
+        {
+            return new BranchActionResult(false);
+        }
+
+        var edge = _doc.Edges.FirstOrDefault(e => e.FromNode == fromNodeId && e.ToNode == toNodeId);
+        if (edge is null)
+        {
+            return new BranchActionResult(false);
+        }
+
+        _doc.Edges.Remove(edge);
+
+        Save();
+        return new BranchActionResult(true);
+    }
+
+    /// <summary>The sibling "file" (image) node created alongside a content node in <see cref="AddClickNode"/> — identified by its fixed position relative to the text node, since the two are never edge-linked to each other.</summary>
+    private CanvasNode? FindImageSibling(CanvasNode textNode) => _doc.Nodes.FirstOrDefault(n =>
+        n.Type == "file" && Math.Abs(n.X - textNode.X) < 0.5 && Math.Abs(n.Y - (textNode.Y + TextNodeHeight + TextToImageGap)) < 0.5);
+
+    /// <summary>The sibling "group" node wrapping a content node and its image, created alongside both in <see cref="AddClickNode"/> — same fixed-position lookup as <see cref="FindImageSibling"/>. Marker nodes (decision points/path starts) never get one.</summary>
+    private CanvasNode? FindGroupSibling(CanvasNode textNode) => _doc.Nodes.FirstOrDefault(n =>
+        n.Type == "group" && Math.Abs(n.X - (textNode.X - GroupPadding)) < 0.5 && Math.Abs(n.Y - (textNode.Y - GroupPadding)) < 0.5);
 
     private static bool IsDecisionPointNode(CanvasNode n) => n.Type == "text" && n.Text == DecisionPointLabel;
 
@@ -422,6 +710,6 @@ public sealed class CanvasFlowWriter : IFlowWriter
     private void Save()
     {
         var json = JsonSerializer.Serialize(_doc, _jsonOptions);
-        File.WriteAllText(_canvasPath!, json);
+        FileSaveRetry.Save(_canvasPath!, () => File.WriteAllText(_canvasPath!, json));
     }
 }

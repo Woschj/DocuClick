@@ -9,9 +9,8 @@ namespace DocuClick.Services;
 /// Glues the mouse/keyboard hooks to the capture pipeline (UI Automation
 /// lookup -> screenshot -> highlight -> write) and owns the current
 /// session's target file. Writes either a linear note (ObsidianWriter) or
-/// a branching flow (<see cref="IFlowWriter"/>: Obsidian Canvas, draw.io,
-/// or the experimental Excalidraw mode), depending on
-/// <see cref="AppConfig.OutputMode"/>.
+/// a branching flow (<see cref="IFlowWriter"/>: Obsidian Canvas or
+/// draw.io), depending on <see cref="AppConfig.OutputMode"/>.
 /// </summary>
 public sealed class SessionManager : IDisposable
 {
@@ -20,7 +19,6 @@ public sealed class SessionManager : IDisposable
     private readonly AppConfig _config;
     private readonly ObsidianWriter _noteWriter;
     private readonly CanvasFlowWriter _canvasWriter;
-    private readonly ExcalidrawFlowWriter _excalidrawWriter;
     private readonly DrawIoFlowWriter _drawIoWriter;
     private string _currentTargetFileName = string.Empty;
     private bool _isRunning;
@@ -86,13 +84,12 @@ public sealed class SessionManager : IDisposable
             : "Zoom-auf-Cursor deaktiviert — Screenshots erfassen wieder das ganze Fenster.");
     }
 
-    /// <summary>Whether the active output mode supports branching (Canvas/Excalidraw/DrawIo vs. plain Note).</summary>
+    /// <summary>Whether the active output mode supports branching (Canvas/DrawIo vs. plain Note).</summary>
     public bool SupportsBranching => ActiveFlowWriter is not null;
 
     private IFlowWriter? ActiveFlowWriter => _config.OutputMode switch
     {
         "Canvas" => _canvasWriter,
-        "Excalidraw" => _excalidrawWriter,
         "DrawIo" => _drawIoWriter,
         _ => null
     };
@@ -102,7 +99,6 @@ public sealed class SessionManager : IDisposable
         _config = config;
         _noteWriter = new ObsidianWriter(config);
         _canvasWriter = new CanvasFlowWriter(config);
-        _excalidrawWriter = new ExcalidrawFlowWriter(config);
         _drawIoWriter = new DrawIoFlowWriter(config);
         _mouseHook.LeftButtonDown += OnLeftButtonDown;
         _mouseHook.RightButtonDown += OnRightButtonDown;
@@ -174,7 +170,6 @@ public sealed class SessionManager : IDisposable
     public static string ExtensionForOutputMode(string outputMode) => outputMode switch
     {
         "Canvas" => ".canvas",
-        "Excalidraw" => ".excalidraw",
         "DrawIo" => ".drawio",
         _ => ".md"
     };
@@ -410,6 +405,174 @@ public sealed class SessionManager : IDisposable
         else
         {
             InfoOccurred?.Invoke("Knoten nicht gefunden.");
+        }
+    }
+
+    /// <summary>
+    /// Ablauf-Übersicht: renames a node's label. Deliberately not gated on
+    /// <see cref="_isRunning"/> like the branch/navigation actions above —
+    /// this is a data edit, not something that affects where the next
+    /// *live* click connects from, so it's just as useful to fix a typo
+    /// right after stopping as it is mid-recording.
+    /// </summary>
+    public void RenameNode(string nodeId, string newLabel)
+    {
+        if (ActiveFlowWriter is not { } writer)
+        {
+            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Bearbeitung.");
+            return;
+        }
+
+        var (result, snapshot) = RunOnWriterQueue(() =>
+        {
+            var actionResult = writer.RenameNode(nodeId, newLabel);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
+            return (actionResult, statusSnapshot);
+        });
+
+        if (result.Success)
+        {
+            if (_isRunning)
+            {
+                CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            }
+
+            FlowPreviewChanged?.Invoke(snapshot.Preview);
+        }
+        else
+        {
+            InfoOccurred?.Invoke("Umbenennen fehlgeschlagen.");
+        }
+    }
+
+    /// <summary>
+    /// Ablauf-Übersicht: deletes a node (cascading to its whole downstream
+    /// subtree if it has more than one child — see
+    /// <see cref="IFlowWriter.DeleteNode"/>). The overlay is responsible
+    /// for confirming a cascading delete with the user before calling this;
+    /// by the time it's called here, the action is final. Not gated on
+    /// <see cref="_isRunning"/> — see <see cref="RenameNode"/>.
+    /// </summary>
+    public void DeleteNode(string nodeId)
+    {
+        if (ActiveFlowWriter is not { } writer)
+        {
+            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Bearbeitung.");
+            return;
+        }
+
+        var (result, snapshot) = RunOnWriterQueue(() =>
+        {
+            var actionResult = writer.DeleteNode(nodeId);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
+            return (actionResult, statusSnapshot);
+        });
+
+        if (result.Success)
+        {
+            if (_isRunning)
+            {
+                CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            }
+
+            FlowPreviewChanged?.Invoke(snapshot.Preview);
+        }
+        else
+        {
+            InfoOccurred?.Invoke("Löschen fehlgeschlagen.");
+        }
+    }
+
+    /// <summary>Ablauf-Übersicht: drag-to-rewire — moves a node's incoming edge to a different parent. Not gated on <see cref="_isRunning"/> — see <see cref="RenameNode"/>.</summary>
+    public void ReparentNode(string nodeId, string newParentId)
+    {
+        if (ActiveFlowWriter is not { } writer)
+        {
+            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Bearbeitung.");
+            return;
+        }
+
+        var (result, snapshot) = RunOnWriterQueue(() =>
+        {
+            var actionResult = writer.ReparentNode(nodeId, newParentId);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
+            return (actionResult, statusSnapshot);
+        });
+
+        if (result.Success)
+        {
+            if (_isRunning)
+            {
+                CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            }
+
+            FlowPreviewChanged?.Invoke(snapshot.Preview);
+        }
+        else
+        {
+            InfoOccurred?.Invoke("Verschieben nicht möglich (ungültiges Ziel oder würde einen Kreis erzeugen).");
+        }
+    }
+
+    /// <summary>Ablauf-Übersicht: manually connects two nodes with a new edge (the "Verbinden" toolbar gesture). Not gated on <see cref="_isRunning"/> — see <see cref="RenameNode"/>.</summary>
+    public void ConnectNodes(string fromNodeId, string toNodeId)
+    {
+        if (ActiveFlowWriter is not { } writer)
+        {
+            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Bearbeitung.");
+            return;
+        }
+
+        var (result, snapshot) = RunOnWriterQueue(() =>
+        {
+            var actionResult = writer.ConnectNodes(fromNodeId, toNodeId);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
+            return (actionResult, statusSnapshot);
+        });
+
+        if (result.Success)
+        {
+            if (_isRunning)
+            {
+                CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            }
+
+            FlowPreviewChanged?.Invoke(snapshot.Preview);
+        }
+        else
+        {
+            InfoOccurred?.Invoke("Verbinden nicht möglich (ungültige Knoten, bereits verbunden, oder würde einen Kreis erzeugen).");
+        }
+    }
+
+    /// <summary>Ablauf-Übersicht: removes an existing manual/recorded edge (right-click a connector). Not gated on <see cref="_isRunning"/> — see <see cref="RenameNode"/>.</summary>
+    public void DisconnectNodes(string fromNodeId, string toNodeId)
+    {
+        if (ActiveFlowWriter is not { } writer)
+        {
+            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Bearbeitung.");
+            return;
+        }
+
+        var (result, snapshot) = RunOnWriterQueue(() =>
+        {
+            var actionResult = writer.DisconnectNodes(fromNodeId, toNodeId);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
+            return (actionResult, statusSnapshot);
+        });
+
+        if (result.Success)
+        {
+            if (_isRunning)
+            {
+                CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            }
+
+            FlowPreviewChanged?.Invoke(snapshot.Preview);
+        }
+        else
+        {
+            InfoOccurred?.Invoke("Verbindung konnte nicht entfernt werden.");
         }
     }
 

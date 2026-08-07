@@ -57,9 +57,6 @@ public partial class SettingsWindow : Window
             case "Canvas":
                 OutputModeCanvasRadio.IsChecked = true;
                 break;
-            case "Excalidraw":
-                OutputModeExcalidrawRadio.IsChecked = true;
-                break;
             case "DrawIo":
                 OutputModeDrawIoRadio.IsChecked = true;
                 break;
@@ -101,13 +98,10 @@ public partial class SettingsWindow : Window
     private void OnOutputModeChanged(object sender, RoutedEventArgs e)
     {
         // draw.io embeds screenshots directly and isn't tied to an Obsidian
-        // vault at all — just any target folder. Excalidraw also embeds
-        // directly but (unlike draw.io) still needs an actual Obsidian
-        // vault (plus its plugin) to open, so it keeps the
-        // "Obsidian-Vault" wording.
+        // vault at all — just any target folder.
         var isDrawIo = OutputModeDrawIoRadio.IsChecked == true;
         var needsNoVault = isDrawIo;
-        var embedsScreenshotsDirectly = needsNoVault || OutputModeExcalidrawRadio.IsChecked == true;
+        var embedsScreenshotsDirectly = needsNoVault;
 
         VaultCardHeader.Text = needsNoVault ? "Zielordner" : "Obsidian-Vault";
         VaultPathLabel.Text = isDrawIo
@@ -266,11 +260,9 @@ public partial class SettingsWindow : Window
             : "None";
         _config.OutputMode = OutputModeCanvasRadio.IsChecked == true
             ? "Canvas"
-            : OutputModeExcalidrawRadio.IsChecked == true
-                ? "Excalidraw"
-                : OutputModeDrawIoRadio.IsChecked == true
-                    ? "DrawIo"
-                    : "Note";
+            : OutputModeDrawIoRadio.IsChecked == true
+                ? "DrawIo"
+                : "Note";
 
         _config.StartStopModifiers = _startStopModifiers;
         _config.StartStopKey = _startStopKey;

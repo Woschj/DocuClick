@@ -1,0 +1,15 @@
+{
+  "nodes": [
+    { "id": "a", "label": "A: App geöffnet", "permLabel": "", "x": 0, "y": 0, "width": 46, "height": 20, "color": "rgba(76,175,232,0.9)", "isMarker": false, "isDecisionPoint": false, "isPathStart": false, "isCurrent": false, "hasChildren": true, "pathName": null },
+    { "id": "b", "label": "B: Menü geklickt", "permLabel": "", "x": 0, "y": 42, "width": 46, "height": 20, "color": "rgba(76,175,232,0.9)", "isMarker": false, "isDecisionPoint": false, "isPathStart": false, "isCurrent": false, "hasChildren": true, "pathName": null },
+    { "id": "dec1", "label": "Abzweigung", "permLabel": "◆ Abzweigung", "x": 0, "y": 84, "width": 46, "height": 20, "color": "#6B7280", "isMarker": true, "isDecisionPoint": true, "isPathStart": false, "isCurrent": false, "hasChildren": true, "pathName": null },
+    { "id": "path1", "label": "↳ Erfolgsfall", "permLabel": "↳ Erfolgsfall", "x": 110, "y": 84, "width": 46, "height": 20, "color": "#D97706", "isMarker": true, "isDecisionPoint": false, "isPathStart": true, "isCurrent": false, "hasChildren": true, "pathName": "Erfolgsfall" },
+    { "id": "step1", "label": "Erfolg Schritt 1", "permLabel": "● hier", "x": 110, "y": 126, "width": 60, "height": 28, "color": "#E63946", "isMarker": false, "isDecisionPoint": false, "isPathStart": false, "isCurrent": true, "hasChildren": false, "pathName": "Erfolgsfall" }
+  ],
+  "edges": [
+    { "source": "a", "target": "b" },
+    { "source": "b", "target": "dec1" },
+    { "source": "dec1", "target": "path1" },
+    { "source": "path1", "target": "step1" }
+  ]
+}

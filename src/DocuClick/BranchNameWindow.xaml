@@ -14,7 +14,7 @@
             <Button Content="Setzen" Width="100" Style="{StaticResource PrimaryButton}" Click="OnSetClicked" IsDefault="True"/>
         </StackPanel>
 
-        <TextBlock DockPanel.Dock="Top" Text="Pfad-Name" Style="{StaticResource FieldLabel}"/>
+        <TextBlock x:Name="LabelText" DockPanel.Dock="Top" Text="Pfad-Name" Style="{StaticResource FieldLabel}"/>
 
         <TextBox x:Name="BranchNameBox" DockPanel.Dock="Top" Style="{StaticResource ModernTextBox}"
                  ToolTip="z. B. &quot;Login-Fehler&quot; — später in der Ablauf-Übersicht am Abzweigungspunkt wiederfindbar."/>

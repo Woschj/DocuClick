@@ -18,6 +18,10 @@ public sealed class CanvasNode
     [JsonPropertyName("width")] public double Width { get; set; }
     [JsonPropertyName("height")] public double Height { get; set; }
     [JsonPropertyName("color")] public string? Color { get; set; }
+    // type="group" only — the title bar Obsidian draws above the group's
+    // border. Left null (Canvas then omits any title bar at all) since the
+    // content text node sitting right below already names the card.
+    [JsonPropertyName("label")] public string? Label { get; set; }
 }
 
 public sealed class CanvasEdge

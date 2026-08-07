@@ -40,4 +40,18 @@
     <Using Include="System.Windows.MessageBox" Alias="MessageBox" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The Ablauf-Übersicht's diagram (FlowPreviewOverlay.cs) renders via
+         an embedded WebView2 instead of hand-drawn WPF shapes — loaded from
+         these files via SetVirtualHostNameToFolderMapping, so they need to
+         exist as loose files next to the built exe, not be compiled in. -->
+    <Content Include="WebAssets\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>
