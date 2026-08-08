@@ -48,8 +48,8 @@ namespace DocuClick;
 /// </summary>
 public sealed class FlowPreviewOverlay : Window
 {
-    private const double PanelWidth = 260;
-    private const double PanelHeight = 190;
+    private const double PanelWidth = 420;
+    private const double PanelHeight = 320;
     private const double Padding = 12;
     private const double HeaderHeight = 26;
     private const double CollapsedMinHeight = HeaderHeight + 16;
@@ -766,7 +766,14 @@ public sealed class FlowPreviewOverlay : Window
         var columnKeyToColumn = new Dictionary<string, int>();
         var columnOf = new Dictionary<string, int>();
         string? mainRootId = null;
-        var nextColumn = 1;
+        // Alternates +1, -1, +2, -2, +3, ... instead of only ever growing
+        // rightward — a session with several branches used to march every
+        // one of them off to the right, leaving the whole left half of the
+        // panel empty and forcing a long horizontal scroll to see later
+        // ones. Columns are relative to the main flow at 0, so negative
+        // values are just as valid a position as positive ones.
+        var nextColumnMagnitude = 1;
+        var nextColumnIsRight = true;
         foreach (var node in preview.Nodes)
         {
             string columnKey;
@@ -792,7 +799,12 @@ public sealed class FlowPreviewOverlay : Window
 
             if (!columnKeyToColumn.TryGetValue(columnKey, out var column))
             {
-                column = nextColumn++;
+                column = nextColumnIsRight ? nextColumnMagnitude : -nextColumnMagnitude;
+                if (!nextColumnIsRight)
+                {
+                    nextColumnMagnitude++;
+                }
+                nextColumnIsRight = !nextColumnIsRight;
                 columnKeyToColumn[columnKey] = column;
             }
 

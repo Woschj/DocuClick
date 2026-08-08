@@ -256,17 +256,25 @@ public partial class App : Application
         });
     }
 
-    /// <summary>TopBar "Übersicht" button: reopens the Ablauf-Übersicht after the user closed it via its own header ✕. A no-op info balloon (not an error) if nothing has ever been recorded yet — there's simply nothing to show.</summary>
+    /// <summary>TopBar "Übersicht" button: toggles the Ablauf-Übersicht — closes it if it's currently showing (same as its own header ✕), reopens it otherwise. A no-op info balloon (not an error) if nothing has ever been recorded yet — there's simply nothing to show.</summary>
     private void OnShowFlowPreviewRequested()
     {
-        _flowPreviewManuallyHidden = false;
         if (_flowPreviewOverlay is null)
         {
             _trayApp?.ShowInfo("Noch keine Ablauf-Übersicht vorhanden — sie erscheint mit dem ersten aufgezeichneten Klick.");
             return;
         }
 
-        _flowPreviewOverlay.Show();
+        if (_flowPreviewOverlay.IsVisible)
+        {
+            _flowPreviewManuallyHidden = true;
+            _flowPreviewOverlay.Hide();
+        }
+        else
+        {
+            _flowPreviewManuallyHidden = false;
+            _flowPreviewOverlay.Show();
+        }
     }
 
     /// <summary>
