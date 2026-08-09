@@ -25,9 +25,9 @@ using Orientation = System.Windows.Controls.Orientation;
 namespace DocuClick;
 
 /// <summary>
-/// Freely draggable, semi-transparent minimap of the current flow (Canvas/
-/// draw.io modes). The diagram itself — every node, its
-/// pan/zoom/click/drag interaction — renders inside an embedded
+/// Freely draggable, semi-transparent minimap of the current flow (Canvas
+/// mode — the only live-recording branching mode). The diagram itself —
+/// every node, its pan/zoom/click/drag interaction — renders inside an embedded
 /// <see cref="Microsoft.Web.WebView2.Wpf.WebView2"/> running a small local
 /// HTML/JS page (<c>WebAssets/</c>, Cytoscape.js) instead of hand-drawn WPF
 /// shapes. That's a deliberate rewrite: repeated rounds of WPF-specific
@@ -78,9 +78,9 @@ public sealed class FlowPreviewOverlay : Window
     private const double RowSpacing = 42;
     private const double ColumnSpacing = 110;
 
-    // Same accent palette as DrawIoFlowWriter's branch colors, reused here
-    // so a branch's minimap dot and its actual card color line up in
-    // draw.io mode. A stable (non-randomized) hash of the branch name
+    // Same accent palette as DrawIoConverter's branch colors, reused here
+    // so a branch's minimap dot and its actual card color line up in a
+    // draw.io export. A stable (non-randomized) hash of the branch name
     // picks the color deterministically, so it never flickers between
     // redraws or picks up .NET's per-process string-hash randomization.
     private static readonly Color[] BranchPalette =
@@ -707,116 +707,28 @@ public sealed class FlowPreviewOverlay : Window
             return new PreviewPayload("preview", new List<NodePayload>(), new List<EdgePayload>());
         }
 
+        // Row/column grid slot, from graph topology alone (structural edges
+        // only — a manual cross-connect must draw as a single extra line
+        // and never shift where a node "really" belongs; see
+        // FlowPreviewBranching.ComputeGridLayout's own doc comment for the
+        // bug this used to cause). Shared with CanvasFlowWriter's
+        // end-of-session relayout so the live minimap and the persisted
+        // .canvas file's actual node positions can never drift into two
+        // different "clean" arrangements.
+        var slotOf = FlowPreviewBranching.ComputeGridLayout(preview);
         var forward = preview.Edges
+            .Where(e => !e.Manual)
             .GroupBy(e => e.FromId)
             .ToDictionary(g => g.Key, g => g.Select(e => e.ToId).ToList());
-        var hasInbound = preview.Edges.Select(e => e.ToId).ToHashSet();
-
-        // componentRootOf tracks which BFS root each node traces back to —
-        // normally there's exactly one (the flow's first-ever node), but
-        // DisconnectNodes can now sever a node from it, leaving one or more
-        // extra roots (fully isolated, or a small orphaned sub-chain).
-        // Used below so those don't all collapse onto column 0 and overlap
-        // whatever else is there — see IFlowWriter.DisconnectNodes's doc
-        // comment on why that's allowed rather than refused outright.
-        var rowOf = new Dictionary<string, int>();
-        var componentRootOf = new Dictionary<string, string>();
-        var bfsQueue = new Queue<string>();
-        foreach (var node in preview.Nodes)
-        {
-            if (!hasInbound.Contains(node.Id))
-            {
-                rowOf[node.Id] = 0;
-                componentRootOf[node.Id] = node.Id;
-                bfsQueue.Enqueue(node.Id);
-            }
-        }
-
-        while (bfsQueue.Count > 0)
-        {
-            var id = bfsQueue.Dequeue();
-            if (!forward.TryGetValue(id, out var children))
-            {
-                continue;
-            }
-
-            foreach (var child in children)
-            {
-                if (rowOf.ContainsKey(child))
-                {
-                    continue;
-                }
-
-                rowOf[child] = rowOf[id] + 1;
-                componentRootOf[child] = componentRootOf[id];
-                bfsQueue.Enqueue(child);
-            }
-        }
-
-        // Defensive: any node the BFS above never reached (shouldn't
-        // happen for a tree-shaped flow, but a stray disconnected node
-        // must not throw a KeyNotFoundException below) just lands at row 0,
-        // its own singleton component.
-        foreach (var node in preview.Nodes)
-        {
-            rowOf.TryAdd(node.Id, 0);
-            componentRootOf.TryAdd(node.Id, node.Id);
-        }
-
-        var columnKeyToColumn = new Dictionary<string, int>();
-        var columnOf = new Dictionary<string, int>();
-        string? mainRootId = null;
-        // Alternates +1, -1, +2, -2, +3, ... instead of only ever growing
-        // rightward — a session with several branches used to march every
-        // one of them off to the right, leaving the whole left half of the
-        // panel empty and forcing a long horizontal scroll to see later
-        // ones. Columns are relative to the main flow at 0, so negative
-        // values are just as valid a position as positive ones.
-        var nextColumnMagnitude = 1;
-        var nextColumnIsRight = true;
-        foreach (var node in preview.Nodes)
-        {
-            string columnKey;
-            bool isMainRoot;
-            if (node.PathId is { } pathId)
-            {
-                columnKey = "path:" + pathId;
-                isMainRoot = false;
-            }
-            else
-            {
-                var root = componentRootOf[node.Id];
-                mainRootId ??= root; // first non-path root seen keeps the original column-0 behavior
-                isMainRoot = root == mainRootId;
-                columnKey = "root:" + root;
-            }
-
-            if (isMainRoot)
-            {
-                columnOf[node.Id] = 0;
-                continue;
-            }
-
-            if (!columnKeyToColumn.TryGetValue(columnKey, out var column))
-            {
-                column = nextColumnIsRight ? nextColumnMagnitude : -nextColumnMagnitude;
-                if (!nextColumnIsRight)
-                {
-                    nextColumnMagnitude++;
-                }
-                nextColumnIsRight = !nextColumnIsRight;
-                columnKeyToColumn[columnKey] = column;
-            }
-
-            columnOf[node.Id] = column;
-        }
 
         var halfExtentX = CurrentNodeWidth / 2 + 8;
         var halfExtentY = CurrentNodeHeight / 2 + 8;
 
-        (double X, double Y) GridPosition(string nodeId) => (
-            halfExtentX + columnOf[nodeId] * ColumnSpacing + ColumnSpacing / 2,
-            halfExtentY + rowOf[nodeId] * RowSpacing);
+        (double X, double Y) GridPosition(string nodeId)
+        {
+            var (row, column) = slotOf[nodeId];
+            return (halfExtentX + column * ColumnSpacing + ColumnSpacing / 2, halfExtentY + row * RowSpacing);
+        }
 
         var nodes = preview.Nodes.Select(n =>
         {
@@ -838,7 +750,7 @@ public sealed class FlowPreviewOverlay : Window
                 isMarker, n.IsDecisionPoint, n.IsPathStart, n.IsCurrent, hasChildren, n.PathName);
         }).ToList();
 
-        var edges = preview.Edges.Select(e => new EdgePayload(e.FromId, e.ToId)).ToList();
+        var edges = preview.Edges.Select(e => new EdgePayload(e.FromId, e.ToId, e.Manual)).ToList();
 
         return new PreviewPayload("preview", nodes, edges);
     }
@@ -854,9 +766,9 @@ public sealed class FlowPreviewOverlay : Window
             return Color.FromRgb(0xE6, 0x39, 0x46);
         }
 
-        // Decision points are always neutral gray, matching the actual
-        // output file (DrawIoFlowWriter etc. use the same fixed color for
-        // them) — they aren't part of any one path's color themselves,
+        // Decision points are always neutral gray, matching a draw.io
+        // export (DrawIoConverter uses the same fixed color for them) —
+        // they aren't part of any one path's color themselves,
         // regardless of which path happened to lead into them.
         if (node.IsDecisionPoint)
         {
@@ -889,7 +801,7 @@ public sealed class FlowPreviewOverlay : Window
         string Id, string Label, string PermLabel, double X, double Y, double Width, double Height, string Color,
         bool IsMarker, bool IsDecisionPoint, bool IsPathStart, bool IsCurrent, bool HasChildren, string? PathName);
 
-    private sealed record EdgePayload(string Source, string Target);
+    private sealed record EdgePayload(string Source, string Target, bool Manual);
 
     private sealed record PreviewPayload(string Type, List<NodePayload> Nodes, List<EdgePayload> Edges);
 }

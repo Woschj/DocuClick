@@ -9,8 +9,10 @@ namespace DocuClick.Services;
 /// Glues the mouse/keyboard hooks to the capture pipeline (UI Automation
 /// lookup -> screenshot -> highlight -> write) and owns the current
 /// session's target file. Writes either a linear note (ObsidianWriter) or
-/// a branching flow (<see cref="IFlowWriter"/>: Obsidian Canvas or
-/// draw.io), depending on <see cref="AppConfig.OutputMode"/>.
+/// a branching flow (<see cref="IFlowWriter"/>: Obsidian Canvas), depending
+/// on <see cref="AppConfig.OutputMode"/>. A draw.io export is always
+/// available afterward instead of recording into it directly — see
+/// <see cref="DrawIoConverter"/>.
 /// </summary>
 public sealed class SessionManager : IDisposable
 {
@@ -19,7 +21,6 @@ public sealed class SessionManager : IDisposable
     private readonly AppConfig _config;
     private readonly ObsidianWriter _noteWriter;
     private readonly CanvasFlowWriter _canvasWriter;
-    private readonly DrawIoFlowWriter _drawIoWriter;
     private string _currentTargetFileName = string.Empty;
     private bool _isRunning;
     private bool _zoomToCursorActive;
@@ -84,13 +85,12 @@ public sealed class SessionManager : IDisposable
             : "Zoom-auf-Cursor deaktiviert — Screenshots erfassen wieder das ganze Fenster.");
     }
 
-    /// <summary>Whether the active output mode supports branching (Canvas/DrawIo vs. plain Note).</summary>
+    /// <summary>Whether the active output mode supports branching (Canvas vs. plain Note).</summary>
     public bool SupportsBranching => ActiveFlowWriter is not null;
 
     private IFlowWriter? ActiveFlowWriter => _config.OutputMode switch
     {
         "Canvas" => _canvasWriter,
-        "DrawIo" => _drawIoWriter,
         _ => null
     };
 
@@ -99,7 +99,6 @@ public sealed class SessionManager : IDisposable
         _config = config;
         _noteWriter = new ObsidianWriter(config);
         _canvasWriter = new CanvasFlowWriter(config);
-        _drawIoWriter = new DrawIoFlowWriter(config);
         _mouseHook.LeftButtonDown += OnLeftButtonDown;
         _mouseHook.RightButtonDown += OnRightButtonDown;
         _keyboardHook.EnterPressed += OnEnterPressed;
@@ -170,7 +169,6 @@ public sealed class SessionManager : IDisposable
     public static string ExtensionForOutputMode(string outputMode) => outputMode switch
     {
         "Canvas" => ".canvas",
-        "DrawIo" => ".drawio",
         _ => ".md"
     };
 

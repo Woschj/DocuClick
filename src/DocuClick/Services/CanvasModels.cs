@@ -32,6 +32,18 @@ public sealed class CanvasEdge
     // Vertical flow: main line connects bottom-to-top by default.
     [JsonPropertyName("fromSide")] public string FromSide { get; set; } = "bottom";
     [JsonPropertyName("toSide")] public string ToSide { get; set; } = "top";
+    // Set only on edges added via ConnectNodes (the manual cross-connect
+    // gesture) — DeleteNode must never treat one of these as turning its
+    // source into a branching/fork node the way a second *structural*
+    // outgoing edge does, or deleting an ordinary node that happens to
+    // have an unrelated manual connection cascades into whatever that
+    // connection pointed at, deleting a whole separate part of the flow
+    // (confirmed as a real bug: see CanvasFlowWriter.DeleteNode). Omitted
+    // from the JSON entirely for the (vast majority) non-manual edges, so
+    // existing files/other tools reading this format see no difference.
+    [JsonPropertyName("docuClickManual")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Manual { get; set; }
 }
 
 /// <summary>Mirrors the plain-JSON shape of an Obsidian .canvas file.</summary>

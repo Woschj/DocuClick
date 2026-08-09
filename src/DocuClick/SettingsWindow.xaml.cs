@@ -57,9 +57,6 @@ public partial class SettingsWindow : Window
             case "Canvas":
                 OutputModeCanvasRadio.IsChecked = true;
                 break;
-            case "DrawIo":
-                OutputModeDrawIoRadio.IsChecked = true;
-                break;
             default:
                 OutputModeNoteRadio.IsChecked = true;
                 break;
@@ -93,21 +90,6 @@ public partial class SettingsWindow : Window
         }
 
         SkipModifierBox.SelectedIndex = 0;
-    }
-
-    private void OnOutputModeChanged(object sender, RoutedEventArgs e)
-    {
-        // draw.io embeds screenshots directly and isn't tied to an Obsidian
-        // vault at all — just any target folder.
-        var isDrawIo = OutputModeDrawIoRadio.IsChecked == true;
-        var needsNoVault = isDrawIo;
-        var embedsScreenshotsDirectly = needsNoVault;
-
-        VaultCardHeader.Text = needsNoVault ? "Zielordner" : "Obsidian-Vault";
-        VaultPathLabel.Text = isDrawIo
-            ? "Zielordner-Pfad (für die .drawio-Datei)"
-            : "Vault-Pfad";
-        AttachmentsRow.Visibility = embedsScreenshotsDirectly ? Visibility.Collapsed : Visibility.Visible;
     }
 
     // --- Color swatches -----------------------------------------------
@@ -258,11 +240,7 @@ public partial class SettingsWindow : Window
         _config.SkipRecordingModifier = SkipModifierBox.SelectedItem is ComboBoxItem selected
             ? (string)selected.Tag
             : "None";
-        _config.OutputMode = OutputModeCanvasRadio.IsChecked == true
-            ? "Canvas"
-            : OutputModeDrawIoRadio.IsChecked == true
-                ? "DrawIo"
-                : "Note";
+        _config.OutputMode = OutputModeCanvasRadio.IsChecked == true ? "Canvas" : "Note";
 
         _config.StartStopModifiers = _startStopModifiers;
         _config.StartStopKey = _startStopKey;

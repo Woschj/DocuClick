@@ -1,3 +1,4 @@
+using System.IO;
 using System.Threading;
 using System.Windows;
 using System.Windows.Input;
@@ -55,6 +56,7 @@ public partial class App : Application
         _trayApp = new TrayApp();
         _trayApp.RecordingStateChanged += OnRecordingStateChanged;
         _trayApp.SettingsRequested += OnSettingsRequested;
+        _trayApp.ExportToDrawIoRequested += OnExportToDrawIoRequested;
 
         // Visible for the app's whole lifetime (not just while recording),
         // so there is always an at-a-glance answer to "is it running".
@@ -443,6 +445,61 @@ public partial class App : Application
         // while a recording is already running (nothing prevents that),
         // nothing else would ever refresh them until the next Stop/Start.
         _topBar?.UpdateStatus(_trayApp!.IsRecording, detail: null, _sessionManager!.SupportsBranching);
+    }
+
+    /// <summary>
+    /// Tray menu: converts an existing .canvas session into a .drawio file
+    /// in one pass — draw.io is no longer a live-recording mode (see
+    /// DrawIoConverter's own doc comment for why), so this is now the only
+    /// way to get one. Synchronous/blocking is fine here: it's a short,
+    /// explicit, one-time action the user just asked for, not a recurring
+    /// background cost — unlike the old live draw.io writer, whose per-click
+    /// cost grew with session length.
+    /// </summary>
+    private void OnExportToDrawIoRequested()
+    {
+        if (string.IsNullOrWhiteSpace(_config!.VaultPath) || !Directory.Exists(_config.VaultPath))
+        {
+            MessageBox.Show(
+                "Kein gültiger Vault-Pfad konfiguriert — in den Einstellungen setzen, dann erneut versuchen.",
+                "DocuClick", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var openDialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Canvas-Datei für den draw.io-Export wählen",
+            InitialDirectory = _config.VaultPath,
+            Filter = "Obsidian Canvas (*.canvas)|*.canvas",
+            CheckFileExists = true
+        };
+        if (openDialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var drawioPath = Path.ChangeExtension(openDialog.FileName, ".drawio");
+        if (File.Exists(drawioPath))
+        {
+            var overwrite = MessageBox.Show(
+                $"\"{Path.GetFileName(drawioPath)}\" existiert bereits. Überschreiben?",
+                "DocuClick", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (overwrite != MessageBoxResult.Yes)
+            {
+                return;
+            }
+        }
+
+        try
+        {
+            DrawIoConverter.Convert(openDialog.FileName, _config.VaultPath, drawioPath);
+            _trayApp?.ShowInfo($"Nach draw.io exportiert: {Path.GetFileName(drawioPath)}");
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"draw.io-Export fehlgeschlagen: {ex}");
+            MessageBox.Show($"Export fehlgeschlagen:\n{ex.Message}", "DocuClick", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)

@@ -163,7 +163,7 @@
       })),
       ...edges.map((e) => ({
         group: "edges",
-        data: { id: `${e.source}->${e.target}`, source: e.source, target: e.target },
+        data: { id: `${e.source}->${e.target}`, source: e.source, target: e.target, manual: e.manual },
       })),
     ];
 
@@ -248,15 +248,20 @@
   });
 
   // ---- Right-click on a connector: delete it ------------------------
-  // Structural edges (into/out of a decision point or path-start) are left
-  // alone here — removing one would silently detach a whole named path
-  // from its decision point while leaving the path's nodes behind,
-  // unreachable but not deleted (see IFlowWriter.DisconnectNodes).
+  // Only ever offered for a *manual* cross-connect (added via drag-to-
+  // connect) — never a structural edge (the main recorded sequence, or
+  // into/out of a decision point or path-start): removing one of those
+  // would either break the main chain without DeleteNode's stitch repair,
+  // or silently detach a whole named path from its decision point while
+  // leaving the path's nodes behind, unreachable but not deleted (see
+  // IFlowWriter.DisconnectNodes — the backend refuses this too, so the
+  // menu staying in sync here is purely about not offering an action that
+  // would otherwise silently do nothing).
   cy.on("cxttap", "edge", (evt) => {
     const edge = evt.target;
     const source = edge.source();
     const target = edge.target();
-    if (source.data("isMarker") || target.data("isMarker")) {
+    if (!edge.data("manual") || source.data("isMarker") || target.data("isMarker")) {
       return;
     }
 
@@ -522,7 +527,16 @@
     })[0] || null;
   }
 
-  /// Every node that can reach nodeId via existing forward edges (walked backward via incoming edges).
+  /// Every node that can reach nodeId via existing *structural* forward
+  /// edges (walked backward via incoming edges). Manual cross-connects are
+  /// deliberately skipped here — same reasoning as the C# backend's own
+  /// ConnectNodes cycle guard (see CanvasFlowWriter.ConnectNodes): they're
+  /// additive references, not real structural relationships, so they can
+  /// never actually close a cycle. Without this filter, connecting B->D
+  /// once made D->B look like it would close a cycle through that same
+  /// manual edge and silently blocked the reverse direction — confirmed as
+  /// a real bug (one direction of a cross-connect worked, the other
+  /// didn't), and it would have made true bidirectional arrows impossible.
   function ancestorsOf(nodeId) {
     const result = new Set();
     const queue = [nodeId];
@@ -530,6 +544,7 @@
       const id = queue.shift();
       cy.getElementById(id)
         .incomers("edge")
+        .filter((e) => !e.data("manual"))
         .forEach((e) => {
           const sourceId = e.source().id();
           if (!result.has(sourceId)) {

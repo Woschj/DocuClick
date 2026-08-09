@@ -30,8 +30,11 @@ public sealed class CanvasFlowWriter : IFlowWriter
 {
     private const double NodeWidth = 380;
     private const double NodeHeight = 340;
-    private const double TextNodeHeight = 60;
-    private const double TextToImageGap = 10;
+    // internal: shared with DrawIoConverter, which needs the same
+    // text-node/image-sibling geometry to locate a card's screenshot file
+    // when converting an existing .canvas session into a .drawio export.
+    internal const double TextNodeHeight = 60;
+    internal const double TextToImageGap = 10;
     private const double ImageNodeHeight = NodeHeight - TextNodeHeight - TextToImageGap;
     private const double MarkerHeight = 60;
     private const double GroupPadding = 8; // margin between a card's group-node border and its text+image children
@@ -41,8 +44,10 @@ public sealed class CanvasFlowWriter : IFlowWriter
     // Leading icons give both kinds of marker a distinct at-a-glance look
     // in Obsidian Canvas, which — unlike draw.io's rhombus shape — has no
     // concept of node shapes at all, only plain text/file/link/group nodes.
-    private const string DecisionPointLabel = "◆ Abzweigung";
-    private const string PathStartPrefix = "↳ Pfad: ";
+    // internal: DrawIoConverter matches on the same text to recognize a
+    // decision-point/path-start node when converting.
+    internal const string DecisionPointLabel = "◆ Abzweigung";
+    internal const string PathStartPrefix = "↳ Pfad: ";
     private const string DecisionPointColor = "6"; // Obsidian canvas preset color slot ("purple")
     private const string PathStartColor = "4"; // preset "green" — visually distinct from the decision point itself
 
@@ -128,7 +133,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
             // — confusing right after deliberately resuming a file that
             // already has content. Still placed in a fresh column so it
             // never visually collides with whatever's already in the file.
-            var targetIds = _doc.Edges.Select(e => e.ToNode).ToHashSet();
+            var targetIds = _doc.Edges.Where(e => !e.Manual).Select(e => e.ToNode).ToHashSet();
             var root = _doc.Nodes
                 .Where(n => n.Type == "text" && !targetIds.Contains(n.Id))
                 .OrderBy(n => n.Y).ThenBy(n => n.X)
@@ -153,7 +158,108 @@ public sealed class CanvasFlowWriter : IFlowWriter
         _pendingResumeAnchor = null;
     }
 
-    public void Stop() => _cursorNodeId = null;
+    public void Stop()
+    {
+        if (_canvasPath is not null)
+        {
+            Relayout();
+            Save();
+        }
+
+        _cursorNodeId = null;
+    }
+
+    /// <summary>
+    /// Recomputes every node's position into the same clean grid the
+    /// Ablauf-Übersicht's minimap already shows — BFS row + alternating
+    /// branch column, via the shared
+    /// <see cref="FlowPreviewBranching.ComputeGridLayout"/> — instead of
+    /// leaving the positions accumulated live during recording. Those
+    /// accumulated positions drift out of row-alignment between columns
+    /// whenever branches are recorded at different paces (each column's Y
+    /// only ever grows by its own nodes' actual heights), which is exactly
+    /// what turned a manual cross-connect between two columns into a
+    /// visibly crossing diagonal line in Obsidian instead of a clean short
+    /// connector — confirmed as a real complaint: the persisted .canvas
+    /// file's layout didn't match the tidy minimap at all, forcing manual
+    /// rework. Runs at <see cref="Stop"/> and also right after
+    /// <see cref="ConnectNodes"/>/<see cref="DisconnectNodes"/> (the actions
+    /// whose whole point is "does this line look clean"), rather than only
+    /// once at the very end — see those methods' own comments.
+    /// </summary>
+    private void Relayout()
+    {
+        var preview = GetPreview();
+        if (preview.Nodes.Count == 0)
+        {
+            return;
+        }
+
+        var slotOf = FlowPreviewBranching.ComputeGridLayout(preview);
+
+        // Snapshot each content node's sibling image/group before any
+        // position changes — FindImageSibling/FindGroupSibling match by
+        // *current* relative position, which would misfire once earlier
+        // nodes have already moved to their new slot.
+        var textNodesById = _doc.Nodes.Where(n => n.Type == "text").ToDictionary(n => n.Id);
+        var siblingsOf = textNodesById.Values.ToDictionary(
+            n => n.Id, n => (Image: FindImageSibling(n), Group: FindGroupSibling(n)));
+
+        var rowHeight = new Dictionary<int, double>();
+        foreach (var node in preview.Nodes)
+        {
+            var (row, _) = slotOf[node.Id];
+            var height = node.IsDecisionPoint || node.IsPathStart ? MarkerHeight : NodeHeight;
+            rowHeight[row] = Math.Max(rowHeight.GetValueOrDefault(row), height);
+        }
+
+        var rowY = new Dictionary<int, double>();
+        var y = 0.0;
+        foreach (var row in rowHeight.Keys.OrderBy(r => r))
+        {
+            rowY[row] = y;
+            y += rowHeight[row] + SequentialSpacing;
+        }
+
+        foreach (var node in preview.Nodes)
+        {
+            var (row, column) = slotOf[node.Id];
+            var newX = column * (NodeWidth + BranchColumnSpacing);
+            var newY = rowY[row];
+
+            var textNode = textNodesById[node.Id];
+            textNode.X = newX;
+            textNode.Y = newY;
+
+            var (imageSibling, groupSibling) = siblingsOf[node.Id];
+            if (imageSibling is not null)
+            {
+                imageSibling.X = newX;
+                imageSibling.Y = newY + TextNodeHeight + TextToImageGap;
+            }
+
+            if (groupSibling is not null)
+            {
+                groupSibling.X = newX - GroupPadding;
+                groupSibling.Y = newY - GroupPadding;
+            }
+        }
+
+        // Now called mid-session (not just right before Stop() nulls the
+        // cursor anyway) — the live cursor position and the "where does the
+        // next brand-new path column go" pointer must stay consistent with
+        // whatever this just moved everything to. Without this, the very
+        // next click or StartNewPath would be placed using stale
+        // pre-relayout coordinates, immediately reintroducing the exact
+        // misalignment this method exists to fix.
+        if (_cursorNodeId is not null && slotOf.TryGetValue(_cursorNodeId, out var cursorSlot))
+        {
+            _cursorX = cursorSlot.Column * (NodeWidth + BranchColumnSpacing);
+            _cursorY = rowY[cursorSlot.Row];
+        }
+
+        _nextColumnX = textNodesById.Values.Max(n => n.X) + NodeWidth + BranchColumnSpacing;
+    }
 
     /// <summary>Short preview of the node the next click would connect from, if any.</summary>
     public string? CurrentNodeLabel => _cursorNodeId is null ? null : GetNodeLabel(_cursorNodeId);
@@ -361,7 +467,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
                     PathName: isPathStart ? ExtractPathName(n) : null);
             })
             .ToList();
-        var edges = _doc.Edges.Select(e => new PreviewEdge(e.FromNode, e.ToNode)).ToList();
+        var edges = _doc.Edges.Select(e => new PreviewEdge(e.FromNode, e.ToNode, e.Manual)).ToList();
         return FlowPreviewBranching.TagBranches(new FlowPreview(nodes, edges));
     }
 
@@ -411,12 +517,19 @@ public sealed class CanvasFlowWriter : IFlowWriter
     }
 
     /// <summary>
-    /// Exactly one outgoing edge: the parent is reconnected straight to
-    /// that child so the branch below isn't orphaned. More than one (a
-    /// decision point, or any node a path was forked from): the whole
-    /// downstream subtree goes with it — the caller (the Ablauf-Übersicht)
-    /// is responsible for confirming that with the user first, since there
-    /// is no single "the" continuation to stitch to here.
+    /// Exactly one outgoing *structural* edge: the parent is reconnected
+    /// straight to that child so the branch below isn't orphaned. More than
+    /// one (a decision point, or any node a path was forked from): the
+    /// whole downstream subtree goes with it — the caller (the Ablauf-
+    /// Übersicht) is responsible for confirming that with the user first,
+    /// since there is no single "the" continuation to stitch to here.
+    /// Manual cross-connect edges (<see cref="CanvasEdge.Manual"/>, added
+    /// via <see cref="ConnectNodes"/>) never count toward this and are
+    /// never cascaded through — they're an additive reference to some other,
+    /// independently-anchored part of the flow, not a fork this node owns.
+    /// Deleting this node still drops any manual edge touching it (nothing
+    /// left to connect from/to), it just doesn't take the far end's subtree
+    /// down with it.
     /// </summary>
     public BranchActionResult DeleteNode(string nodeId)
     {
@@ -426,8 +539,8 @@ public sealed class CanvasFlowWriter : IFlowWriter
             return new BranchActionResult(false);
         }
 
-        var childEdges = _doc.Edges.Where(e => e.FromNode == nodeId).ToList();
-        var parentEdge = _doc.Edges.FirstOrDefault(e => e.ToNode == nodeId);
+        var childEdges = _doc.Edges.Where(e => e.FromNode == nodeId && !e.Manual).ToList();
+        var parentEdge = _doc.Edges.FirstOrDefault(e => e.ToNode == nodeId && !e.Manual);
 
         // A path-start node's single child is never itself tagged with the
         // path's identity (only the path-start node is — see
@@ -450,7 +563,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
                     continue;
                 }
 
-                foreach (var e in _doc.Edges.Where(e => e.FromNode == id))
+                foreach (var e in _doc.Edges.Where(e => e.FromNode == id && !e.Manual))
                 {
                     queue.Enqueue(e.ToNode);
                 }
@@ -529,9 +642,12 @@ public sealed class CanvasFlowWriter : IFlowWriter
             return new BranchActionResult(false);
         }
 
-        // Cycle guard: newParentId must not be a descendant of nodeId.
+        // Cycle guard: newParentId must not be a *structural* descendant of
+        // nodeId — a manual cross-connect elsewhere must never make an
+        // otherwise-valid reparent look like it would close a cycle (same
+        // reasoning as ConnectNodes' own cycle guard below).
         var descendants = new HashSet<string>();
-        var descendantQueue = new Queue<string>(_doc.Edges.Where(e => e.FromNode == nodeId).Select(e => e.ToNode));
+        var descendantQueue = new Queue<string>(_doc.Edges.Where(e => e.FromNode == nodeId && !e.Manual).Select(e => e.ToNode));
         while (descendantQueue.Count > 0)
         {
             var id = descendantQueue.Dequeue();
@@ -540,7 +656,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
                 continue;
             }
 
-            foreach (var e in _doc.Edges.Where(e => e.FromNode == id))
+            foreach (var e in _doc.Edges.Where(e => e.FromNode == id && !e.Manual))
             {
                 descendantQueue.Enqueue(e.ToNode);
             }
@@ -551,7 +667,10 @@ public sealed class CanvasFlowWriter : IFlowWriter
             return new BranchActionResult(false);
         }
 
-        var oldParentEdge = _doc.Edges.FirstOrDefault(e => e.ToNode == nodeId);
+        // Structural parent only — a manual incoming edge (if nodeId
+        // happens to also have one) is an independent reference and must
+        // survive nodeId moving to a new structural parent untouched.
+        var oldParentEdge = _doc.Edges.FirstOrDefault(e => e.ToNode == nodeId && !e.Manual);
         if (oldParentEdge is not null)
         {
             _doc.Edges.Remove(oldParentEdge);
@@ -585,9 +704,17 @@ public sealed class CanvasFlowWriter : IFlowWriter
             return new BranchActionResult(false); // already connected, nothing to do
         }
 
-        // Cycle guard: toNodeId must not already be able to reach fromNodeId.
+        // Cycle guard: toNodeId must not already be able to *structurally*
+        // reach fromNodeId. Deliberately walks only structural edges, not
+        // other manual cross-connects — those are non-structural references
+        // FindBranchTip/DeleteNode never traverse either, so a real
+        // structural cycle can't actually form through one. Without this
+        // exclusion, an earlier unrelated manual connection could make a
+        // perfectly fine new one look like a false cycle and get rejected
+        // (confirmed as a real bug — some cross-connects became impossible
+        // to add once other, unrelated ones already existed).
         var reachableFromTo = new HashSet<string>();
-        var queue = new Queue<string>(_doc.Edges.Where(e => e.FromNode == toNodeId).Select(e => e.ToNode));
+        var queue = new Queue<string>(_doc.Edges.Where(e => e.FromNode == toNodeId && !e.Manual).Select(e => e.ToNode));
         while (queue.Count > 0)
         {
             var id = queue.Dequeue();
@@ -596,7 +723,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
                 continue;
             }
 
-            foreach (var e in _doc.Edges.Where(e => e.FromNode == id))
+            foreach (var e in _doc.Edges.Where(e => e.FromNode == id && !e.Manual))
             {
                 queue.Enqueue(e.ToNode);
             }
@@ -607,13 +734,28 @@ public sealed class CanvasFlowWriter : IFlowWriter
             return new BranchActionResult(false);
         }
 
-        _doc.Edges.Add(new CanvasEdge { Id = Guid.NewGuid().ToString("N"), FromNode = fromNodeId, ToNode = toNodeId });
+        _doc.Edges.Add(new CanvasEdge { Id = Guid.NewGuid().ToString("N"), FromNode = fromNodeId, ToNode = toNodeId, Manual = true });
 
+        // Relayout immediately, not just at Stop(): a cross-connect is
+        // exactly the action whose visual result (does the new line look
+        // clean or does it cross other branches?) the user is checking
+        // right when they make it — waiting until the whole session ends
+        // left every intermediate cross-connect looking exactly as messy
+        // as the still-live-accumulated positions until then.
+        Relayout();
         Save();
         return new BranchActionResult(true);
     }
 
-    /// <summary>Only ordinary content nodes qualify, on both ends — see <see cref="IFlowWriter.DisconnectNodes"/>.</summary>
+    /// <summary>
+    /// Only ordinary content nodes qualify, on both ends — see
+    /// <see cref="IFlowWriter.DisconnectNodes"/>. Only ever removes a
+    /// *manual* edge (added via <see cref="ConnectNodes"/>): a structural
+    /// edge is part of the actual recorded sequence, and severing one here
+    /// would break the main chain without DeleteNode's parent-to-child
+    /// stitch repair — this is strictly the undo for a manual connect, not
+    /// a general-purpose edge remover.
+    /// </summary>
     public BranchActionResult DisconnectNodes(string fromNodeId, string toNodeId)
     {
         var from = _doc.Nodes.FirstOrDefault(n => n.Id == fromNodeId && n.Type == "text");
@@ -625,7 +767,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
             return new BranchActionResult(false);
         }
 
-        var edge = _doc.Edges.FirstOrDefault(e => e.FromNode == fromNodeId && e.ToNode == toNodeId);
+        var edge = _doc.Edges.FirstOrDefault(e => e.FromNode == fromNodeId && e.ToNode == toNodeId && e.Manual);
         if (edge is null)
         {
             return new BranchActionResult(false);
@@ -633,6 +775,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
 
         _doc.Edges.Remove(edge);
 
+        Relayout(); // see ConnectNodes' own comment on relaying out immediately
         Save();
         return new BranchActionResult(true);
     }
@@ -652,14 +795,25 @@ public sealed class CanvasFlowWriter : IFlowWriter
 
     private static string ExtractPathName(CanvasNode n) => n.Text![PathStartPrefix.Length..].Trim();
 
-    /// <summary>Follows the single-child edge chain from <paramref name="start"/> as far as it goes, resolving a path's current tip fresh from the graph every time (never cached, so it can never desync from what's actually in the file).</summary>
+    /// <summary>
+    /// Follows the single-child *structural* edge chain from
+    /// <paramref name="start"/> as far as it goes, resolving a path's
+    /// current tip fresh from the graph every time (never cached, so it can
+    /// never desync from what's actually in the file). Manual cross-connect
+    /// edges are never followed here — a node whose only outgoing edge
+    /// happens to be a manual one is still a real tip; following it into
+    /// whatever it was cross-connected to used to silently walk the cursor
+    /// into a completely different, unrelated tree (confirmed as a real
+    /// bug: the next click would then graft new content onto that other
+    /// tree instead, and deleting things later cascaded into it).
+    /// </summary>
     private (string Id, double X, double Y, int Steps) FindBranchTip(CanvasNode start)
     {
         var current = start;
         var steps = 0;
         while (true)
         {
-            var nextEdge = _doc.Edges.FirstOrDefault(e => e.FromNode == current.Id);
+            var nextEdge = _doc.Edges.FirstOrDefault(e => e.FromNode == current.Id && !e.Manual);
             var nextNode = nextEdge is null ? null : _doc.Nodes.FirstOrDefault(n => n.Id == nextEdge.ToNode);
             if (nextNode is null)
             {

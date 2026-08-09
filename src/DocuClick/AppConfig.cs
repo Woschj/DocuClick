@@ -19,14 +19,16 @@ public sealed class AppConfig
     public int HighlightThickness { get; set; } = 4;
 
     /// <summary>
-    /// Where clicks get written to: "Note" (linear Markdown), "Canvas"
-    /// (Obsidian .canvas flow diagram), or "DrawIo" (.drawio, a real
-    /// editable flowchart: card-shaped nodes with numbered badges,
-    /// per-branch accent colors, and arrowed connectors — opens in the free
-    /// draw.io/diagrams.net app, no Obsidian needed). Canvas and DrawIo both
-    /// support branching via the decision-point hotkey below.
+    /// Where clicks get written to: "Note" (linear Markdown) or "Canvas"
+    /// (Obsidian .canvas flow diagram, supports branching via the decision-
+    /// point hotkey below). draw.io is no longer a live-recording mode —
+    /// its full-XML-rewrite-per-click cost measurably grows with session
+    /// length (confirmed via harness). A .drawio export is always
+    /// available afterward instead, converted from a .canvas session in one
+    /// pass (see DrawIoConverter, reachable from the tray menu) rather than
+    /// paying that cost throughout the whole recording.
     /// </summary>
-    public string OutputMode { get; set; } = "Note";
+    public string OutputMode { get; set; } = "Canvas";
 
     /// <summary>
     /// Global hotkey: marks the current node as a decision point. Starting

@@ -19,17 +19,12 @@
                         <TextBlock Text="Ausgabeformat" Style="{StaticResource SectionHeader}"/>
 
                         <RadioButton x:Name="OutputModeNoteRadio" GroupName="OutputMode" Margin="0,0,0,8"
-                                     Content="Notiz (Markdown, an eine .md-Datei anhängen)"
-                                     Checked="OnOutputModeChanged"/>
-                        <RadioButton x:Name="OutputModeCanvasRadio" GroupName="OutputMode" Margin="0,0,0,8"
-                                     Content="Obsidian-Canvas (.canvas, Ablaufdiagramm mit Abzweigungen)"
-                                     Checked="OnOutputModeChanged"/>
-                        <RadioButton x:Name="OutputModeDrawIoRadio" GroupName="OutputMode" Margin="0,0,0,4"
-                                     Content="draw.io (.drawio, echtes editierbares Flowchart mit Kartenlayout, kein Obsidian nötig)"
-                                     Checked="OnOutputModeChanged"/>
+                                     Content="Notiz (Markdown, an eine .md-Datei anhängen)"/>
+                        <RadioButton x:Name="OutputModeCanvasRadio" GroupName="OutputMode" Margin="0,0,0,4"
+                                     Content="Obsidian-Canvas (.canvas, Ablaufdiagramm mit Abzweigungen)"/>
 
                         <TextBlock Style="{StaticResource HintText}"
-                                   Text="Canvas schreibt jeden Klick als verbundenen Knoten auf einer Fläche (vertikaler Hauptfluss, Abzweigungspunkte mit neuen Pfaden als Spalten, gesteuert über die Ablauf-Übersicht) — gut für kurze Abläufe, wird bei sehr langen Abläufen aber schnell unübersichtlich. draw.io zeichnet wie Canvas ein Flussdiagramm (Hauptfluss + Abzweigungen als Spalten), aber als echte Karten mit Nummer-Badge, Beschriftung und Screenshot als eine verschiebbare Einheit, mit farbigen Pfeilen je Pfad — öffnet in der kostenlosen draw.io/diagrams.net-App, ganz ohne Obsidian. Canvas/draw.io betten Screenshots direkt in die Datei ein — kein separater Attachments-Ordner nötig — und sind voll editierbar."/>
+                                   Text="Canvas schreibt jeden Klick als verbundenen Knoten auf einer Fläche (vertikaler Hauptfluss, Abzweigungspunkte mit neuen Pfaden als Spalten, gesteuert über die Ablauf-Übersicht), Screenshots als eigene Dateien im Attachments-Ordner — bleibt dadurch auch bei sehr langen Abläufen schnell. Eine draw.io-Datei (echtes editierbares Flowchart mit Kartenlayout, Screenshots eingebettet, kein Obsidian nötig) lässt sich jederzeit aus einer Canvas-Session exportieren — Tray-Symbol rechtsklicken → „Nach draw.io exportieren...“."/>
                     </StackPanel>
                 </Border>
 
