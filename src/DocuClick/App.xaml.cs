@@ -1,7 +1,9 @@
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 using DocuClick.Services;
 
 namespace DocuClick;
@@ -30,6 +32,19 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // DocuClick is a tray-only background app meant to keep running
+        // silently through a whole recording session — without these,
+        // a single unexpected exception anywhere (a button handler, a
+        // background Task, a non-UI thread) would otherwise crash the
+        // entire process instantly with no save prompt and no recovery,
+        // silently ending whatever session was in progress. Logged and
+        // swallowed wherever that's actually safe (the UI-thread case);
+        // AppDomain-level crashes on other threads can only be logged, not
+        // prevented, since the CLR terminates the process either way.
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
+        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
         _singleInstanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var createdNew);
         if (!createdNew)
@@ -123,6 +138,44 @@ public partial class App : Application
         SetUpHotkeys();
 
         LogService.Log("DocuClick gestartet.");
+    }
+
+    /// <summary>
+    /// Any exception that reaches here would otherwise crash the whole app
+    /// instantly (WPF's default for an unhandled exception on the UI
+    /// thread). Logged and marked Handled instead — a single misbehaving
+    /// dialog/control shouldn't end the entire recording session; the
+    /// current action just silently doesn't complete, same as any other
+    /// caught-and-logged failure elsewhere in the app.
+    /// </summary>
+    private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    {
+        LogService.Log($"Unbehandelte Ausnahme (UI-Thread): {e.Exception}");
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Exceptions on a non-UI thread that were never caught anywhere
+    /// (IsTerminating is effectively always true for these — the CLR is
+    /// already tearing the process down by the time this fires and that
+    /// can't be prevented). Purely a last-resort log write so a crash at
+    /// least leaves a trace of what happened instead of vanishing silently.
+    /// </summary>
+    private void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
+    {
+        LogService.Log($"Unbehandelte Ausnahme (Prozessende, IsTerminating={e.IsTerminating}): {e.ExceptionObject}");
+    }
+
+    /// <summary>
+    /// A faulted Task whose exception nobody ever observed (no .Wait()/
+    /// .Result/await) — historically this could crash the process once the
+    /// GC finalized it; on modern .NET it no longer does, but logging it is
+    /// still the only way to ever find out such a failure happened at all.
+    /// </summary>
+    private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        LogService.Log($"Unbeobachtete Task-Ausnahme: {e.Exception}");
+        e.SetObserved();
     }
 
     private void SetUpHotkeys()
@@ -240,7 +293,6 @@ public partial class App : Application
                 _flowPreviewOverlay.ContinuePathRequested += OnContinuePathRequested;
                 _flowPreviewOverlay.RenameRequested += (nodeId, newLabel) => _sessionManager?.RenameNode(nodeId, newLabel);
                 _flowPreviewOverlay.DeleteRequested += nodeId => _sessionManager?.DeleteNode(nodeId);
-                _flowPreviewOverlay.ReparentRequested += (nodeId, newParentId) => _sessionManager?.ReparentNode(nodeId, newParentId);
                 _flowPreviewOverlay.ConnectRequested += (fromId, toId) => _sessionManager?.ConnectNodes(fromId, toId);
                 _flowPreviewOverlay.DisconnectRequested += (fromId, toId) => _sessionManager?.DisconnectNodes(fromId, toId);
                 _flowPreviewOverlay.CloseRequested += () =>

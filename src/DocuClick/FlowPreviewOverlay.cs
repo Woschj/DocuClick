@@ -42,7 +42,7 @@ namespace DocuClick;
 /// (<see cref="NodeClicked"/>/<see cref="NewPathRequested"/>/
 /// <see cref="ContinuePathRequested"/>/<see cref="PathsProvider"/>/
 /// <see cref="RenameRequested"/>/<see cref="DeleteRequested"/>/
-/// <see cref="ReparentRequested"/>) — App.xaml.cs and SessionManager needed
+/// <see cref="ConnectRequested"/>) — App.xaml.cs and SessionManager needed
 /// no changes for this rewrite. See WebAssets/flow.js for the other half of
 /// the message protocol.
 /// </summary>
@@ -50,7 +50,7 @@ public sealed class FlowPreviewOverlay : Window
 {
     private const double PanelWidth = 420;
     private const double PanelHeight = 320;
-    private const double Padding = 12;
+    private const double PanelPadding = 12;
     private const double HeaderHeight = 26;
     private const double CollapsedMinHeight = HeaderHeight + 16;
 
@@ -122,10 +122,7 @@ public sealed class FlowPreviewOverlay : Window
     /// <summary>Fired after a node's deletion is confirmed (the overlay itself handles the cascade-delete confirmation dialog) via its context menu.</summary>
     public event Action<string>? DeleteRequested;
 
-    /// <summary>Fired after a completed drag-and-drop re-parents a node onto a different one — (nodeId, newParentNodeId).</summary>
-    public event Action<string, string>? ReparentRequested;
-
-    /// <summary>Fired when the drag-to-connect gesture completes (source node dragged onto a valid target) — (fromNodeId, toNodeId). Additive: never removes an existing edge, so a node can end up with more than one parent (a real merge point), unlike <see cref="ReparentRequested"/>.</summary>
+    /// <summary>Fired when the drag-to-connect gesture completes (source node dragged onto a valid target) — (fromNodeId, toNodeId). Additive: never removes an existing edge, so a node can end up with more than one parent (a real merge point).</summary>
     public event Action<string, string>? ConnectRequested;
 
     /// <summary>Fired when a connector's right-click menu confirms "Verbindung löschen" — (fromNodeId, toNodeId). The undo counterpart to <see cref="ConnectRequested"/>.</summary>
@@ -147,8 +144,8 @@ public sealed class FlowPreviewOverlay : Window
         ResizeMode = ResizeMode.NoResize;
         ShowActivated = false;
         SizeToContent = SizeToContent.Manual;
-        Width = PanelWidth + Padding * 2;
-        Height = PanelHeight + HeaderHeight + Padding;
+        Width = PanelWidth + PanelPadding * 2;
+        Height = PanelHeight + HeaderHeight + PanelPadding;
         MinWidth = 160;
         MinHeight = 110;
 
@@ -195,7 +192,7 @@ public sealed class FlowPreviewOverlay : Window
         headerIcons.Children.Add(collapseToggle);
         headerIcons.Children.Add(closeIcon);
 
-        var header = new DockPanel { Margin = new Thickness(Padding, 6, 8, 6) };
+        var header = new DockPanel { Margin = new Thickness(PanelPadding, 6, 8, 6) };
         DockPanel.SetDock(headerIcons, Dock.Right);
         header.Children.Add(headerIcons);
         header.Children.Add(titleText);
@@ -234,7 +231,7 @@ public sealed class FlowPreviewOverlay : Window
 
         _canvasHost = new Border
         {
-            Margin = new Thickness(Padding, 0, Padding, Padding),
+            Margin = new Thickness(PanelPadding, 0, PanelPadding, PanelPadding),
             Child = canvasArea
         };
 
@@ -469,10 +466,6 @@ public sealed class FlowPreviewOverlay : Window
 
             case "delete":
                 RequestDelete(root.GetProperty("nodeId").GetString()!);
-                break;
-
-            case "reparent":
-                ReparentRequested?.Invoke(root.GetProperty("nodeId").GetString()!, root.GetProperty("newParentId").GetString()!);
                 break;
 
             case "connect":

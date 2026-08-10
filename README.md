@@ -1,10 +1,11 @@
 # DocuClick
 
-Windows-Screenshot-Tool, das bei jedem Mausklick (optional auch bei Enter)
-automatisch einen Screenshot mit Klick-Markierung erstellt und samt
-Beschreibungstext in eine Obsidian-Notiz, ein Obsidian-Canvas, ein
-draw.io-Flowchart oder (experimentell) ein Excalidraw-Sketch einfügt.
-Details zu allen vier Ausgabeformaten weiter unten.
+Windows-Screenshot-Tool, das bei jedem Mausklick (optional auch bei
+Rechtsklick und Enter) automatisch einen Screenshot mit Klick-Markierung
+erstellt und samt Beschreibungstext in eine Obsidian-Notiz oder ein
+Obsidian-Canvas einfügt. Aus einer Canvas-Session lässt sich jederzeit
+zusätzlich ein editierbares draw.io-Flowchart exportieren. Details zu
+beiden Aufnahme-Modi und dem draw.io-Export weiter unten.
 
 App-Icon: [Assets/app.ico](src/DocuClick/Assets/app.ico) (im selben
 Rot-auf-Dunkel-Stil wie das Tray-Icon).
@@ -27,13 +28,10 @@ für die Bedienung.
 
 ## Obsidian einrichten und den Vault nutzen
 
-Für die Notiz-, Canvas- und Excalidraw-Ausgabeformate (nicht für draw.io)
-wird [Obsidian](https://obsidian.md) empfohlen —
-kostenlos, kein Account nötig, öffnet einfach einen lokalen Ordner als
-"Vault". Für Notiz/Canvas ist kein Plugin erforderlich, DocuClick schreibt
-reine Markdown-/JSON-Dateien direkt auf die Festplatte; für Excalidraw wird
-zusätzlich das kostenlose Excalidraw-Community-Plugin gebraucht (siehe
-[Ausgabeformat](#ausgabeformat-notiz-canvas-drawio-oder-excalidraw)).
+Für beide Aufnahme-Modi (Notiz und Canvas) wird [Obsidian](https://obsidian.md)
+empfohlen — kostenlos, kein Account nötig, öffnet einfach einen lokalen
+Ordner als "Vault". Kein Plugin erforderlich: DocuClick schreibt reine
+Markdown- bzw. JSON-Dateien direkt auf die Festplatte.
 
 1. **Obsidian installieren**: Installer von [obsidian.md](https://obsidian.md/download)
    herunterladen und ausführen.
@@ -59,16 +57,16 @@ Alltags-Workflow:
 
 - Beim Start einer Aufnahme fragt DocuClick nach Zieldatei **und
   -ordner** innerhalb des Vaults (siehe [Zieldatei bei jedem
-  Session-Start](#zieldatei-bei-jedem-session-start)) — damit landet
+  Session-Start](#start-vs-neue-session-zieldatei)) — damit landet
   jede Aufnahme direkt dort, wo sie in der Vault-Struktur hingehört,
   statt alles im Wurzelordner zu sammeln.
 - Für länger geplante Abläufe lohnt es sich, vorher eine Vorlage aus
   `02 Vorlagen/` zu kopieren und mit Titel/Zweck auszufüllen, dann beim
   Session-Start "Bestehende Datei fortsetzen" wählen.
-- Verzweigt sich ein Ablauf (z. B. Fehlerfall vs. Erfolgsfall), mit
-  "Branch setzen" einen Namen vergeben und später über "Branch
-  auswählen" gezielt dorthin zurückspringen (siehe
-  [Ausgabeformat](#ausgabeformat-notiz-canvas-drawio-oder-excalidraw)).
+- Verzweigt sich ein Ablauf (z. B. Fehlerfall vs. Erfolgsfall), im
+  Canvas-Modus über die Ablauf-Übersicht einen Abzweigungspunkt setzen
+  und benannte Pfade anlegen (siehe [Abzweigungen im
+  Canvas-Modus](#abzweigungen-im-canvas-modus)).
 
 ## Funktionsumfang
 
@@ -83,7 +81,11 @@ die Beschreibung unterscheidet "Linksklick auf ..." von "Rechtsklick
 auf ..."):
 
 1. UI-Automation-Lookup des Elements unter dem Cursor (abschaltbar in den
-   Einstellungen) inkl. Fallback auf Fenstertitel + Zeitstempel
+   Einstellungen) inkl. Fallback auf Fenstertitel + Zeitstempel. Erkennt UI
+   Automation dabei ein Passwortfeld, wird die Erfassung komplett
+   übersprungen (kein Screenshot, kein Eintrag) — der einzige Fall, den die
+   App automatisch erkennen kann; für alles andere Sensible gibt es die
+   manuelle Skip-Taste (siehe [Klicks überspringen](#klicks-überspringen)).
 2. Screenshot **nur des Fensters, in dem geklickt wurde** (nicht des ganzen
    Monitors) — ermittelt über das Fenster unter der Klickposition
 3. Markierung: Bounding-Box des Elements, falls vorhanden und deutlich
@@ -98,10 +100,10 @@ auf ..."):
    `![bild.png](relativer/Pfad.png)` (Standard-Markdown, kein
    Obsidian-spezifisches Wikilink — funktioniert daher auch in GitHub-/
    GitLab-Wikis und anderen Markdown-Renderern, nicht nur in Obsidian) an
-   die Session-Notiz im Obsidian-Vault (im Canvas-/draw.io-/Excalidraw-Modus
-   stattdessen als Knoten, siehe unten)
+   die Session-Notiz im Obsidian-Vault (im Canvas-Modus stattdessen als
+   verbundener Knoten, siehe unten)
 
-Klicks auf DocuClicks eigene Fenster (Top-Leiste, Branch-Dialoge,
+Klicks auf DocuClicks eigene Fenster (Top-Leiste, Ablauf-Übersicht,
 Session-Start, Einstellungen, ...) sowie auf das Tray-Icon selbst zählen
 nie als Aufnahme — automatisch erkannt und gefiltert.
 
@@ -121,18 +123,18 @@ einer anderen bzw. neuen Datei zu wechseln:
   `IT-Support 2026-08-04 (1)`, statt eines generischen "Screenshots"), lässt
   sich aber frei überschreiben. Endung ergibt sich aus dem gewählten
   Ausgabeformat. Optional ein **Zielordner** wählen (relativ zum
-  Vault-/Zielordner-Pfad) — Vorschläge kommen aus allen bereits
-  vorhandenen Unterordnern, der Namensvorschlag passt sich beim
-  Ordnerwechsel automatisch an, solange der Name nicht von Hand geändert
-  wurde. So landen Aufnahmen direkt in der Vault-Struktur (z. B.
+  Vault-Pfad) — Vorschläge kommen aus allen bereits vorhandenen
+  Unterordnern, der Namensvorschlag passt sich beim Ordnerwechsel
+  automatisch an, solange der Name nicht von Hand geändert wurde. So
+  landen Aufnahmen direkt in der Vault-Struktur (z. B.
   `Prozesse/IT-Support`) statt immer im Wurzelordner, und die laufende
   Nummer verhindert, dass ein zweiter Klick auf "Neue Session" am selben
   Tag versehentlich eine bestehende Datei fortsetzt.
 - **Bestehende Datei fortsetzen**: Auswahl aus allen vorhandenen Dateien
-  mit passender Endung im konfigurierten Ordner (inkl. Unterordner),
+  mit passender Endung im konfigurierten Vault (inkl. Unterordner),
   neueste zuerst. Neue Klicks werden an diese Datei angehängt (im
-  Canvas-/draw.io-/Excalidraw-Modus ab dem bisherigen Cursor-Stand, siehe
-  Branch-Logik unten).
+  Canvas-Modus ab dem bisherigen Cursor-Stand, siehe Abzweigungs-Logik
+  unten).
 
 Der Dialog erscheint außerdem beim allerersten "Start" nach Installation
 (noch keine Datei zum Fortsetzen vorhanden) oder wenn das Ausgabeformat
@@ -149,158 +151,144 @@ Knowledge Base. **Vor echter Nutzung außerhalb dieses Repos kopieren** —
 siehe [VaultTemplate/README.md](VaultTemplate/README.md) für Details und
 den Grund dafür (Screenshots landen sonst im öffentlichen Git-Verlauf).
 
-### Top-Leiste, Overlays und "Neue Session"
+### Top-Leiste, Ablauf-Übersicht und "Neue Session"
 
 Eine kleine, mittig oben schwebende Pille (wie die TeamViewer-Session-Leiste
 — nicht bildschirmbreit, sonst würde sie Fenster ziehen/Menüs/Snap-Zonen
 blockieren) ist sichtbar, solange die App läuft, und zeigt auf einen Blick
-den Aufnahmestatus (inkl. aktuellem Branch-Namen, falls einer aktiv ist).
-Frei verschiebbar per Ziehen. Sie enthält fünf Buttons:
+den Aufnahmestatus. Frei verschiebbar per Ziehen an der Kopfzeile. Sie
+enthält vier Bereiche:
 
 - **Start/Stop**: entspricht dem Tray-Menüpunkt bzw. dem Start/Stop-Hotkey
   — setzt die zuletzt verwendete Datei ohne Rückfrage fort.
-- **Branch setzen** / **Branch auswählen**: entsprechen den beiden
-  Branch-Hotkeys (siehe unten), nur aktiv während einer laufenden Aufnahme
-  im Canvas-, draw.io- oder Excalidraw-Modus.
+- **Übersicht**: öffnet die Ablauf-Übersicht wieder, falls sie über ihr
+  eigenes ✕ geschlossen wurde (siehe unten).
 - **Neue Session**: immer klickbar, fragt **immer** nach der Zieldatei
   (anders als Start). Läuft gerade keine Aufnahme, startet sie damit neu.
   Läuft eine Aufnahme, schließt es die aktuelle Datei ab und startet
   direkt danach die neue (siehe vorheriger Abschnitt).
-- **Zoom: Aus/An**: schaltet "Zoom-auf-Cursor" um (entspricht dem
-  gleichnamigen Hotkey, siehe unten) — bei "An" erfassen die nächsten
-  Screenshots nur den Bereich um den Mauszeiger statt des ganzen Fensters,
-  direkt hier pro Screenshot umschaltbar statt nur global über die
-  Einstellungen.
+- **Zoom: Aus/An** plus Radius-Schieberegler: schaltet "Zoom-auf-Cursor" um
+  (entspricht dem gleichnamigen Hotkey, siehe unten) — bei "An" erfassen
+  die nächsten Screenshots nur den Bereich um den Mauszeiger statt des
+  ganzen Fensters, direkt hier pro Screenshot umschaltbar statt nur global
+  über die Einstellungen; der Regler passt die Größe dieses Bereichs live
+  an (mit Vorschau-Rahmen um den Cursor).
 
-Im Canvas-, draw.io- oder Excalidraw-Modus zeigt zusätzlich ein
-verschiebbares "Ablauf-Übersicht"-Overlay eine Miniatur-Karte des gesamten
-Ablaufs: der aktuelle Knoten ist rot hervorgehoben, jede Abzweigung (Marker
-plus alle nachfolgenden Knoten) bekommt ihre eigene Farbe aus einer festen
-Palette, und ein Klick auf einen beliebigen Knoten springt die Aufnahme
-dorthin — praktisch, um in einem langen, verzweigten Ablauf schnell zu
-sehen und zu wechseln, ohne die eigentliche Datei zu öffnen.
+Im **Canvas-Modus** öffnet sich zusätzlich automatisch die
+**Ablauf-Übersicht** — ein frei verschiebbares, größenveränderliches
+Panel mit einer Miniaturkarte des gesamten Ablaufs (per Maus frei
+zoom-/schwenkbar): der aktuelle Knoten ist rot hervorgehoben, jeder Pfad
+bekommt seine eigene Farbe aus einer festen Palette. Darüber lässt sich
+der Ablauf direkt bearbeiten:
 
-Anders als die beiden folgenden Overlays ist die Leiste **nicht**
+- **Rechtsklick auf einen Knoten**: Kontextmenü mit "→ Weiter" (Aufnahme
+  dorthin springen), "+ Neuer Pfad ab hier" (neuen benannten Pfad
+  abzweigen), allen bereits vorhandenen Pfaden ab diesem Punkt,
+  "Umbenennen" und "Löschen" (löscht bei mehreren abzweigenden Pfaden
+  nach Rückfrage den gesamten nachfolgenden Ast).
+- **Doppelklick auf einen Knoten**: direkt umbenennen.
+- **Ziehen von einem Knoten auf einen anderen**: manuelle Querverbindung
+  ("Verbinden") — für Rücksprünge/Referenzen, die der lineare Ablauf sonst
+  nicht abbilden kann. Rein additiv (verändert nichts an der bestehenden
+  Struktur), per Rechtsklick auf die Verbindungslinie wieder entfernbar.
+- **Umschalt+Ziehen** wählt mehrere Knoten per Rahmen aus, **Entf** löscht
+  die Auswahl gesammelt.
+
+Ein Klick auf einen Knoten in der Ablauf-Übersicht bei **gestoppter**
+Aufnahme markiert diesen Knoten stattdessen als Ansatzpunkt für die
+*nächste* Session (siehe [Ablauf nachträglich
+fortsetzen](#ablauf-nachträglich-fortsetzen-an-einem-bestimmten-punkt-statt-am-dateiende)).
+
+Anders als die Ablauf-Übersicht ist die Top-Leiste **nicht**
 klick-durchlässig, da sie echte Buttons hostet — deshalb ist sie bewusst
-content-groß statt bildschirmbreit. Klicks auf die Top-Leiste oder auf das
-Tray-Icon selbst werden nie als Aufnahme gewertet (kein Screenshot, kein
-Eintrag) — die App erkennt und filtert das automatisch.
+content-groß statt bildschirmbreit. Klicks auf die Top-Leiste, die
+Ablauf-Übersicht oder auf das Tray-Icon selbst werden nie als Aufnahme
+gewertet (kein Screenshot, kein Eintrag) — die App erkennt und filtert
+das automatisch, und beide Fenster werden aktiv aus Screenshots
+ausgeschlossen, tauchen also nie selbst im aufgenommenen Bild auf.
 
-Zusätzlich, nur während einer laufenden Aufnahme:
+## Ausgabeformat: Notiz oder Canvas, draw.io als Export
 
-- Ein kleiner roter Punkt (unterhalb der Top-Leiste) zeigt an, dass die
-  Aufnahme läuft.
-- Im Canvas-/draw.io-Modus zeigt ein zweites, kleines Overlay direkt darunter
-  die aktuelle Position im Ablauf (aktueller Branch, alle gesetzten
-  Branches, letzter Knoten).
+In den Einstellungen lässt sich eines von zwei Live-Aufnahmeformaten
+wählen:
 
-Diese beiden Overlays sind klick-durchlässig (stören keine Bedienung) und
-werden wie die Top-Leiste aktiv aus Screenshots ausgeschlossen, tauchen
-also nie selbst im aufgenommenen Bild auf.
-
-## Ausgabeformat: Notiz, Canvas, draw.io oder Excalidraw
-
-In den Einstellungen lässt sich eines von vier Formaten wählen:
-
-- **Notiz**: linearer Markdown-Text + Bild-Link, an eine `.md`-Datei angehängt (Standard).
+- **Notiz**: linearer Markdown-Text + Bild-Link, an eine `.md`-Datei
+  angehängt (Standard).
 - **Obsidian-Canvas**: jeder Klick wird ein verbundener Knoten auf einer
   Fläche in einer `.canvas`-Datei (reines JSON, kein Obsidian-Plugin
-  nötig). Gut für kurze bis mittlere Abläufe; bei sehr langen Abläufen wird
-  eine feste Fläche schnell unübersichtlich. Screenshots werden als
-  eigener Datei-Node (Canvas' natives Embed-Format) statt als
-  `![[wikilink]]` im Text abgelegt — Drittanbieter-Exporttools für Canvas
-  kennen diesen Node-Typ meist, Obsidians Wikilink-Auflösung dagegen nicht,
-  weshalb Bilder beim Export in andere Formate sonst fehlten. Betrifft nur
-  neu aufgezeichnete Klicks; bereits bestehende `.canvas`-Dateien werden
-  nicht automatisch migriert.
-- **draw.io** (`.drawio`): wie Canvas ein echtes Flussdiagramm auf einer
-  freien Fläche (vertikaler Hauptablauf, Abzweigungen als eigene Spalte),
-  aber ohne Obsidian-Abhängigkeit und mit deutlich aufgewertetem Layout —
-  jeder Klick wird eine echte "Karte" (abgerundeter Rahmen mit Schatten,
-  nummeriertes Badge, Beschriftung und Screenshot als eine zusammen
-  verschiebbare Einheit) statt einem nackten Bild. Jede Abzweigung bekommt
-  eine eigene Akzentfarbe (Rahmen, Nummer-Badge und Pfeile), der
-  Verzweigungspunkt selbst wird als Raute markiert. Pfeile mit echten
-  Pfeilspitzen verbinden die Karten. Screenshots werden direkt als Base64
-  eingebettet (kein separater Attachments-Ordner nötig) und im Kartenlayout
-  klein dargestellt, damit die Übersicht nicht ausufert — **einfach mit der
-  Maus über den Screenshot fahren**, um ihn sofort deutlich größer als
-  Vorschau angezeigt zu bekommen (kein Klick nötig). Für die volle
-  Original-Auflösung zusätzlich auf das kleine Link-Symbol klicken, das
-  draw.io beim Überfahren am Rand der Karte einblendet (öffnet in einem
-  neuen Tab). Öffnet in der
-  kostenlosen [draw.io-/diagrams.net-App](https://www.drawio.com/) (Desktop,
-  Web oder VS-Code-Extension) — kein Obsidian nötig, voll editierbar
-  (Karten frei verschiebbar, Farben/Text anpassbar). Eine `.drawio`-Datei
-  lässt sich außerdem über draw.io selbst nach Visio (`.vsdx`) exportieren,
-  falls das tatsächlich gebraucht wird.
-- **Excalidraw** *(experimentell)*: funktioniert wie Canvas (Knoten +
-  Abzweigungen als neue Spalte), aber im freien Skizzen-Look statt fester
-  Boxen — jeder Klick wird eine abgerundete Karte (Beschreibung +
-  eingebetteter Screenshot) in einer `.excalidraw`-Datei. Braucht
-  zusätzlich das kostenlose [Excalidraw-Community-Plugin](https://github.com/zsviczian/obsidian-excalidraw-plugin)
-  für Obsidian (anders als Canvas, das bereits eingebaut ist). Textbeschriftungen
-  nutzen bewusst Excalidraws eingebaute "Normal"-Schriftart statt der
-  Standard-Handschrift-Schrift "Virgil", für einen saubereren Look — eine
-  eigene Schriftdatei lässt sich in eine `.excalidraw`-Datei nicht sinnvoll
-  einbetten (das Rendering hängt vom Plugin lokal ab, nicht vom File).
+  nötig) — der einzige Modus, der Abzweigungen/Pfade unterstützt (siehe
+  [Abzweigungen im Canvas-Modus](#abzweigungen-im-canvas-modus)).
+  Screenshots werden als eigener Datei-Node (Canvas' natives
+  Embed-Format) statt als `![[wikilink]]` im Text abgelegt —
+  Drittanbieter-Exporttools für Canvas kennen diesen Node-Typ meist,
+  Obsidians Wikilink-Auflösung dagegen nicht, weshalb Bilder beim Export
+  in andere Formate sonst fehlten.
 
-Das Pfad-Feld in den Einstellungen passt sich dem gewählten Format an: bei
-Notiz/Canvas/Excalidraw heißt es "Obsidian-Vault" (Attachments-Unterordner
-nur bei Notiz/Canvas sichtbar, da draw.io/Excalidraw Bilder
-direkt einbetten); bei draw.io heißt es "Zielordner"
-und ist nicht an einen Obsidian-Vault gebunden — es kann jeder beliebige
-Ordner sein (z. B. ein SharePoint-Sync-Ordner).
+Aus einer bestehenden `.canvas`-Datei lässt sich jederzeit ein
+**draw.io-Flowchart** exportieren — über das Tray-Menü "Nach draw.io
+exportieren...", nicht als eigener Aufnahme-Modus (frühere Versionen
+schrieben draw.io live mit; das wurde durch diesen Ein-Schritt-Export
+ersetzt, da das Neuschreiben der kompletten XML-Datei bei jedem einzelnen
+Klick mit wachsender Sitzungslänge spürbar langsamer wurde). Der Export
+baut ein echtes Flussdiagramm: jeder Klick wird eine "Karte" (abgerundeter
+Rahmen mit Schatten, nummeriertes Badge, Beschriftung und Screenshot als
+eine zusammen verschiebbare Einheit), jeder Pfad bekommt eine eigene
+Akzentfarbe (Rahmen, Nummer-Badge und Pfeile), Abzweigungspunkte werden
+als Raute markiert, manuelle Querverbindungen als graue Linie. Screenshots
+werden direkt als Base64 eingebettet (kein separater Attachments-Ordner
+nötig) und im Kartenlayout klein dargestellt — **einfach mit der Maus über
+den Screenshot fahren**, um ihn sofort deutlich größer als Vorschau
+angezeigt zu bekommen (kein Klick nötig); für die volle
+Original-Auflösung zusätzlich auf das kleine Link-Symbol klicken, das
+draw.io beim Überfahren am Rand der Karte einblendet (öffnet in einem
+neuen Tab). Öffnet in der kostenlosen
+[draw.io-/diagrams.net-App](https://www.drawio.com/) (Desktop, Web oder
+VS-Code-Extension) — kein Obsidian nötig, voll editierbar (Karten frei
+verschiebbar, Farben/Text anpassbar), lässt sich von dort aus auch nach
+Visio (`.vsdx`) exportieren.
 
-Canvas, draw.io und Excalidraw unterstützen dieselbe
-Branch-Logik, nur mit unterschiedlicher Darstellung: alle drei legen
-Abzweigungen als neue Spalte rechts neben dem Hauptablauf an.
+### Abzweigungen im Canvas-Modus
 
-Abzweigungen werden benannt und über zwei globale Hotkeys gesteuert
-(Standard: `F9` / `F10`, änderbar in den Einstellungen):
+Ein Ablauf verzweigt sich in der Realität oft (z. B. Fehlerfall vs.
+Erfolgsfall) — im Canvas-Modus lässt sich das direkt abbilden:
 
-- **Branch setzen** (`F9`): fragt nach einem Namen (z. B. "Login-Fehler")
-  und legt dafür ein eigenes, sichtbares **"Branch: Login-Fehler"**-Objekt
-  an (Knoten in Canvas/draw.io/Excalidraw), verbunden mit dem
-  zuletzt erstellten Knoten — kein verstecktes Metadatenfeld,
-  sondern ein normales Element in der Datei. Der laufende Ablauf wird dabei
-  nicht unterbrochen, der nächste Klick hängt sich weiterhin ganz normal an
-  den zuletzt aufgezeichneten Punkt. Ein bereits vergebener Name bekommt
-  beim erneuten Setzen ein weiteres, aktuelleres Marker-Objekt (das neueste
-  gilt).
-- **Branch auswählen** (`F10`): öffnet eine Liste aller aktuell benannten
-  Branches — die Auswahl setzt den "Cursor" auf das Marker-Objekt zurück
-  (beliebig oft wiederholbar, auch nachdem bereits andere Klicks
-  dazwischen aufgezeichnet wurden). Der nächste Klick beginnt dann eine
-  neue Spalte (Canvas/draw.io/Excalidraw), verbunden mit dem gewählten
-  Branch statt mit dem zuletzt aufgezeichneten Klick.
+- **Abzweigungspunkt setzen** (Hotkey, Standard `F9`): fragt sofort nach
+  dem Namen des ersten Pfads (z. B. "Login-Fehler") und legt eine kleine,
+  sichtbare **"◆ Abzweigung"**-Raute an, verbunden mit dem zuletzt
+  aufgezeichneten Knoten, plus direkt den ersten benannten Pfad als eigene
+  Spalte — der nächste Klick knüpft dort an. Es gibt bewusst keine
+  unbenannte "einfach weiter"-Fortsetzung: jeder von einer Abzweigung
+  ausgehende Pfad ist von Anfang an ein echtes, benanntes, in der
+  Ablauf-Übersicht auswählbares Objekt.
+- **Weitere Pfade**: über die Ablauf-Übersicht (Rechtsklick auf die Raute
+  oder einen beliebigen anderen Knoten → "+ Neuer Pfad ab hier") lassen
+  sich jederzeit zusätzliche benannte Pfade abzweigen — nicht nur von
+  einer Abzweigungs-Raute aus, sondern von jedem beliebigen bereits
+  aufgezeichneten Knoten.
+- **Einen Pfad fortsetzen**: Rechtsklick auf den Ursprungsknoten in der
+  Ablauf-Übersicht zeigt alle davon abzweigenden Pfade zur Auswahl — die
+  Aufnahme knüpft dann genau dort an, wo dieser Pfad zuletzt endete, egal
+  wie viele andere Klicks zwischenzeitlich aufgezeichnet wurden.
 
-Da Branches als echte, sichtbare Objekte in der Datei stehen, übersteht die
-Liste der verfügbaren Branches auch ein Stoppen und erneutes Starten der
+Da Pfade und Abzweigungspunkte als echte, sichtbare Knoten in der Datei
+stehen, übersteht die Struktur auch ein Stoppen und erneutes Starten der
 Aufnahme (auf derselben Datei) — DocuClick liest sie beim nächsten Start
 einfach wieder aus der Datei ein, ohne dass ein separater Speicherzustand
 nötig wäre.
 
-Nach jeder Aktion zeigt DocuClick, wo man gerade steht: ein Balloon-Tip mit
-Branch-Namen und der Beschreibung des betroffenen Knotens, und der aktuelle
-Branch bleibt zusätzlich dauerhaft im Tray-Icon-Tooltip (Anzahl gesetzter
-Branches) und in der Top-Leiste sichtbar (z. B. "DocuClick – Aufnahme
-läuft · Branch: Login-Fehler").
-
 Änderungen an den Hotkeys gelten sofort nach "Speichern" in den
-Einstellungen (keine Neustart nötig).
+Einstellungen (kein Neustart nötig).
 
 ### Ablauf nachträglich fortsetzen (an einem bestimmten Punkt statt am Dateiende)
 
-Über das Tray-Menü "Ablauf fortsetzen ab Punkt..." (nur verfügbar im
-Canvas-, draw.io- oder Excalidraw-Modus, bei gestoppter Aufnahme) öffnet sich eine Liste
-aller bereits vorhandenen Knoten in der zuletzt bearbeiteten
-Datei. Die Auswahl legt fest, an welchem Punkt die *nächste*
-Aufnahme-Session ansetzt — neue Klicks werden dann als neue
-Spalte mit genau diesem Punkt verbunden statt an das Dateiende angehängt, unabhängig davon, wie
-lange die ursprüngliche Aufzeichnung schon zurückliegt. Der
-Session-Start-Dialog (siehe oben) wählt danach automatisch dieselbe Datei
-vor.
+Bei **gestoppter** Aufnahme im Canvas-Modus zeigt die Ablauf-Übersicht
+weiterhin die zuletzt bearbeitete Datei — ein Klick auf einen beliebigen
+Knoten dort markiert ihn als Ansatzpunkt für die *nächste* Aufnahme-Session
+(Balloon-Tip bestätigt die Auswahl). Neue Klicks werden dann als neue
+Spalte mit genau diesem Punkt verbunden statt an das Dateiende angehängt,
+unabhängig davon, wie lange die ursprüngliche Aufzeichnung schon
+zurückliegt. Der nächste Session-Start-Dialog wählt danach automatisch
+dieselbe Datei vor.
 
 ## Start/Stopp per Hotkey
 
@@ -318,7 +306,8 @@ Klick" (Standard: an) einen kurzen Ton:
 - normaler Klick aufgezeichnet → ein synthetischer Kamera-Klick (zwei
   kurze, schnell abklingende Impulse) statt eines Windows-Systemtons, damit
   es sich nach Bestätigung statt nach Fehlermeldung anhört
-- Klick übersprungen (Modifier-Taste gedrückt) → dezenter Windows-Systemton
+- Klick übersprungen (Modifier-Taste gedrückt oder Passwortfeld erkannt) →
+  dezenter Windows-Systemton
 - Fehler bei der Verarbeitung → Fehler-Systemton + Balloon-Tip am Tray-Icon
 
 ## Rechtsklick und Enter-Taste als weitere Trigger
@@ -339,7 +328,8 @@ gespeichert, es gibt keinen "Blindkreis".
 
 In den Einstellungen auf "Ändern" neben einem Hotkey klicken und die
 gewünschte Tastenkombination drücken (statt Text einzutippen) — Esc bricht
-die Aufnahme ab. Betrifft Start/Stop sowie die beiden Branch-Hotkeys.
+die Aufnahme ab. Betrifft Start/Stop, "Abzweigungspunkt setzen" und
+"Zoom-auf-Cursor umschalten".
 
 ## Klicks überspringen
 
@@ -347,6 +337,11 @@ In den Einstellungen lässt sich eine Modifier-Taste (Umschalt/Strg/Alt)
 festlegen: Ist sie bei einem Linksklick gedrückt, wird dieser Klick
 komplett ignoriert (kein Screenshot, kein Notiz-Eintrag). Nützlich, um
 z. B. sensible Inhalte gezielt aus der Aufzeichnung auszuschließen.
+Erkennt UI Automation den Klick dagegen selbst als Passwortfeld, wird er
+automatisch übersprungen, ganz ohne gedrückte Taste (siehe
+[Funktionsumfang](#funktionsumfang)) — deckt aber nur echte, bei UI
+Automation als solche registrierte Passwortfelder ab, keine
+selbstgebauten "versteckten" Eingabefelder.
 
 ## Fehlersuche
 
@@ -399,8 +394,8 @@ Neues Release erstellen (baut automatisch und hängt das Zip an ein neues
 GitHub Release):
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.10.0
+git push origin v1.10.0
 ```
 
 Offene Punkte: Feinschliff bei Multi-Monitor/DPI-Kantenfällen, robustere

@@ -18,11 +18,32 @@ public static class ScreenshotService
     public static CapturedWindow CaptureWindowAt(Point screenPoint)
     {
         var bounds = GetWindowBoundsAt(screenPoint) ?? ScreenAt(screenPoint).Bounds;
+        return CaptureRegion(bounds);
+    }
 
+    /// <summary>
+    /// Allocates the bitmap and copies the screen region into it, disposing
+    /// the bitmap (and its native GDI handle) again if anything after the
+    /// allocation throws — CopyFromScreen can fail on a transient GDI issue
+    /// (secure-desktop transition, display mode change mid-capture, ...),
+    /// and without this the already-allocated bitmap would otherwise leak on
+    /// every one of those failures instead of being cleaned up by the
+    /// caller, which never receives it in the first place.
+    /// </summary>
+    private static CapturedWindow CaptureRegion(Rectangle bounds)
+    {
         var bitmap = new Bitmap(bounds.Width, bounds.Height);
-        using var g = Graphics.FromImage(bitmap);
-        g.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size);
-        return new CapturedWindow(bitmap, bounds);
+        try
+        {
+            using var g = Graphics.FromImage(bitmap);
+            g.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size);
+            return new CapturedWindow(bitmap, bounds);
+        }
+        catch
+        {
+            bitmap.Dispose();
+            throw;
+        }
     }
 
     /// <summary>
@@ -39,10 +60,7 @@ public static class ScreenshotService
         var bounds = new Rectangle(screenPoint.X - radius, screenPoint.Y - radius, side, side);
         bounds.Intersect(screen.Bounds);
 
-        var bitmap = new Bitmap(bounds.Width, bounds.Height);
-        using var g = Graphics.FromImage(bitmap);
-        g.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size);
-        return new CapturedWindow(bitmap, bounds);
+        return CaptureRegion(bounds);
     }
 
     /// <summary>
@@ -52,11 +70,7 @@ public static class ScreenshotService
     public static CapturedWindow CaptureForegroundWindow()
     {
         var bounds = GetForegroundWindowBounds() ?? Screen.PrimaryScreen!.Bounds;
-
-        var bitmap = new Bitmap(bounds.Width, bounds.Height);
-        using var g = Graphics.FromImage(bitmap);
-        g.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size);
-        return new CapturedWindow(bitmap, bounds);
+        return CaptureRegion(bounds);
     }
 
     private static Rectangle? GetForegroundWindowBounds()

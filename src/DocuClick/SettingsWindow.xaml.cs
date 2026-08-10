@@ -248,11 +248,24 @@ public partial class SettingsWindow : Window
         _config.BranchMarkKey = _branchMarkKey;
         _config.ZoomToCursorModifiers = _zoomToCursorModifiers;
         _config.ZoomToCursorKey = _zoomToCursorKey;
-        _config.ZoomToCursorRadius = int.TryParse(ZoomToCursorRadiusBox.Text, out var zoomRadius) ? zoomRadius : _config.ZoomToCursorRadius;
+        // Clamped to the same range the TopBar's own zoom-radius slider
+        // enforces (see TopBarWindow's ZoomRadiusMin/Max) — this plain text
+        // box has no such built-in limit, and an out-of-range value (0,
+        // negative, ...) previously made every future capture fail with a
+        // repeating error until manually corrected here again.
+        _config.ZoomToCursorRadius = int.TryParse(ZoomToCursorRadiusBox.Text, out var zoomRadius)
+            ? Math.Clamp(zoomRadius, 50, 600)
+            : _config.ZoomToCursorRadius;
 
         _config.HighlightColorHex = _selectedHighlightColorHex;
-        _config.HighlightRadius = int.TryParse(HighlightRadiusBox.Text, out var radius) ? radius : _config.HighlightRadius;
-        _config.HighlightThickness = int.TryParse(HighlightThicknessBox.Text, out var thickness) ? thickness : _config.HighlightThickness;
+        // A non-positive radius/thickness makes GDI+'s ellipse/pen drawing
+        // throw, failing every subsequent capture the same way.
+        _config.HighlightRadius = int.TryParse(HighlightRadiusBox.Text, out var radius)
+            ? Math.Clamp(radius, 1, 500)
+            : _config.HighlightRadius;
+        _config.HighlightThickness = int.TryParse(HighlightThicknessBox.Text, out var thickness)
+            ? Math.Clamp(thickness, 1, 50)
+            : _config.HighlightThickness;
 
         ConfigService.Save(_config);
         SettingsSaved?.Invoke();

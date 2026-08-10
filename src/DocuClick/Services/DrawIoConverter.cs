@@ -79,138 +79,86 @@ public static class DrawIoConverter
             IsPathStart: n.Text?.StartsWith(CanvasFlowWriter.PathStartPrefix, StringComparison.Ordinal) ?? false)).ToList();
         var previewEdges = structuralEdges.Select(e => new PreviewEdge(e.FromNode, e.ToNode)).ToList();
         var tagged = FlowPreviewBranching.TagBranches(new FlowPreview(previewNodes, previewEdges));
-        var pathIdOf = tagged.Nodes.ToDictionary(n => n.Id, n => n.PathId);
 
-        var forward = structuralEdges.GroupBy(e => e.FromNode).ToDictionary(g => g.Key, g => g.Select(e => e.ToNode).ToList());
-        var hasInbound = structuralEdges.Select(e => e.ToNode).ToHashSet();
+        // Same (row, column) grid the Ablauf-Übersicht's minimap and
+        // CanvasFlowWriter's own relayout use — this converter used to have
+        // its own separate, simpler column-assignment pass (plain "next slot
+        // in a global sequence"), which was vulnerable to the exact same
+        // "two forks off the same node land on opposite sides of the
+        // diagram, with a connector line cutting straight through an
+        // unrelated branch" bug already found and fixed for the minimap/
+        // Canvas file — it just hadn't shown up here yet. Reusing the one
+        // shared, origin-anchored algorithm fixes that for the draw.io
+        // export too, instead of every consumer needing its own separately
+        // maintained (and separately buggy) copy.
+        var slotOf = FlowPreviewBranching.ComputeGridLayout(tagged);
+
+        var rowHeight = new Dictionary<int, double>();
+        foreach (var node in tagged.Nodes)
+        {
+            var (row, _) = slotOf[node.Id];
+            var height = node.IsDecisionPoint || node.IsPathStart ? MarkerHeight : CardHeightFor(node.Label);
+            rowHeight[row] = Math.Max(rowHeight.GetValueOrDefault(row), height);
+        }
+
+        var rowY = new Dictionary<int, double>();
+        var y = 0.0;
+        foreach (var row in rowHeight.Keys.OrderBy(r => r))
+        {
+            rowY[row] = y;
+            y += rowHeight[row] + SequentialSpacing;
+        }
 
         var idMap = new Dictionary<string, string>(); // canvas node id -> new drawio cell id
         var stepCounter = 0;
 
-        // Column key: pathId for anything TagBranches actually tagged, or —
-        // since a node can retroactively gain a *second*, never-named
-        // fork-start sibling from an ordinary node that already had a plain
-        // continuation ("+ Neuer Pfad ab hier" on a non-decision-point
-        // card) — that plain continuation's own id when it wasn't tagged
-        // either. Only the very first such untagged walk (the true main
-        // flow) reuses column 0; every other one still needs its own fresh
-        // column, or it would silently overlap the main flow's own cards.
-        var columnXOf = new Dictionary<string, double>();
-        string? mainColumnKey = null;
-        var nextColumnX = CardWidth + BranchColumnSpacing;
-
-        // Each path (main flow included) is, by construction, a simple
-        // chain of structural edges up to wherever the next branch point
-        // hands off to its own forked children — so a plain "follow the one
-        // outgoing structural edge" walk, one path at a time, reproduces
-        // recording order without needing a general topological sort. Walks
-        // are queued with the drawio cell id of whatever node spawned them
-        // (null only for the file's true root(s)), so the connecting edge
-        // into each freshly spawned path still gets drawn.
-        var roots = tagged.Nodes.Where(n => !hasInbound.Contains(n.Id)).OrderBy(n => n.Y).ThenBy(n => n.X).Select(n => n.Id).ToList();
-        var queue = new Queue<(string NodeId, string? ParentCellId)>(roots.Select(r => (r, (string?)null)));
-        var visited = new HashSet<string>();
-
-        while (queue.Count > 0)
+        // Every node's position is already fully determined by its own
+        // (row, column) — no walk/queue bookkeeping needed to place cells
+        // anymore, just one pass over every node.
+        foreach (var node in tagged.Nodes)
         {
-            var (startId, parentCellId) = queue.Dequeue();
-            if (!visited.Add(startId))
+            var (row, column) = slotOf[node.Id];
+            var x = column * (CardWidth + BranchColumnSpacing);
+            var cellY = rowY[row];
+            var canvasNode = textNodes[node.Id];
+            var accent = AccentFor(column);
+
+            string cellId;
+            if (node.IsDecisionPoint)
             {
-                continue;
+                cellId = BuildDecisionMarker(root, x, cellY, canvasNode.Text!);
+            }
+            else if (node.IsPathStart)
+            {
+                cellId = BuildPathStartMarker(root, x, cellY, canvasNode.Text!, accent);
+            }
+            else
+            {
+                var screenshotPath = FindScreenshotPath(canvas, canvasNode, vaultPath);
+                using var screenshot = screenshotPath is not null && File.Exists(screenshotPath)
+                    ? new Bitmap(screenshotPath)
+                    : new Bitmap(1, 1); // missing/moved attachment — still export the card, just without a real image
+                cellId = BuildCard(root, x, cellY, ++stepCounter, canvasNode.Text ?? "", screenshot, accent);
             }
 
-            var pathId = pathIdOf.GetValueOrDefault(startId);
-            var columnKey = pathId ?? startId;
-            if (pathId is null)
-            {
-                mainColumnKey ??= columnKey;
-            }
-            var isMainColumn = pathId is null && columnKey == mainColumnKey;
-
-            double columnX;
-            if (isMainColumn)
-            {
-                columnX = 0;
-            }
-            else if (!columnXOf.TryGetValue(columnKey, out columnX))
-            {
-                columnX = nextColumnX;
-                nextColumnX += CardWidth + BranchColumnSpacing;
-                columnXOf[columnKey] = columnX;
-            }
-
-            var accent = isMainColumn ? MainColor : BranchColors[Math.Abs(columnKey.GetHashCode()) % BranchColors.Length];
-
-            var currentId = startId;
-            var y = 0.0;
-            var previousCellId = parentCellId;
-
-            while (true)
-            {
-                var canvasNode = textNodes[currentId];
-                var isDecisionPoint = canvasNode.Text == CanvasFlowWriter.DecisionPointLabel;
-                string cellId;
-                double height;
-
-                if (isDecisionPoint)
-                {
-                    cellId = BuildDecisionMarker(root, columnX, y, canvasNode.Text!);
-                    height = MarkerHeight;
-                }
-                else if (canvasNode.Text?.StartsWith(CanvasFlowWriter.PathStartPrefix, StringComparison.Ordinal) == true)
-                {
-                    cellId = BuildPathStartMarker(root, columnX, y, canvasNode.Text, accent);
-                    height = MarkerHeight;
-                }
-                else
-                {
-                    var screenshotPath = FindScreenshotPath(canvas, canvasNode, vaultPath);
-                    using var screenshot = screenshotPath is not null && File.Exists(screenshotPath)
-                        ? new Bitmap(screenshotPath)
-                        : new Bitmap(1, 1); // missing/moved attachment — still export the card, just without a real image
-                    (cellId, height) = BuildCard(root, columnX, y, ++stepCounter, canvasNode.Text ?? "", screenshot, accent);
-                }
-
-                idMap[currentId] = cellId;
-                if (previousCellId is not null)
-                {
-                    // Gray into a decision point (matches MarkDecisionPoint
-                    // live); the walk's own path color everywhere else,
-                    // including a decision point's own outgoing edges to
-                    // each forked path (matches StartNewPath live — the
-                    // *new* path's color, not the decision point's gray).
-                    AddEdge(root, previousCellId, cellId, isDecisionPoint ? DecisionPointColor : accent);
-                }
-
-                y += height + SequentialSpacing;
-                previousCellId = cellId;
-
-                if (!forward.TryGetValue(currentId, out var children) || children.Count == 0)
-                {
-                    break;
-                }
-
-                // More than one structural child: each is the start of its
-                // own separate path (a decision point's forks, or a second
-                // fork retroactively added onto an ordinary node) — queue
-                // them as new walks instead of continuing this one.
-                if (children.Count > 1 || isDecisionPoint)
-                {
-                    foreach (var child in children)
-                    {
-                        queue.Enqueue((child, cellId));
-                    }
-                    break;
-                }
-
-                currentId = children[0];
-            }
+            idMap[node.Id] = cellId;
         }
 
-        // Manual cross-connects last, once every card/marker this walk
-        // could reach has a cell — same neutral gray IFlowWriter.ConnectNodes
-        // already uses live, to visually read as "not part of the recorded
-        // sequence" the same way.
+        // Gray into a decision point (matches MarkDecisionPoint live); the
+        // target's own path color everywhere else, including a decision
+        // point's own outgoing edges to each forked path (matches
+        // StartNewPath live — the *new* path's color, not the decision
+        // point's gray).
+        foreach (var edge in structuralEdges)
+        {
+            var targetIsDecisionPoint = textNodes[edge.ToNode].Text == CanvasFlowWriter.DecisionPointLabel;
+            var (_, targetColumn) = slotOf[edge.ToNode];
+            AddEdge(root, idMap[edge.FromNode], idMap[edge.ToNode], targetIsDecisionPoint ? DecisionPointColor : AccentFor(targetColumn));
+        }
+
+        // Manual cross-connects last, once every card/marker has a cell —
+        // same neutral gray IFlowWriter.ConnectNodes already uses live, to
+        // visually read as "not part of the recorded sequence" the same way.
         foreach (var edge in manualEdges)
         {
             if (idMap.TryGetValue(edge.FromNode, out var fromCellId) && idMap.TryGetValue(edge.ToNode, out var toCellId))
@@ -221,6 +169,17 @@ public static class DrawIoConverter
 
         Save(doc, drawioFilePath);
     }
+
+    private static string AccentFor(int column) =>
+        column == 0 ? MainColor : BranchColors[StableColumnHash(column) % BranchColors.Length];
+
+    /// <summary>
+    /// Spreads column values (small integers, positive and negative) across
+    /// the palette — column and -column would otherwise collide under a raw
+    /// Math.Abs(value) reduction, giving two clearly different branches the
+    /// same accent color.
+    /// </summary>
+    private static int StableColumnHash(int column) => unchecked((int)((uint)column * 2654435761u) & 0x7FFFFFFF);
 
     private static string? FindScreenshotPath(CanvasDocument canvas, CanvasNode textNode, string vaultPath)
     {
@@ -267,12 +226,21 @@ public static class DrawIoConverter
         return id;
     }
 
+    /// <summary>Header strip height for a card's description text — split out so the row-height precompute in Convert() and BuildCard's own layout always agree on the same number.</summary>
+    private static double HeaderHeightFor(string description)
+    {
+        var lines = Math.Max(1, Math.Ceiling(description.Length / CharsPerLine));
+        return Math.Max(MinHeaderHeight, 16 + lines * LineHeight);
+    }
+
+    private static double CardHeightFor(string description) =>
+        HeaderHeightFor(description) + CardMargin + ImageAreaHeight + CardMargin;
+
     /// <summary>Builds one card — same shape as the live draw.io writer used to (rounded container + numbered badge + caption + embedded screenshot).</summary>
-    private static (string CellId, double Height) BuildCard(XElement root, double x, double y, int stepNumber, string description, Bitmap screenshot, string accent)
+    private static string BuildCard(XElement root, double x, double y, int stepNumber, string description, Bitmap screenshot, string accent)
     {
         var cardId = "card_" + Guid.NewGuid().ToString("N");
-        var lines = Math.Max(1, Math.Ceiling(description.Length / CharsPerLine));
-        var headerHeight = Math.Max(MinHeaderHeight, 16 + lines * LineHeight);
+        var headerHeight = HeaderHeightFor(description);
         var cardHeight = headerHeight + CardMargin + ImageAreaHeight + CardMargin;
 
         root.Add(new XElement("mxCell",
@@ -341,7 +309,7 @@ public static class DrawIoConverter
             new XAttribute("tooltip", tooltipHtml),
             imageMxCell));
 
-        return (cardId, cardHeight);
+        return cardId;
     }
 
     private static void AddEdge(XElement root, string sourceId, string targetId, string accent, bool manual = false)

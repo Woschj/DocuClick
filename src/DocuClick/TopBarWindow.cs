@@ -48,7 +48,7 @@ public sealed class TopBarWindow : Window
     /// closed it via its own header ✕. Replaced the old dedicated
     /// "Abzweigung"-button here: marking a decision point moved into the
     /// panel's own toolbar (reachable right where the rest of the editing
-    /// — rename/delete/reparent/connect — already lives), so this bar only
+    /// — rename/delete/connect — already lives), so this bar only
     /// needed a way back in, not a duplicate control for the same action.
     /// </summary>
     public event Action? ShowFlowPreviewRequested;

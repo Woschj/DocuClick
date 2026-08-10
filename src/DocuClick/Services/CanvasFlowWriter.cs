@@ -100,8 +100,6 @@ public sealed class CanvasFlowWriter : IFlowWriter
     /// </summary>
     public void SetResumeAnchor(ResumableNode node) => _pendingResumeAnchor = (node.Id, node.X, node.Y);
 
-    public void ClearResumeAnchor() => _pendingResumeAnchor = null;
-
     public void StartSession(string canvasFileName)
     {
         if (string.IsNullOrWhiteSpace(_config.VaultPath))
@@ -620,63 +618,6 @@ public sealed class CanvasFlowWriter : IFlowWriter
                 _cursorNodeId = null;
             }
         }
-
-        Save();
-        return new BranchActionResult(true);
-    }
-
-    /// <summary>Only ordinary content nodes qualify, on both ends — see <see cref="IFlowWriter.ReparentNode"/>.</summary>
-    public BranchActionResult ReparentNode(string nodeId, string newParentId)
-    {
-        if (nodeId == newParentId)
-        {
-            return new BranchActionResult(false);
-        }
-
-        var node = _doc.Nodes.FirstOrDefault(n => n.Id == nodeId && n.Type == "text");
-        var newParent = _doc.Nodes.FirstOrDefault(n => n.Id == newParentId && n.Type == "text");
-        if (node is null || newParent is null
-            || IsDecisionPointNode(node) || IsPathStartNode(node)
-            || IsDecisionPointNode(newParent) || IsPathStartNode(newParent))
-        {
-            return new BranchActionResult(false);
-        }
-
-        // Cycle guard: newParentId must not be a *structural* descendant of
-        // nodeId — a manual cross-connect elsewhere must never make an
-        // otherwise-valid reparent look like it would close a cycle (same
-        // reasoning as ConnectNodes' own cycle guard below).
-        var descendants = new HashSet<string>();
-        var descendantQueue = new Queue<string>(_doc.Edges.Where(e => e.FromNode == nodeId && !e.Manual).Select(e => e.ToNode));
-        while (descendantQueue.Count > 0)
-        {
-            var id = descendantQueue.Dequeue();
-            if (!descendants.Add(id))
-            {
-                continue;
-            }
-
-            foreach (var e in _doc.Edges.Where(e => e.FromNode == id && !e.Manual))
-            {
-                descendantQueue.Enqueue(e.ToNode);
-            }
-        }
-
-        if (descendants.Contains(newParentId))
-        {
-            return new BranchActionResult(false);
-        }
-
-        // Structural parent only — a manual incoming edge (if nodeId
-        // happens to also have one) is an independent reference and must
-        // survive nodeId moving to a new structural parent untouched.
-        var oldParentEdge = _doc.Edges.FirstOrDefault(e => e.ToNode == nodeId && !e.Manual);
-        if (oldParentEdge is not null)
-        {
-            _doc.Edges.Remove(oldParentEdge);
-        }
-
-        _doc.Edges.Add(new CanvasEdge { Id = Guid.NewGuid().ToString("N"), FromNode = newParentId, ToNode = nodeId });
 
         Save();
         return new BranchActionResult(true);

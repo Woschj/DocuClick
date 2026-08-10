@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.IO;
+using System.Text;
 
 namespace DocuClick.Services;
 
@@ -34,7 +35,35 @@ public sealed class ObsidianWriter
         // plain CommonMark viewers.
         var relativeImagePath = Path.GetRelativePath(noteDirectory, imagePath).Replace('\\', '/');
         var imageFileName = Path.GetFileName(imageRelativeToAttachments);
-        var entry = $"{description}{Environment.NewLine}![{imageFileName}]({relativeImagePath}){Environment.NewLine}{Environment.NewLine}";
+        var entry = $"{EscapeMarkdown(description)}{Environment.NewLine}![{imageFileName}]({relativeImagePath}){Environment.NewLine}{Environment.NewLine}";
         File.AppendAllText(notePath, entry);
+    }
+
+    /// <summary>
+    /// Neutralizes characters with block-level meaning in Markdown (heading,
+    /// list, blockquote, code fence, table, strikethrough) wherever they
+    /// start a line, plus any literal backslash (so the escaping itself
+    /// can't be subverted by one already present). <paramref name="text"/>
+    /// is a click description built from an arbitrary clicked window/
+    /// element's title — content DocuClick has no control over — so it must
+    /// never be able to restructure the note it's written into (e.g. a
+    /// window titled "# Fake Heading" silently becoming a real heading).
+    /// </summary>
+    private static string EscapeMarkdown(string text)
+    {
+        var sb = new StringBuilder(text.Length);
+        var atLineStart = true;
+        foreach (var c in text)
+        {
+            if (c == '\\' || (atLineStart && c is '#' or '-' or '*' or '+' or '>' or '`' or '|' or '~'))
+            {
+                sb.Append('\\');
+            }
+
+            sb.Append(c);
+            atLineStart = c == '\n';
+        }
+
+        return sb.ToString();
     }
 }

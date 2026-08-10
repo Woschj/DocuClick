@@ -376,32 +376,19 @@ public interface IFlowWriter
     BranchActionResult DeleteNode(string nodeId);
 
     /// <summary>
-    /// Re-parents a node: moves its single incoming edge from its current
-    /// parent to <paramref name="newParentId"/>, for the Ablauf-Übersicht's
-    /// drag-to-rewire. Only ordinary content nodes qualify, on both ends —
-    /// a decision point's/path-start's role as a branch hub or a path's own
-    /// identity would break if either could be dragged or dropped onto.
-    /// Refuses (returns failure) if <paramref name="newParentId"/> is
-    /// <paramref name="nodeId"/> itself or one of its own descendants, which
-    /// would create a cycle.
-    /// </summary>
-    BranchActionResult ReparentNode(string nodeId, string newParentId);
-
-    /// <summary>
     /// Manually connects two existing nodes with a new edge — for the
-    /// Ablauf-Übersicht's "Verbinden" toolbar gesture, when the recorded
-    /// flow itself doesn't already capture some real transition (e.g. a
-    /// step that loops back to an earlier one). Additive, unlike
-    /// <see cref="ReparentNode"/>: no existing edge is removed, so
-    /// <paramref name="toNodeId"/> can end up with more than one incoming
-    /// edge — a genuine merge point, not a bug (the Ablauf-Übersicht's
-    /// row/column layout just picks whichever parent it reaches <paramref name="toNodeId"/>
-    /// from first). Only ordinary content nodes qualify, on both ends —
-    /// same reasoning as <see cref="ReparentNode"/>: a decision point's/
-    /// path-start's role as a branch hub or a path's own identity would
-    /// break if either could be connected into or out of arbitrarily.
-    /// Refuses (returns failure) if <paramref name="toNodeId"/> can already
-    /// reach <paramref name="fromNodeId"/>, which would create a cycle.
+    /// Ablauf-Übersicht's drag-to-connect gesture, when the recorded flow
+    /// itself doesn't already capture some real transition (e.g. a step
+    /// that loops back to an earlier one). Additive: no existing edge is
+    /// removed, so <paramref name="toNodeId"/> can end up with more than one
+    /// incoming edge — a genuine merge point, not a bug (the Ablauf-
+    /// Übersicht's row/column layout just picks whichever parent it reaches
+    /// <paramref name="toNodeId"/> from first). Only ordinary content nodes
+    /// qualify, on both ends — a decision point's/path-start's role as a
+    /// branch hub or a path's own identity would break if either could be
+    /// connected into or out of arbitrarily. Refuses (returns failure) if
+    /// <paramref name="toNodeId"/> can already reach <paramref name="fromNodeId"/>,
+    /// which would create a cycle.
     /// </summary>
     BranchActionResult ConnectNodes(string fromNodeId, string toNodeId);
 
@@ -409,9 +396,9 @@ public interface IFlowWriter
     /// Removes an existing edge between two ordinary content nodes — the
     /// undo counterpart to <see cref="ConnectNodes"/>, for the Ablauf-
     /// Übersicht's right-click-an-edge gesture. Same marker restriction as
-    /// <see cref="ConnectNodes"/>/<see cref="ReparentNode"/>: a decision
-    /// point's/path-start's structural edges (into it, or its own fork out
-    /// of a decision point) can't be removed this way, since that would
+    /// <see cref="ConnectNodes"/>: a decision point's/path-start's
+    /// structural edges (into it, or its own fork out of a decision point)
+    /// can't be removed this way, since that would
     /// silently detach a whole path from <see cref="ListPaths"/> while
     /// leaving its nodes behind, unreachable but not deleted — a confusing
     /// half-state. Deliberately does *not* refuse just because a node would

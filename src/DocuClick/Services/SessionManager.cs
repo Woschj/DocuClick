@@ -481,37 +481,6 @@ public sealed class SessionManager : IDisposable
         }
     }
 
-    /// <summary>Ablauf-Übersicht: drag-to-rewire — moves a node's incoming edge to a different parent. Not gated on <see cref="_isRunning"/> — see <see cref="RenameNode"/>.</summary>
-    public void ReparentNode(string nodeId, string newParentId)
-    {
-        if (ActiveFlowWriter is not { } writer)
-        {
-            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Bearbeitung.");
-            return;
-        }
-
-        var (result, snapshot) = RunOnWriterQueue(() =>
-        {
-            var actionResult = writer.ReparentNode(nodeId, newParentId);
-            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
-            return (actionResult, statusSnapshot);
-        });
-
-        if (result.Success)
-        {
-            if (_isRunning)
-            {
-                CanvasStatusChanged?.Invoke(snapshot.StatusText);
-            }
-
-            FlowPreviewChanged?.Invoke(snapshot.Preview);
-        }
-        else
-        {
-            InfoOccurred?.Invoke("Verschieben nicht möglich (ungültiges Ziel oder würde einen Kreis erzeugen).");
-        }
-    }
-
     /// <summary>Ablauf-Übersicht: manually connects two nodes with a new edge (the "Verbinden" toolbar gesture). Not gated on <see cref="_isRunning"/> — see <see cref="RenameNode"/>.</summary>
     public void ConnectNodes(string fromNodeId, string toNodeId)
     {
@@ -660,6 +629,8 @@ public sealed class SessionManager : IDisposable
     private void ProcessClick(Point point, DateTime timestamp, string targetFileName, bool isRightClick)
     {
         var element = _config.UseUiAutomation ? UiAutomationService.GetElementAt(point) : null;
+        if (SkipForPasswordField(element, point)) return;
+
         var fallbackWindowTitle = element?.WindowTitle ?? ForegroundWindowService.GetTitle();
         var action = isRightClick ? InputAction.RightClick : InputAction.Click;
         var description = DescriptionGenerator.Describe(element, fallbackWindowTitle, timestamp, action);
@@ -674,12 +645,38 @@ public sealed class SessionManager : IDisposable
     private void ProcessEnterPress(DateTime timestamp, string targetFileName)
     {
         var element = _config.UseUiAutomation ? UiAutomationService.GetFocusedElement() : null;
+        if (SkipForPasswordField(element, null)) return;
+
         var fallbackWindowTitle = element?.WindowTitle ?? ForegroundWindowService.GetTitle();
         var description = DescriptionGenerator.Describe(element, fallbackWindowTitle, timestamp, InputAction.EnterKey);
 
         // No click point exists for a key press; the highlight (if any)
         // comes purely from the focused element's bounding rect.
         FinalizeCapture(description, timestamp, ScreenshotService.CaptureForegroundWindow, element, null, targetFileName);
+    }
+
+    /// <summary>
+    /// The one kind of sensitive content this app can actually detect on
+    /// its own (see ElementInfo.IsPassword) — skips the capture entirely,
+    /// the same as the manual SkipRecordingModifier, instead of
+    /// screenshotting/describing whatever's on screen at a password field.
+    /// </summary>
+    private bool SkipForPasswordField(ElementInfo? element, Point? point)
+    {
+        if (element?.IsPassword != true)
+        {
+            return false;
+        }
+
+        LogService.Log(point is { } p
+            ? $"Klick bei ({p.X}, {p.Y}) übersprungen (Passwortfeld erkannt)."
+            : "Enter-Erfassung übersprungen (Passwortfeld erkannt).");
+        if (_config.EnableClickSound)
+        {
+            ClickFeedbackService.PlaySkipped();
+        }
+
+        return true;
     }
 
     private void FinalizeCapture(
