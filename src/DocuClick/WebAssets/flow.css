@@ -24,6 +24,60 @@ body {
   width: 100%;
 }
 
+/* Real <img> elements tracking each image node's on-screen box, NOT
+   Cytoscape's own background-image (see flow.js's render()) — Cytoscape
+   loads that via fetch() internally, and this page (served from the
+   docuclick.flowpreview virtual host) fetching a screenshot from the
+   *separate* docuclick.vault virtual host is a cross-origin request with
+   no CORS headers on the static file mapping, so Chromium silently
+   refuses it — confirmed via a real run showing only the flat node color,
+   never the screenshot. A plain <img src> has no such restriction. */
+#image-overlays {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.hud-node-image {
+  position: absolute;
+  object-fit: cover;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+#node-handles {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1001;
+}
+
+.hud-node-handle {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin: -8px;
+  border-radius: 50%;
+  background: #22C55E;
+  border: 2px solid #ffffff;
+  cursor: crosshair;
+  pointer-events: auto;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.hud-node-handle.visible {
+  opacity: 1;
+}
+
+.hud-node-handle:hover {
+  background: #16A34A;
+}
+
 /* Drag-to-connect gesture: a plain line from the fixed source node to the
    cursor, drawn over #cy — never actually moves the node underneath. */
 .hud-connect-line {
@@ -81,6 +135,20 @@ body {
 .hud-tooltip {
   padding: 4px 7px;
   white-space: nowrap;
+}
+
+/* Larger screenshot preview shown alongside the tooltip on hover — the
+   in-node thumbnail (see flow.js's node[imageUrl] style) is only ever a few
+   dozen pixels across, nowhere near enough to actually read what's in it. */
+.hud-image-preview {
+  position: absolute;
+  z-index: 1000;
+  max-width: 360px;
+  max-height: 270px;
+  border: 1px solid rgba(255, 255, 255, 0.31);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
 }
 
 .hud-menu {

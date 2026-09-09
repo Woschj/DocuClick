@@ -39,11 +39,16 @@ VaultTemplate/
 ├── 01 Prozesse/                 fertig einsortierte Prozessdokumentation
 ├── 02 Vorlagen/
 │   ├── Prozess-Notiz-Vorlage.md
-│   └── Leere-Canvas-Vorlage.canvas
+│   └── Leere-Ablauf-Vorlage.html
 ├── 03 MOCs/                     Übersichtsseiten (Map of Content)
 ├── 99 Archiv/                   abgelöste/alte Prozesse
-└── Attachments/                 Screenshots (Notiz-/Canvas-Modus)
+└── Attachments/                 Screenshots (Notiz-/Ablauf-Modus)
 ```
+
+`Leere-Ablauf-Vorlage.html` sieht vor dem ersten Klick noch wie eine
+leere/rohe Textdatei aus, wenn man sie direkt öffnet — DocuClick schreibt
+sie beim ersten aufgezeichneten Klick automatisch zur vollständigen,
+interaktiven Ablauf-Seite um (siehe [Workflow unten](#workflow-vorlage-nutzen-und-docuclick-daran-fortsetzen-lassen)).
 
 ## Workflow: Zielordner beim Aufnahme-Start wählen
 
@@ -62,5 +67,5 @@ noch nicht einsortierte Aufnahmen.
    **"Bestehende Datei fortsetzen"** wählen → die vorbereitete Datei
    auswählen (Liste zeigt auch den Unterordner mit an).
 3. Jeder Klick wird automatisch an die vorbereitete Datei angehängt
-   (Notiz) bzw. dort verankert (Canvas) — die von Hand eingetragenen
+   (Notiz) bzw. dort verankert (Ablauf) — die von Hand eingetragenen
    Metadaten am Dateianfang bleiben erhalten.

@@ -9,10 +9,15 @@ namespace DocuClick.Services;
 /// forward from whichever <see cref="IsPathStart"/> node reaches a given
 /// node first — not by the individual writers.
 /// </summary>
+/// <param name="ImagePath">
+/// Vault-relative path to this node's screenshot (forward slashes), or null
+/// for a marker node — lets the Ablauf-Übersicht and the HTML export
+/// actually show the captured image, not just a label.
+/// </param>
 public sealed record PreviewNode(
     string Id, string Label, double X, double Y, double Width, double Height,
     bool IsCurrent, bool IsDecisionPoint, bool IsPathStart,
-    string? PathId = null, string? PathName = null);
+    string? PathId = null, string? PathName = null, string? ImagePath = null);
 
 /// <summary>One connector line between two nodes, for the tree-preview overlay.</summary>
 public sealed record PreviewEdge(string FromId, string ToId, bool Manual = false);
@@ -279,6 +284,18 @@ public static class FlowPreviewBranching
 
         return result;
     }
+
+    /// <summary>
+    /// Spreads column values (small integers, positive and negative) across
+    /// a fixed-size accent-color palette — a raw Math.Abs(column) reduction
+    /// would collide column and -column onto the same palette slot, giving
+    /// two clearly different branches the same accent color. Shared by
+    /// every renderer that colors a node/edge by its column (the live
+    /// Ablauf-Übersicht viewer, <c>DrawIoConverter</c>,
+    /// <c>HtmlFlowExporter</c>) instead of three separately-maintained
+    /// copies of the same one-line hash.
+    /// </summary>
+    public static int StableColumnHash(int column) => unchecked((int)((uint)column * 2654435761u) & 0x7FFFFFFF);
 }
 
 /// <summary>Result of a branch-related action, for user-facing feedback.</summary>
@@ -409,4 +426,19 @@ public interface IFlowWriter
     /// Refuses (returns failure) if no such edge exists.
     /// </summary>
     BranchActionResult DisconnectNodes(string fromNodeId, string toNodeId);
+
+    /// <summary>
+    /// Moves a node (and its screenshot/group siblings, kept aligned by the
+    /// same fixed relative-position match every other sibling lookup here
+    /// uses) to an explicit new position — the Ablauf-Übersicht's drag-to-
+    /// move gesture. Unlike every other mutating action on this interface,
+    /// this deliberately does *not* re-run the auto-layout: the whole point
+    /// is letting the user override the computed grid arrangement, and
+    /// snapping it straight back would defeat the drag that just happened.
+    /// That also means it's not a *permanent* override — there's no
+    /// "pinned position" concept in the file format, so the next action
+    /// that does re-run the auto-layout (a new click, Connect/Disconnect, a
+    /// new decision point/path) discards it again.
+    /// </summary>
+    BranchActionResult MoveNode(string nodeId, double x, double y);
 }

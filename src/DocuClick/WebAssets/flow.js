@@ -65,7 +65,7 @@
           height: "data(height)",
           "border-color": "#ffffff",
           "border-width": "data(borderWidth)",
-          label: "data(permLabel)",
+          label: "data(displayLabel)",
           color: "#ffffff",
           "font-size": 10,
           "font-weight": "bold",
@@ -76,6 +76,23 @@
           "text-background-opacity": 1,
           "text-background-padding": 3,
           "text-wrap": "none",
+        },
+      },
+      {
+        // Large mode (see FlowPreviewOverlay.SetLargeMode) shows the card's
+        // actual description instead of compact mode's short marker-only
+        // tag — same idea as the exported/live HTML's own always-visible
+        // label, sized and wrapped to fit instead of compact mode's
+        // single-line marker tag.
+        selector: "node[?large]",
+        style: {
+          "font-size": 12,
+          "text-halign": "center",
+          "text-valign": "top",
+          "text-margin-x": 0,
+          "text-margin-y": -8,
+          "text-wrap": "wrap",
+          "text-max-width": "data(width)",
         },
       },
       {
@@ -128,6 +145,7 @@
   function render(preview) {
     const nodes = preview.nodes || [];
     const edges = preview.edges || [];
+    const large = !!preview.large;
 
     emptyHint.hidden = nodes.length > 0;
     if (nodes.length === 0) {
@@ -143,6 +161,8 @@
           id: n.id,
           label: n.label,
           permLabel: n.permLabel || "",
+          displayLabel: n.displayLabel || "",
+          large: large || undefined, // undefined (not false), so the node[?large] selector correctly doesn't match in compact mode
           color: n.color,
           shape: n.isMarker ? "ellipse" : "round-rectangle",
           width: n.width,
@@ -154,6 +174,7 @@
           isPathStart: n.isPathStart,
           isCurrent: n.isCurrent,
           tooltip: n.pathName ? `${n.label} · Pfad: ${n.pathName}` : n.label,
+          imageUrl: n.imageUrl || undefined, // undefined (not null), so [imageUrl] selectors above correctly don't match a marker
         },
         position: { x: n.x, y: n.y },
         // Never grabbable — nodes stay fixed in their schematic slot even
@@ -171,6 +192,8 @@
     cy.add(elements);
     cy.layout({ name: "preset", fit: !hasFitted }).run();
     hasFitted = true;
+    rebuildImageOverlays();
+    rebuildConnectHandles();
 
     // Keep the current (just-added) node in view after every redraw, same
     // as the old ScrollViewer.BringIntoView()-on-current-node behavior —
@@ -188,19 +211,157 @@
     return box.x1 >= 0 && box.y1 >= 0 && box.x2 <= w && box.y2 <= h;
   }
 
+  // ---- Screenshot thumbnails: real <img> overlays -----------------------
+  // Rebuilt wholesale on every render() (which itself replaces every
+  // Cytoscape element wholesale already, see cy.elements().remove() above)
+  // rather than diffed — sessions here are small enough that this is cheap,
+  // and it avoids tracking which nodes are "the same" across two preview
+  // pushes when ids can and do change (e.g. after a delete's stitch repair).
+  const imageOverlayContainer = document.getElementById("image-overlays");
+  let imageOverlays = new Map();
+
+  function rebuildImageOverlays() {
+    imageOverlayContainer.innerHTML = "";
+    imageOverlays = new Map();
+    cy.nodes("[imageUrl]").forEach((node) => {
+      const img = document.createElement("img");
+      img.className = "hud-node-image";
+      img.alt = "";
+      // Reported to the host and logged to DocuClick's own log file — this
+      // HUD has no real DevTools access in practice, so this is the only
+      // way to actually see which URL failed and why.
+      img.onerror = () => sendToHost({ type: "imageLoadError", url: img.src });
+      img.src = node.data("imageUrl");
+      imageOverlayContainer.appendChild(img);
+      imageOverlays.set(node.id(), img);
+    });
+    updateImageOverlays();
+  }
+
+  function updateImageOverlays() {
+    imageOverlays.forEach((img, id) => {
+      const node = cy.getElementById(id);
+      if (node.empty()) {
+        return;
+      }
+      // includeLabels: false — text-valign:"top" draws the label *above*
+      // (external to) the node, so the default bounding box is taller than
+      // the card and would let the image cover the label and bleed into
+      // whatever sits above it (the exact bug already found and fixed once
+      // for the exported/live HTML's own version of this same overlay).
+      const box = node.renderedBoundingBox({ includeLabels: false });
+      img.style.left = `${box.x1}px`;
+      img.style.top = `${box.y1}px`;
+      img.style.width = `${box.x2 - box.x1}px`;
+      img.style.height = `${box.y2 - box.y1}px`;
+    });
+  }
+  cy.on("pan zoom position", updateImageOverlays);
+
+  // ---- Connection handles (large/editing mode only) ----------------------
+  // A small dot on each of the 4 sides of every connectable card, dragged
+  // to another card to connect them — replaces compact mode's plain-drag-
+  // to-connect gesture in large mode now that plain drag moves the card
+  // instead (see the mousedown handler above). Hidden until the cursor is
+  // actually near their card (a permanent ring of dots around every single
+  // card read as visual clutter) — tracked by cursor proximity rather than
+  // Cytoscape's own node mouseover/mouseout, which only hit-tests the
+  // card's own shape and would hide a handle the instant the cursor
+  // reaches it (half of every handle sits *outside* its card by design, so
+  // it's reachable at all).
+  const handlesContainer = document.getElementById("node-handles");
+  let handlesByNode = new Map();
+
+  function rebuildConnectHandles() {
+    handlesContainer.innerHTML = "";
+    handlesByNode = new Map();
+    cy.nodes().forEach((node) => {
+      const data = node.data();
+      if (!data.large || data.isMarker) {
+        return;
+      }
+      const dots = ["top", "right", "bottom", "left"].map(() => {
+        const dot = document.createElement("div");
+        dot.className = "hud-node-handle";
+        handlesContainer.appendChild(dot);
+        dot.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          connectFromId = node.id();
+          connectStartClient = { x: e.clientX, y: e.clientY };
+          connectArmed = true;
+          cy.getElementById(connectFromId).addClass("connect-from");
+          connectLine.hidden = false;
+          connectLineEl.setAttribute("x1", e.clientX);
+          connectLineEl.setAttribute("y1", e.clientY);
+          connectLineEl.setAttribute("x2", e.clientX);
+          connectLineEl.setAttribute("y2", e.clientY);
+        });
+        return dot;
+      });
+      handlesByNode.set(node.id(), dots);
+    });
+    updateConnectHandles();
+  }
+
+  function updateConnectHandles() {
+    handlesByNode.forEach((dots, id) => {
+      const box = cy.getElementById(id).renderedBoundingBox({ includeLabels: false });
+      const midX = (box.x1 + box.x2) / 2;
+      const midY = (box.y1 + box.y2) / 2;
+      const points = [
+        { x: midX, y: box.y1 },
+        { x: box.x2, y: midY },
+        { x: midX, y: box.y2 },
+        { x: box.x1, y: midY },
+      ];
+      dots.forEach((dot, i) => {
+        dot.style.left = `${points[i].x}px`;
+        dot.style.top = `${points[i].y}px`;
+      });
+    });
+  }
+  cy.on("pan zoom position", updateConnectHandles);
+
+  const HANDLE_REVEAL_PADDING = 24;
+  document.addEventListener("mousemove", (e) => {
+    if (moveNodeId !== null || connectFromId !== null || handlesByNode.size === 0) {
+      return;
+    }
+    const pos = modelPositionFromClient(e.clientX, e.clientY);
+    const pad = HANDLE_REVEAL_PADDING / cy.zoom();
+    handlesByNode.forEach((dots, id) => {
+      const box = cy.getElementById(id).boundingBox({ includeLabels: false });
+      const near = pos.x >= box.x1 - pad && pos.x <= box.x2 + pad && pos.y >= box.y1 - pad && pos.y <= box.y2 + pad;
+      dots.forEach((d) => d.classList.toggle("visible", near));
+    });
+  });
+
   // ---- Tooltip (hover) for regular nodes -------------------------------
   const tooltip = document.getElementById("tooltip");
+  const imagePreview = document.getElementById("image-preview");
   cy.on("mouseover", "node", (evt) => {
     const node = evt.target;
+    const pos = evt.renderedPosition || screenPositionOf(node);
     tooltip.textContent = node.data("tooltip");
-    positionNear(tooltip, evt.renderedPosition || screenPositionOf(node));
+    positionNear(tooltip, pos);
     tooltip.hidden = false;
+
+    const imageUrl = node.data("imageUrl");
+    if (imageUrl) {
+      imagePreview.src = imageUrl;
+      // Below the tooltip, not on top of it — both are shown together.
+      positionNear(imagePreview, { x: pos.x, y: pos.y + 20 });
+      imagePreview.hidden = false;
+    }
   });
   cy.on("mouseout", "node", () => {
     tooltip.hidden = true;
+    imagePreview.hidden = true;
   });
   cy.on("pan zoom", () => {
     tooltip.hidden = true;
+    imagePreview.hidden = true;
   });
 
   function screenPositionOf(node) {
@@ -428,8 +589,32 @@
     return { x: modelPos.x * zoom + pan.x, y: modelPos.y * zoom + pan.y };
   }
 
+  // ---- Drag-to-move (large/editing mode only) ----------------------------
+  // Compact (live-recording minimap) mode never moves nodes — its schematic
+  // grid layout (see FlowPreviewOverlay.BuildPreviewPayload) is recomputed
+  // on every redraw regardless of what's on screen, so a drag there would
+  // just snap back the instant anything else changed. Large mode positions
+  // nodes from their real, persisted coordinates instead specifically so a
+  // drag here (see IFlowWriter.MoveNode — deliberately skips the
+  // auto-layout) actually sticks.
+  const MOVE_DRAG_THRESHOLD = 6; // px of movement before this counts as a drag — see below for why that matters
+  let moveNodeId = null;
+  let moveStartClient = null;
+  let moveStartPos = null;
+  let moveArmed = false;
+
   cy.on("mousedown", "node", (evt) => {
     const data = evt.target.data();
+    if (data.large) {
+      moveNodeId = data.id;
+      moveStartClient = { x: evt.originalEvent.clientX, y: evt.originalEvent.clientY };
+      moveStartPos = { ...evt.target.position() };
+      moveArmed = false;
+      return;
+    }
+
+    // Compact mode: unchanged from before large mode existed — plain drag
+    // on a node connects it to whatever's under the cursor on release.
     if (data.isMarker) {
       return; // decision points/path starts are never valid connect endpoints
     }
@@ -440,6 +625,33 @@
   });
 
   document.addEventListener("mousemove", (e) => {
+    if (moveNodeId !== null) {
+      // Below the threshold, this is still "just a click" — a plain tap
+      // (selecting the card) or the first half of a double-click (see the
+      // dbltap-to-rename handler below) both start with a mousedown here
+      // too. Without this gate, every single click sent a "move" message
+      // and triggered a full save + Cytoscape element rebuild (render()
+      // replaces every element wholesale) even when nothing actually
+      // moved — and that rebuild, landing squarely between the two clicks
+      // of a double-click, is exactly what made renaming feel unreliable
+      // (confirmed as a real bug: the rebuilt node is a new object, so
+      // Cytoscape's own dbltap tracking can no longer tell the second
+      // click belongs to the same one as the first).
+      if (!moveArmed) {
+        if (Math.hypot(e.clientX - moveStartClient.x, e.clientY - moveStartClient.y) < MOVE_DRAG_THRESHOLD) {
+          return;
+        }
+        moveArmed = true;
+      }
+      const zoom = cy.zoom();
+      const dx = (e.clientX - moveStartClient.x) / zoom;
+      const dy = (e.clientY - moveStartClient.y) / zoom;
+      cy.getElementById(moveNodeId).position({ x: moveStartPos.x + dx, y: moveStartPos.y + dy });
+      updateImageOverlays();
+      updateConnectHandles();
+      return;
+    }
+
     if (connectFromId === null) {
       return;
     }
@@ -465,7 +677,20 @@
     }
   });
 
-  document.addEventListener("mouseup", (e) => endConnectGesture(e.clientX, e.clientY));
+  document.addEventListener("mouseup", (e) => {
+    if (moveNodeId !== null) {
+      if (moveArmed) {
+        const pos = cy.getElementById(moveNodeId).position();
+        sendToHost({ type: "move", nodeId: moveNodeId, x: pos.x, y: pos.y });
+      }
+      moveNodeId = null;
+      moveStartClient = null;
+      moveStartPos = null;
+      moveArmed = false;
+      return;
+    }
+    endConnectGesture(e.clientX, e.clientY);
+  });
 
   // Safety nets for the ways a release can happen where no mouseup ever
   // reaches this page at all: the cursor crossing out of the document
@@ -476,8 +701,8 @@
   // window losing focus mid-drag (alt-tab, a native dialog stealing it).
   // Both just cancel rather than try to finalize: once the cursor is gone,
   // there's no reliable "what's under it" to connect to anyway.
-  document.addEventListener("mouseleave", () => endConnectGesture(null, null));
-  window.addEventListener("blur", () => endConnectGesture(null, null));
+  document.addEventListener("mouseleave", () => { moveNodeId = null; moveArmed = false; endConnectGesture(null, null); });
+  window.addEventListener("blur", () => { moveNodeId = null; moveArmed = false; endConnectGesture(null, null); });
 
   function endConnectGesture(clientX, clientY) {
     if (connectFromId === null) {

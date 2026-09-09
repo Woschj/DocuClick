@@ -2,10 +2,14 @@
 
 Windows-Screenshot-Tool, das bei jedem Mausklick (optional auch bei
 Rechtsklick und Enter) automatisch einen Screenshot mit Klick-Markierung
-erstellt und samt Beschreibungstext in eine Obsidian-Notiz oder ein
-Obsidian-Canvas einfügt. Aus einer Canvas-Session lässt sich jederzeit
-zusätzlich ein editierbares draw.io-Flowchart exportieren. Details zu
-beiden Aufnahme-Modi und dem draw.io-Export weiter unten.
+erstellt und samt Beschreibungstext entweder an eine Obsidian-Notiz
+anhängt oder — im **Ablauf-Modus** — als verbundenen Knoten in eine
+einzelne, interaktive `.html`-Datei schreibt, die sich direkt in jedem
+Browser öffnet und in DocuClicks eigener Ablauf-Übersicht bearbeiten
+lässt, ganz ohne Obsidian. Aus einer solchen Ablauf-Session lässt sich
+jederzeit zusätzlich ein voll editierbares draw.io-Flowchart oder eine
+einzelne, komplett eigenständige HTML-Kopie zum Weitergeben exportieren.
+Details zu beiden Aufnahme-Modi und den Exporten weiter unten.
 
 App-Icon: [Assets/app.ico](src/DocuClick/Assets/app.ico) (im selben
 Rot-auf-Dunkel-Stil wie das Tray-Icon).
@@ -26,47 +30,53 @@ Nach dem Start läuft DocuClick als Tray-Icon im Infobereich der
 Taskleiste — kein sichtbares Fenster, siehe [Funktionsumfang](#funktionsumfang)
 für die Bedienung.
 
-## Obsidian einrichten und den Vault nutzen
+## Vault einrichten (Notiz-Modus) bzw. Zielordner wählen (Ablauf-Modus)
 
-Für beide Aufnahme-Modi (Notiz und Canvas) wird [Obsidian](https://obsidian.md)
-empfohlen — kostenlos, kein Account nötig, öffnet einfach einen lokalen
-Ordner als "Vault". Kein Plugin erforderlich: DocuClick schreibt reine
-Markdown- bzw. JSON-Dateien direkt auf die Festplatte.
+Der **Ablauf-Modus** braucht kein Obsidian — die Sessions sind eigenständige
+`.html`-Dateien, die DocuClicks eigene Ablauf-Übersicht direkt öffnen/
+bearbeiten kann und die auch in jedem normalen Browser lesbar sind. Ein
+beliebiger Ordner als Zielordner reicht.
 
-1. **Obsidian installieren**: Installer von [obsidian.md](https://obsidian.md/download)
-   herunterladen und ausführen.
-2. **Vault vorbereiten**: [VaultTemplate/](VaultTemplate/) aus diesem Repo
-   an einen Ort außerhalb des Repos kopieren (z. B.
+Für den **Notiz-Modus** (linearer Markdown-Text) empfiehlt sich trotzdem
+[Obsidian](https://obsidian.md) — kostenlos, kein Account nötig, öffnet
+einfach einen lokalen Ordner als "Vault", kein Plugin erforderlich. Wer nur
+den Ablauf-Modus nutzt, kann diesen Abschnitt überspringen und direkt einen
+beliebigen Ordner als "Vault-Pfad" in den Einstellungen eintragen.
+
+1. **Obsidian installieren** (nur für den Notiz-Modus nötig): Installer von
+   [obsidian.md](https://obsidian.md/download) herunterladen und ausführen.
+2. **Vault/Zielordner vorbereiten**: [VaultTemplate/](VaultTemplate/) aus
+   diesem Repo an einen Ort außerhalb des Repos kopieren (z. B.
    `%USERPROFILE%\Documents\Prozess-Vault`) — Details und der Grund dafür
    (Screenshots landen sonst im öffentlichen Git-Verlauf) in
    [VaultTemplate/README.md](VaultTemplate/README.md).
-3. **Als Vault öffnen**: In Obsidian "Open folder as vault" → den kopierten
-   Ordner auswählen. Das mitgelieferte Theme (inkl. automatischer
-   Ordnerfärbung) wird direkt übernommen.
+3. **Als Vault öffnen** (nur für den Notiz-Modus nötig): In Obsidian "Open
+   folder as vault" → den kopierten Ordner auswählen. Das mitgelieferte
+   Theme (inkl. automatischer Ordnerfärbung) wird direkt übernommen.
 4. **DocuClick verbinden**: In den DocuClick-Einstellungen den
-   Vault-Pfad auf denselben kopierten Ordner setzen, Ausgabeformat auf
-   Notiz oder Canvas stellen.
+   Vault-/Zielordner-Pfad auf denselben kopierten Ordner setzen,
+   Ausgabeformat auf Notiz oder Ablauf stellen.
 
-Danach läuft die Aufnahme unabhängig von Obsidian — die App muss beim
-Aufzeichnen nicht mal geöffnet sein, DocuClick schreibt direkt in die
-Dateien. Obsidian wird nur zum Ansehen/Bearbeiten der Ergebnisse gebraucht
-und aktualisiert offene Notizen/Canvases automatisch, sobald sich die
-Datei auf der Festplatte ändert.
+Danach läuft die Aufnahme unabhängig von jedem anderen Programm — die App
+muss beim Aufzeichnen nicht mal geöffnet sein, DocuClick schreibt direkt in
+die Dateien. Im Notiz-Modus aktualisiert Obsidian offene Notizen automatisch,
+sobald sich die Datei auf der Festplatte ändert; im Ablauf-Modus zeigt
+DocuClicks eigene Ablauf-Übersicht den aktuellen Stand ohnehin live an.
 
 Alltags-Workflow:
 
 - Beim Start einer Aufnahme fragt DocuClick nach Zieldatei **und
-  -ordner** innerhalb des Vaults (siehe [Zieldatei bei jedem
+  -ordner** innerhalb des Vaults/Zielordners (siehe [Zieldatei bei jedem
   Session-Start](#start-vs-neue-session-zieldatei)) — damit landet
-  jede Aufnahme direkt dort, wo sie in der Vault-Struktur hingehört,
+  jede Aufnahme direkt dort, wo sie in der Ordnerstruktur hingehört,
   statt alles im Wurzelordner zu sammeln.
 - Für länger geplante Abläufe lohnt es sich, vorher eine Vorlage aus
   `02 Vorlagen/` zu kopieren und mit Titel/Zweck auszufüllen, dann beim
   Session-Start "Bestehende Datei fortsetzen" wählen.
 - Verzweigt sich ein Ablauf (z. B. Fehlerfall vs. Erfolgsfall), im
-  Canvas-Modus über die Ablauf-Übersicht einen Abzweigungspunkt setzen
+  Ablauf-Modus über die Ablauf-Übersicht einen Abzweigungspunkt setzen
   und benannte Pfade anlegen (siehe [Abzweigungen im
-  Canvas-Modus](#abzweigungen-im-canvas-modus)).
+  Ablauf-Modus](#abzweigungen-im-ablauf-modus)).
 
 ## Funktionsumfang
 
@@ -95,13 +105,13 @@ auf ..."):
    ganze Fenster rot eingerahmt werden)
 4. Speichern des Bilds im konfigurierten Attachments-Ordner (in einem
    Unterordner benannt nach der Zieldatei, z. B.
-   `Attachments/Onboarding-Flow/screenshot_....png`, statt alles flach zu
+   `Attachments/Onboarding-Flow/073934_321.png`, statt alles flach zu
    sammeln) und Anhängen von Beschreibung +
    `![bild.png](relativer/Pfad.png)` (Standard-Markdown, kein
    Obsidian-spezifisches Wikilink — funktioniert daher auch in GitHub-/
    GitLab-Wikis und anderen Markdown-Renderern, nicht nur in Obsidian) an
-   die Session-Notiz im Obsidian-Vault (im Canvas-Modus stattdessen als
-   verbundener Knoten, siehe unten)
+   die Session-Notiz (im Ablauf-Modus stattdessen als verbundener Knoten in
+   der `.html`-Datei, siehe unten)
 
 Klicks auf DocuClicks eigene Fenster (Top-Leiste, Ablauf-Übersicht,
 Session-Start, Einstellungen, ...) sowie auf das Tray-Icon selbst zählen
@@ -133,7 +143,7 @@ einer anderen bzw. neuen Datei zu wechseln:
 - **Bestehende Datei fortsetzen**: Auswahl aus allen vorhandenen Dateien
   mit passender Endung im konfigurierten Vault (inkl. Unterordner),
   neueste zuerst. Neue Klicks werden an diese Datei angehängt (im
-  Canvas-Modus ab dem bisherigen Cursor-Stand, siehe Abzweigungs-Logik
+  Ablauf-Modus ab dem bisherigen Cursor-Stand, siehe Abzweigungs-Logik
   unten).
 
 Der Dialog erscheint außerdem beim allerersten "Start" nach Installation
@@ -174,7 +184,7 @@ enthält vier Bereiche:
   über die Einstellungen; der Regler passt die Größe dieses Bereichs live
   an (mit Vorschau-Rahmen um den Cursor).
 
-Im **Canvas-Modus** öffnet sich zusätzlich automatisch die
+Im **Ablauf-Modus** öffnet sich zusätzlich automatisch die
 **Ablauf-Übersicht** — ein frei verschiebbares, größenveränderliches
 Panel mit einer Miniaturkarte des gesamten Ablaufs (per Maus frei
 zoom-/schwenkbar): der aktuelle Knoten ist rot hervorgehoben, jeder Pfad
@@ -207,50 +217,60 @@ gewertet (kein Screenshot, kein Eintrag) — die App erkennt und filtert
 das automatisch, und beide Fenster werden aktiv aus Screenshots
 ausgeschlossen, tauchen also nie selbst im aufgenommenen Bild auf.
 
-## Ausgabeformat: Notiz oder Canvas, draw.io als Export
+## Ausgabeformat: Notiz oder Ablauf (HTML), draw.io als Export
 
 In den Einstellungen lässt sich eines von zwei Live-Aufnahmeformaten
 wählen:
 
 - **Notiz**: linearer Markdown-Text + Bild-Link, an eine `.md`-Datei
   angehängt (Standard).
-- **Obsidian-Canvas**: jeder Klick wird ein verbundener Knoten auf einer
-  Fläche in einer `.canvas`-Datei (reines JSON, kein Obsidian-Plugin
-  nötig) — der einzige Modus, der Abzweigungen/Pfade unterstützt (siehe
-  [Abzweigungen im Canvas-Modus](#abzweigungen-im-canvas-modus)).
-  Screenshots werden als eigener Datei-Node (Canvas' natives
-  Embed-Format) statt als `![[wikilink]]` im Text abgelegt —
-  Drittanbieter-Exporttools für Canvas kennen diesen Node-Typ meist,
-  Obsidians Wikilink-Auflösung dagegen nicht, weshalb Bilder beim Export
-  in andere Formate sonst fehlten.
+- **Ablauf**: jeder Klick wird ein verbundener Knoten auf einer Fläche in
+  einer einzigen, interaktiven `.html`-Datei — der einzige Modus, der
+  Abzweigungen/Pfade unterstützt (siehe [Abzweigungen im
+  Ablauf-Modus](#abzweigungen-im-ablauf-modus)). Die Datei ist sofort in
+  jedem Browser lesbar (Diagramm frei zoom-/schwenkbar, Klick auf eine
+  Karte zeigt den Screenshot in voller Größe) — Bearbeiten (umbenennen,
+  löschen, verbinden, springen) geht über das Tray-Menü **"Ablauf
+  öffnen..."**, das die Datei in DocuClicks eigener Ablauf-Übersicht
+  aufmacht, ganz ohne laufende Aufnahme. Screenshots liegen als eigene
+  Dateien im Attachments-Ordner daneben und werden per relativem Pfad
+  eingebunden statt bei jedem Klick neu einzubetten — das hält auch sehr
+  lange Sitzungen schnell (siehe unten für eine Variante ganz ohne diese
+  Abhängigkeit).
 
-Aus einer bestehenden `.canvas`-Datei lässt sich jederzeit ein
-**draw.io-Flowchart** exportieren — über das Tray-Menü "Nach draw.io
-exportieren...", nicht als eigener Aufnahme-Modus (frühere Versionen
-schrieben draw.io live mit; das wurde durch diesen Ein-Schritt-Export
-ersetzt, da das Neuschreiben der kompletten XML-Datei bei jedem einzelnen
-Klick mit wachsender Sitzungslänge spürbar langsamer wurde). Der Export
-baut ein echtes Flussdiagramm: jeder Klick wird eine "Karte" (abgerundeter
-Rahmen mit Schatten, nummeriertes Badge, Beschriftung und Screenshot als
-eine zusammen verschiebbare Einheit), jeder Pfad bekommt eine eigene
-Akzentfarbe (Rahmen, Nummer-Badge und Pfeile), Abzweigungspunkte werden
-als Raute markiert, manuelle Querverbindungen als graue Linie. Screenshots
-werden direkt als Base64 eingebettet (kein separater Attachments-Ordner
-nötig) und im Kartenlayout klein dargestellt — **einfach mit der Maus über
-den Screenshot fahren**, um ihn sofort deutlich größer als Vorschau
-angezeigt zu bekommen (kein Klick nötig); für die volle
-Original-Auflösung zusätzlich auf das kleine Link-Symbol klicken, das
-draw.io beim Überfahren am Rand der Karte einblendet (öffnet in einem
-neuen Tab). Öffnet in der kostenlosen
-[draw.io-/diagrams.net-App](https://www.drawio.com/) (Desktop, Web oder
-VS-Code-Extension) — kein Obsidian nötig, voll editierbar (Karten frei
-verschiebbar, Farben/Text anpassbar), lässt sich von dort aus auch nach
-Visio (`.vsdx`) exportieren.
+Aus einer bestehenden Ablauf-Session lassen sich über das Tray-Menü zwei
+verschiedene Exporte erzeugen:
 
-### Abzweigungen im Canvas-Modus
+- **"Nach HTML exportieren..."**: eine zweite, komplett eigenständige
+  `.html`-Kopie — alle Screenshots als Base64 eingebettet, keine
+  Abhängigkeit mehr vom Attachments-Ordner. Zum Weitergeben an jemanden,
+  der nur die eine Datei bekommen soll (rein lesend; die Live-Session
+  bleibt die editierbare Originaldatei).
+- **"Nach draw.io exportieren..."**: ein voll editierbares
+  draw.io-Flowchart — nicht als eigener Aufnahme-Modus (frühere Versionen
+  schrieben draw.io live mit; das wurde durch diesen Ein-Schritt-Export
+  ersetzt, da das Neuschreiben der kompletten XML-Datei bei jedem
+  einzelnen Klick mit wachsender Sitzungslänge spürbar langsamer wurde).
+  Baut ein echtes Flussdiagramm: jeder Klick wird eine "Karte"
+  (abgerundeter Rahmen mit Schatten, nummeriertes Badge, Beschriftung und
+  Screenshot als eine zusammen verschiebbare Einheit), jeder Pfad bekommt
+  eine eigene Akzentfarbe (Rahmen, Nummer-Badge und Pfeile),
+  Abzweigungspunkte werden als Raute markiert, manuelle Querverbindungen
+  als graue Linie. Screenshots werden direkt als Base64 eingebettet und im
+  Kartenlayout klein dargestellt — **einfach mit der Maus über den
+  Screenshot fahren**, um ihn sofort deutlich größer als Vorschau angezeigt
+  zu bekommen (kein Klick nötig); für die volle Original-Auflösung
+  zusätzlich auf das kleine Link-Symbol klicken, das draw.io beim
+  Überfahren am Rand der Karte einblendet (öffnet in einem neuen Tab).
+  Öffnet in der kostenlosen
+  [draw.io-/diagrams.net-App](https://www.drawio.com/) (Desktop, Web oder
+  VS-Code-Extension), lässt sich von dort aus auch nach Visio (`.vsdx`)
+  exportieren.
+
+### Abzweigungen im Ablauf-Modus
 
 Ein Ablauf verzweigt sich in der Realität oft (z. B. Fehlerfall vs.
-Erfolgsfall) — im Canvas-Modus lässt sich das direkt abbilden:
+Erfolgsfall) — im Ablauf-Modus lässt sich das direkt abbilden:
 
 - **Abzweigungspunkt setzen** (Hotkey, Standard `F9`): fragt sofort nach
   dem Namen des ersten Pfads (z. B. "Login-Fehler") und legt eine kleine,
@@ -281,7 +301,7 @@ Einstellungen (kein Neustart nötig).
 
 ### Ablauf nachträglich fortsetzen (an einem bestimmten Punkt statt am Dateiende)
 
-Bei **gestoppter** Aufnahme im Canvas-Modus zeigt die Ablauf-Übersicht
+Bei **gestoppter** Aufnahme im Ablauf-Modus zeigt die Ablauf-Übersicht
 weiterhin die zuletzt bearbeitete Datei — ein Klick auf einen beliebigen
 Knoten dort markiert ihn als Ansatzpunkt für die *nächste* Aufnahme-Session
 (Balloon-Tip bestätigt die Auswahl). Neue Klicks werden dann als neue
@@ -352,7 +372,7 @@ weder im Log noch als Notiz etwas ankommt, wurde der Klick vom Mouse-Hook gar
 nicht erst erkannt (Session nicht gestartet, oder der Hook konnte nicht
 registriert werden — siehe Log-Zeile "Session gestartet").
 
-### Bilder fehlen in einer bestehenden Notiz/Canvas ("... konnte nicht gefunden werden")
+### Bilder fehlen in einer bestehenden Notiz/einem Ablauf ("... konnte nicht gefunden werden")
 
 Bis zur entsprechenden Fix-Version enthielt der automatische Namensvorschlag
 beim Session-Start ein `#` (z. B. `IT-Support 2026-08-04 #1`). Da dieser Name
@@ -368,7 +388,7 @@ repariert werden:
 1. Den betroffenen Attachments-Unterordner (z. B.
    `Attachments/Mein Vault 2026-08-05 #1`) umbenennen — `#` durch z. B. `(1)`
    ersetzen.
-2. Die zugehörige `.canvas`- bzw. `.md`-Datei in einem Texteditor öffnen und
+2. Die zugehörige `.html`- bzw. `.md`-Datei in einem Texteditor öffnen und
    den alten Ordnernamen per Suchen-und-Ersetzen durch den neuen ersetzen.
 
 ---

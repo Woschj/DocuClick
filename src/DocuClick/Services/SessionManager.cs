@@ -59,6 +59,19 @@ public sealed class SessionManager : IDisposable
     /// </summary>
     public Func<Point, bool>? IsPointOnOwnUi { get; set; }
 
+    /// <summary>
+    /// "Does one of DocuClick's own windows currently have focus?" — for
+    /// the global Enter-key hook, which (unlike a mouse click) has no
+    /// point to check against <see cref="IsPointOnOwnUi"/>. Without this,
+    /// confirming a modal dialog with Enter (e.g. naming a new path in
+    /// BranchNameWindow) was itself captured as a content click — the
+    /// keyboard hook sees every Enter press system-wide regardless of
+    /// which window has focus, exactly the same blind spot the mouse hook
+    /// already has a check for (confirmed as a real bug: naming a path
+    /// saved a screenshot of the naming dialog itself as a new step).
+    /// </summary>
+    public Func<bool>? IsOwnUiFocused { get; set; }
+
     public bool IsRunning => _isRunning;
 
     /// <summary>
@@ -168,7 +181,13 @@ public sealed class SessionManager : IDisposable
     /// <summary>Extension for a given <see cref="AppConfig.OutputMode"/> value.</summary>
     public static string ExtensionForOutputMode(string outputMode) => outputMode switch
     {
-        "Canvas" => ".canvas",
+        // A single, self-contained interactive .html file now — see
+        // CanvasFlowWriter.BuildLiveHtml — rather than a bare .canvas JSON
+        // file only Obsidian could render. A session recorded before this
+        // switch is still a .canvas file and won't show up in file pickers
+        // filtered by this extension; CanvasDocumentIo.Load still reads its
+        // content if it's ever opened directly by full path.
+        "Canvas" => ".html",
         _ => ".md"
     };
 
@@ -236,6 +255,43 @@ public sealed class SessionManager : IDisposable
             FlowPreviewChanged?.Invoke(snapshot.Preview);
         }
         LogService.Log($"Session gestartet. Ziel: {_currentTargetFileName} (Modus: {_config.OutputMode}), Vault: '{_config.VaultPath}'");
+    }
+
+    /// <summary>
+    /// Tray menu "Ablauf öffnen...": loads an existing Canvas file into the
+    /// Ablauf-Übersicht for viewing/editing — rename/delete/connect/
+    /// disconnect all already work independent of a live recording (see
+    /// e.g. RenameNode's own doc comment) — without starting a recording
+    /// session: no hooks armed, <see cref="IsRunning"/> stays false. Refuses
+    /// while a session IS running, since it would otherwise silently
+    /// redirect that session's writer (cursor/target file) onto a different
+    /// file out from under it, corrupting the next captured click. Canvas-
+    /// mode only: the plain Note writer has no preview/branching concept to
+    /// show here at all.
+    /// </summary>
+    public void OpenForEditing(string targetFileName)
+    {
+        if (_isRunning)
+        {
+            InfoOccurred?.Invoke("Aktion ignoriert: bitte zuerst die laufende Aufnahme stoppen.");
+            return;
+        }
+
+        if (ActiveFlowWriter is not { } writer)
+        {
+            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Ablauf-Übersicht.");
+            return;
+        }
+
+        _currentTargetFileName = targetFileName;
+        var preview = RunOnWriterQueue(() =>
+        {
+            writer.StartSession(targetFileName);
+            return writer.GetPreview();
+        });
+
+        FlowPreviewChanged?.Invoke(preview);
+        LogService.Log($"Ablauf zum Bearbeiten geöffnet: {targetFileName}");
     }
 
     public void Stop()
@@ -543,6 +599,33 @@ public sealed class SessionManager : IDisposable
         }
     }
 
+    /// <summary>Ablauf-Übersicht: drag-to-move a card to an explicit position (see IFlowWriter.MoveNode — no auto-layout re-run, so it isn't undone by the very drag that just set it). Not gated on <see cref="_isRunning"/> — see <see cref="RenameNode"/>.</summary>
+    public void MoveNode(string nodeId, double x, double y)
+    {
+        if (ActiveFlowWriter is not { } writer)
+        {
+            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Bearbeitung.");
+            return;
+        }
+
+        var (result, snapshot) = RunOnWriterQueue(() =>
+        {
+            var actionResult = writer.MoveNode(nodeId, x, y);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
+            return (actionResult, statusSnapshot);
+        });
+
+        if (result.Success)
+        {
+            if (_isRunning)
+            {
+                CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            }
+
+            FlowPreviewChanged?.Invoke(snapshot.Preview);
+        }
+    }
+
     /// <summary>For the Ablauf-Übersicht's resume-while-stopped flow: nodes already in <paramref name="fileName"/>.</summary>
     public List<ResumableNode> ListResumableCanvasNodes(string fileName) =>
         ActiveFlowWriter?.ListNodesForResume(fileName) ?? new List<ResumableNode>();
@@ -601,6 +684,16 @@ public sealed class SessionManager : IDisposable
 
     private void OnEnterPressed(object? sender, EnterKeyEventArgs e)
     {
+        if (IsOwnUiFocused?.Invoke() == true)
+        {
+            // Never counts as a "skipped" capture either (no sound, no
+            // balloon) — same reasoning as HandleMouseButtonDown's own
+            // IsPointOnOwnUi check: this isn't a deliberate skip, it's not
+            // a content interaction at all.
+            LogService.Log("Enter-Erfassung ignoriert (DocuClick-eigenes Fenster hat den Fokus).");
+            return;
+        }
+
         if (IsSkipModifierDown(e.ShiftDown, e.ControlDown, e.AltDown))
         {
             LogService.Log($"Enter-Erfassung übersprungen ({_config.SkipRecordingModifier}-Taste gedrückt).");

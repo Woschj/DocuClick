@@ -13,7 +13,7 @@ public static class AttachmentSaver
     /// don't all pile up flat in one folder. <paramref name="sessionName"/>
     /// is normally the target file's name without extension.
     /// </summary>
-    /// <returns>The saved file's path relative to the Attachments folder (e.g. "MySession/screenshot_....png").</returns>
+    /// <returns>The saved file's path relative to the Attachments folder (e.g. "MySession/073934_321.png").</returns>
     public static string SaveScreenshot(AppConfig config, Bitmap screenshot, DateTime timestamp, string sessionName)
     {
         if (string.IsNullOrWhiteSpace(config.VaultPath))
@@ -25,7 +25,12 @@ public static class AttachmentSaver
         var attachmentsDir = Path.Combine(config.VaultPath, config.AttachmentsFolder, subfolder);
         Directory.CreateDirectory(attachmentsDir);
 
-        var imageFileName = $"screenshot_{timestamp:yyyyMMdd_HHmmss_fff}.png";
+        // No "screenshot_" prefix and no date: the enclosing session
+        // subfolder already carries both (it's named after the session,
+        // which itself is dated) — repeating either in every single
+        // filename was pure redundancy. Time-of-day + milliseconds is still
+        // enough to stay unique within one session's folder.
+        var imageFileName = $"{timestamp:HHmmss_fff}.png";
         screenshot.Save(Path.Combine(attachmentsDir, imageFileName), ImageFormat.Png);
         return Path.Combine(subfolder, imageFileName);
     }

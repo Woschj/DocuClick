@@ -3,14 +3,13 @@ using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
 using System.Text;
-using System.Text.Json;
 using System.Xml;
 using System.Xml.Linq;
 
 namespace DocuClick.Services;
 
 /// <summary>
-/// One-shot export: reads an already-recorded .canvas file and produces an
+/// One-shot export: reads an already-recorded Canvas-mode session and produces an
 /// equivalent .drawio flowchart — cards, decision points, path columns and
 /// all — using the exact same visual building blocks draw.io mode used to
 /// build live (rounded card containers with a numbered badge/caption/
@@ -59,8 +58,7 @@ public static class DrawIoConverter
     /// </summary>
     public static void Convert(string canvasFilePath, string vaultPath, string drawioFilePath)
     {
-        var json = File.ReadAllText(canvasFilePath);
-        var canvas = JsonSerializer.Deserialize<CanvasDocument>(json) ?? new CanvasDocument();
+        var canvas = CanvasDocumentIo.Load(canvasFilePath);
 
         var (doc, root) = NewEmptyDocument();
 
@@ -171,15 +169,7 @@ public static class DrawIoConverter
     }
 
     private static string AccentFor(int column) =>
-        column == 0 ? MainColor : BranchColors[StableColumnHash(column) % BranchColors.Length];
-
-    /// <summary>
-    /// Spreads column values (small integers, positive and negative) across
-    /// the palette — column and -column would otherwise collide under a raw
-    /// Math.Abs(value) reduction, giving two clearly different branches the
-    /// same accent color.
-    /// </summary>
-    private static int StableColumnHash(int column) => unchecked((int)((uint)column * 2654435761u) & 0x7FFFFFFF);
+        column == 0 ? MainColor : BranchColors[FlowPreviewBranching.StableColumnHash(column) % BranchColors.Length];
 
     private static string? FindScreenshotPath(CanvasDocument canvas, CanvasNode textNode, string vaultPath)
     {

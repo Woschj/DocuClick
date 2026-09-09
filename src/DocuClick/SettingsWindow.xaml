@@ -21,10 +21,10 @@
                         <RadioButton x:Name="OutputModeNoteRadio" GroupName="OutputMode" Margin="0,0,0,8"
                                      Content="Notiz (Markdown, an eine .md-Datei anhängen)"/>
                         <RadioButton x:Name="OutputModeCanvasRadio" GroupName="OutputMode" Margin="0,0,0,4"
-                                     Content="Obsidian-Canvas (.canvas, Ablaufdiagramm mit Abzweigungen)"/>
+                                     Content="Ablauf (.html, Ablaufdiagramm mit Abzweigungen)"/>
 
                         <TextBlock Style="{StaticResource HintText}"
-                                   Text="Canvas schreibt jeden Klick als verbundenen Knoten auf einer Fläche (vertikaler Hauptfluss, Abzweigungspunkte mit neuen Pfaden als Spalten, gesteuert über die Ablauf-Übersicht), Screenshots als eigene Dateien im Attachments-Ordner — bleibt dadurch auch bei sehr langen Abläufen schnell. Eine draw.io-Datei (echtes editierbares Flowchart mit Kartenlayout, Screenshots eingebettet, kein Obsidian nötig) lässt sich jederzeit aus einer Canvas-Session exportieren — Tray-Symbol rechtsklicken → „Nach draw.io exportieren...“."/>
+                                   Text="Schreibt jeden Klick als verbundenen Knoten in eine einzelne, interaktive .html-Datei (vertikaler Hauptfluss, Abzweigungspunkte mit neuen Pfaden als Spalten, gesteuert über die Ablauf-Übersicht) — öffnet direkt in jedem Browser, kein Obsidian nötig. Screenshots liegen als eigene Dateien im Attachments-Ordner daneben (dafür bleibt die Datei auch bei sehr langen Abläufen schnell); über das Tray-Symbol lässt sich daraus jederzeit ein einzelnes, komplett eigenständiges Export-Exemplar (Bilder eingebettet, zum Weitergeben) oder ein editierbares draw.io-Flowchart erzeugen."/>
                     </StackPanel>
                 </Border>
 

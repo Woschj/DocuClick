@@ -5,3 +5,9 @@ obj/
 .claude/
 .DS_Store
 ._*
+
+# AI test/agent loop — generated artifacts, not source
+tools/local-agent-loop/escalation/*.md
+tools/local-agent-loop/spot-review/*.diff
+tools/local-agent-loop/logs/
+tools/ai-test-loop/test-results/

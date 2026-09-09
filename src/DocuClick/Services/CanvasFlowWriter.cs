@@ -459,10 +459,16 @@ public sealed class CanvasFlowWriter : IFlowWriter
                 var isDecisionPoint = IsDecisionPointNode(n);
                 var isPathStart = IsPathStartNode(n);
                 var label = isDecisionPoint ? "Abzweigung" : isPathStart ? $"↳ {ExtractPathName(n)}" : BuildLabel(n.Text);
+                // Markers never get an image sibling (see AddClickNode); a
+                // content node's is found by the same fixed relative-position
+                // lookup DeleteNode/Relayout already use to move it alongside
+                // its text node.
+                var imagePath = isDecisionPoint || isPathStart ? null : FindImageSibling(n)?.File;
                 return new PreviewNode(
                     n.Id, label, n.X, n.Y, n.Width, n.Height,
                     n.Id == _cursorNodeId, isDecisionPoint, isPathStart,
-                    PathName: isPathStart ? ExtractPathName(n) : null);
+                    PathName: isPathStart ? ExtractPathName(n) : null,
+                    ImagePath: imagePath);
             })
             .ToList();
         var edges = _doc.Edges.Select(e => new PreviewEdge(e.FromNode, e.ToNode, e.Manual)).ToList();
@@ -721,6 +727,52 @@ public sealed class CanvasFlowWriter : IFlowWriter
         return new BranchActionResult(true);
     }
 
+    /// <summary>See <see cref="IFlowWriter.MoveNode"/> — deliberately skips Relayout(), unlike every other mutating method here.</summary>
+    public BranchActionResult MoveNode(string nodeId, double x, double y)
+    {
+        var node = _doc.Nodes.FirstOrDefault(n => n.Id == nodeId && n.Type == "text");
+        if (node is null)
+        {
+            return new BranchActionResult(false);
+        }
+
+        // Found using the *old* position, same as Relayout's own snapshot-
+        // before-moving comment explains — looking these up after node.X/Y
+        // below already changed would misfire.
+        var image = FindImageSibling(node);
+        var group = FindGroupSibling(node);
+        var dx = x - node.X;
+        var dy = y - node.Y;
+
+        node.X = x;
+        node.Y = y;
+        if (image is not null)
+        {
+            image.X += dx;
+            image.Y += dy;
+        }
+
+        if (group is not null)
+        {
+            group.X += dx;
+            group.Y += dy;
+        }
+
+        // If this is the live cursor node, the next AddClickNode must
+        // attach relative to *this* new position, not the stale one —
+        // otherwise the very next screenshot lands where this card used to
+        // be, as if the move never happened (confirmed as a real bug).
+        // Mirrors Relayout()'s own comment on why it re-syncs these too.
+        if (_cursorNodeId == nodeId)
+        {
+            _cursorX = x;
+            _cursorY = y;
+        }
+
+        Save();
+        return new BranchActionResult(true);
+    }
+
     /// <summary>The sibling "file" (image) node created alongside a content node in <see cref="AddClickNode"/> — identified by its fixed position relative to the text node, since the two are never edge-linked to each other.</summary>
     private CanvasNode? FindImageSibling(CanvasNode textNode) => _doc.Nodes.FirstOrDefault(n =>
         n.Type == "file" && Math.Abs(n.X - textNode.X) < 0.5 && Math.Abs(n.Y - (textNode.Y + TextNodeHeight + TextToImageGap)) < 0.5);
@@ -780,31 +832,123 @@ public sealed class CanvasFlowWriter : IFlowWriter
         return firstLine.Length > 70 ? firstLine[..70] + "…" : firstLine;
     }
 
-    private CanvasDocument LoadOrCreate(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                var json = File.ReadAllText(path);
-                var doc = JsonSerializer.Deserialize<CanvasDocument>(json);
-                if (doc is not null)
-                {
-                    return doc;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            LogService.Log($"Canvas-Datei konnte nicht gelesen werden, beginne neu: {ex.Message}");
-        }
-
-        return new CanvasDocument();
-    }
+    private CanvasDocument LoadOrCreate(string path) => CanvasDocumentIo.Load(path);
 
     private void Save()
     {
-        var json = JsonSerializer.Serialize(_doc, _jsonOptions);
-        FileSaveRetry.Save(_canvasPath!, () => File.WriteAllText(_canvasPath!, json));
+        var html = BuildLiveHtml();
+        FileSaveRetry.Save(_canvasPath!, () => File.WriteAllText(_canvasPath!, html));
     }
+
+    // Hex colors for the live Ablauf-Übersicht-in-a-browser viewer's own
+    // Cytoscape rendering — distinct from DecisionPointColor/PathStartColor
+    // above, which are Obsidian Canvas's own small integer color-preset
+    // slots ("6"="purple" etc.), meaningless to a plain <input>/CSS color.
+    // Kept in sync with DrawIoConverter/HtmlFlowExporter's own palette so a
+    // session looks the same whether viewed live or exported.
+    private const string HtmlDecisionPointColor = "#6B7280";
+    private const string HtmlMainColor = "#2563EB";
+    private static readonly string[] HtmlBranchColors =
+    {
+        "#D97706", "#059669", "#DB2777", "#7C3AED", "#DC2626", "#0891B2"
+    };
+
+    /// <summary>
+    /// Builds the actual file this session is saved as: a real, interactive
+    /// HTML page (see <see cref="HtmlViewerBuilder"/>) with the session's
+    /// raw JSON embedded for <see cref="CanvasDocumentIo.Load"/> to read
+    /// back on the next Start()/OpenForEditing() — opening the file directly
+    /// in a plain browser shows the same diagram the Ablauf-Übersicht does,
+    /// no DocuClick or Obsidian needed just to look at it. Screenshots are
+    /// referenced by a path *relative to this file* (never re-embedded as
+    /// base64 here) — this runs on every single click, and re-encoding every
+    /// screenshot on every save is exactly the per-click cost that made the
+    /// old live draw.io writer too slow to keep as a recording mode (see
+    /// DrawIoConverter's own doc comment); <see cref="HtmlFlowExporter"/>
+    /// is the deliberately separate, slower, fully self-contained one-shot
+    /// export for when a truly single portable file is actually needed.
+    /// </summary>
+    private string BuildLiveHtml()
+    {
+        var dataJson = JsonSerializer.Serialize(_doc, _jsonOptions);
+        var htmlDir = Path.GetDirectoryName(_canvasPath!) ?? _config.VaultPath;
+
+        // Reuses GetPreview()'s own PathId tagging for column-based accent
+        // colors, matching DrawIoConverter/HtmlFlowExporter's palette —
+        // this is purely a coloring lookup, the actual rendered *position*
+        // of every node still comes from this document's own X/Y below
+        // (already meaningful/clean via Relayout()), not recomputed here.
+        var preview = GetPreview();
+        var slotOf = FlowPreviewBranching.ComputeGridLayout(preview);
+        var textNodesById = _doc.Nodes.Where(n => n.Type == "text").ToDictionary(n => n.Id);
+        var previewNodesById = preview.Nodes.ToDictionary(n => n.Id);
+
+        string AccentFor(int column) => column == 0 ? HtmlMainColor : HtmlBranchColors[FlowPreviewBranching.StableColumnHash(column) % HtmlBranchColors.Length];
+
+        var nodeSpecs = new List<HtmlViewerBuilder.NodeSpec>();
+        foreach (var previewNode in preview.Nodes)
+        {
+            var canvasNode = textNodesById[previewNode.Id];
+            var (_, column) = slotOf[previewNode.Id];
+            var accent = AccentFor(column);
+
+            string color;
+            string shape = "round-rectangle";
+            string label;
+            string? imageSrc = null;
+
+            if (previewNode.IsDecisionPoint)
+            {
+                color = HtmlDecisionPointColor;
+                shape = "diamond";
+                label = "◆ Abzweigung";
+            }
+            else if (previewNode.IsPathStart)
+            {
+                color = accent;
+                label = canvasNode.Text ?? "";
+            }
+            else
+            {
+                color = accent;
+                label = BuildLabel(canvasNode.Text);
+                if (FindImageSibling(canvasNode)?.File is { } relativeToVault)
+                {
+                    var fullImagePath = Path.Combine(_config.VaultPath, relativeToVault);
+                    imageSrc = ToRelativeUrl(htmlDir, fullImagePath);
+                }
+            }
+
+            nodeSpecs.Add(new HtmlViewerBuilder.NodeSpec(previewNode.Id, label, canvasNode.X, canvasNode.Y, color, shape, imageSrc));
+        }
+
+        var edgeSpecs = new List<HtmlViewerBuilder.EdgeSpec>();
+        foreach (var edge in preview.Edges)
+        {
+            if (edge.Manual)
+            {
+                edgeSpecs.Add(new HtmlViewerBuilder.EdgeSpec(edge.FromId, edge.ToId, HtmlDecisionPointColor, Manual: true));
+                continue;
+            }
+
+            var targetIsDecisionPoint = previewNodesById[edge.ToId].IsDecisionPoint;
+            var (_, targetColumn) = slotOf[edge.ToId];
+            edgeSpecs.Add(new HtmlViewerBuilder.EdgeSpec(edge.FromId, edge.ToId, targetIsDecisionPoint ? HtmlDecisionPointColor : AccentFor(targetColumn), Manual: false));
+        }
+
+        return HtmlViewerBuilder.BuildPage(_sessionName, nodeSpecs, edgeSpecs, dataJson);
+    }
+
+    /// <summary>
+    /// A relative filesystem path, safe to use as a URL — session/folder
+    /// names routinely contain spaces or parentheses (e.g. "IT-Support
+    /// 2026-08-04 (1)"), which a raw path breaks as soon as something tries
+    /// to actually resolve it as a URL (confirmed as a real bug: an
+    /// unescaped space in the path silently failed to load the image at
+    /// all in a real browser, leaving only the plain background color
+    /// visible). Each path segment is escaped separately, not the whole
+    /// string, so the "/" separators themselves stay intact.
+    /// </summary>
+    private static string ToRelativeUrl(string baseDir, string fullPath) =>
+        string.Join("/", Path.GetRelativePath(baseDir, fullPath).Replace('\\', '/').Split('/').Select(Uri.EscapeDataString));
 }

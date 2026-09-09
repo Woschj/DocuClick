@@ -26,6 +26,9 @@ public partial class App : Application
     /// <summary>Set when the user closes the Ablauf-Übersicht via its own header ✕ — stops <see cref="OnFlowPreviewChanged"/> from popping it back open on the very next click, until the TopBar's "Übersicht" button explicitly asks for it again.</summary>
     private bool _flowPreviewManuallyHidden;
 
+    /// <summary>The target file the Ablauf-Übersicht's compact/large mode was last decided for — see <see cref="OnFlowPreviewChanged"/>. Null before anything has ever been loaded.</summary>
+    private string? _lastFlowPreviewTargetFileName;
+
     /// <summary>Set by clicking a node in the Ablauf-Übersicht while stopped (see <see cref="OnFlowPreviewNodeClicked"/>), consumed once by the next session-start file picker.</summary>
     private string? _pendingResumeFileName;
 
@@ -72,6 +75,7 @@ public partial class App : Application
         _trayApp.RecordingStateChanged += OnRecordingStateChanged;
         _trayApp.SettingsRequested += OnSettingsRequested;
         _trayApp.ExportToDrawIoRequested += OnExportToDrawIoRequested;
+        _trayApp.ExportToHtmlRequested += OnExportToHtmlRequested;
 
         // Visible for the app's whole lifetime (not just while recording),
         // so there is always an at-a-glance answer to "is it running".
@@ -133,6 +137,23 @@ public partial class App : Application
 
             var trayBounds = _trayApp.GetIconScreenBounds();
             return trayBounds is { } trayRect && trayRect.Contains(drawingPoint);
+        };
+
+        // Same idea as IsPointOnOwnUi just above, for the global Enter-key
+        // hook: is one of DocuClick's own windows (a modal dialog like
+        // BranchNameWindow, most commonly) the one currently focused? If
+        // so, an Enter press is confirming *that*, not a content action.
+        _sessionManager.IsOwnUiFocused = () =>
+        {
+            foreach (Window window in Windows)
+            {
+                if (window is not ZoomCursorBoxOverlay && window.IsVisible && window.IsActive)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         };
 
         SetUpHotkeys();
@@ -286,7 +307,7 @@ public partial class App : Application
 
             if (_flowPreviewOverlay is null)
             {
-                _flowPreviewOverlay = new FlowPreviewOverlay();
+                _flowPreviewOverlay = new FlowPreviewOverlay(_config!);
                 _flowPreviewOverlay.NodeClicked += OnFlowPreviewNodeClicked;
                 _flowPreviewOverlay.PathsProvider = decisionPointId => _sessionManager?.ListPaths(decisionPointId) ?? new List<PathInfo>();
                 _flowPreviewOverlay.NewPathRequested += OnNewPathRequested;
@@ -295,11 +316,30 @@ public partial class App : Application
                 _flowPreviewOverlay.DeleteRequested += nodeId => _sessionManager?.DeleteNode(nodeId);
                 _flowPreviewOverlay.ConnectRequested += (fromId, toId) => _sessionManager?.ConnectNodes(fromId, toId);
                 _flowPreviewOverlay.DisconnectRequested += (fromId, toId) => _sessionManager?.DisconnectNodes(fromId, toId);
+                _flowPreviewOverlay.MoveRequested += (nodeId, x, y) => _sessionManager?.MoveNode(nodeId, x, y);
                 _flowPreviewOverlay.CloseRequested += () =>
                 {
                     _flowPreviewManuallyHidden = true;
                     _flowPreviewOverlay?.Hide();
                 };
+            }
+
+            // Big editing window when there's no active recording to keep
+            // small/out of the way for (i.e. this preview came from "Ablauf
+            // öffnen", not a live click) — see FlowPreviewOverlay.SetLargeMode.
+            // Only *decided* when the target file actually changes, though —
+            // continuing to record into a file that's already open in the
+            // large editing window (e.g. adding one more click there) must
+            // not suddenly shrink it back to the live minimap mid-session;
+            // the user is still looking at the same flow, just adding to
+            // it. CurrentTargetFileName and IsRunning are both already
+            // updated by the time Start()/OpenForEditing fire this event,
+            // so this correctly only re-decides on an actual file switch.
+            var targetFileName = _sessionManager?.CurrentTargetFileName;
+            if (targetFileName != _lastFlowPreviewTargetFileName)
+            {
+                _lastFlowPreviewTargetFileName = targetFileName;
+                _flowPreviewOverlay.SetLargeMode(_sessionManager?.IsRunning != true);
             }
 
             _flowPreviewOverlay.UpdatePreview(preview);
@@ -310,25 +350,43 @@ public partial class App : Application
         });
     }
 
-    /// <summary>TopBar "Übersicht" button: toggles the Ablauf-Übersicht — closes it if it's currently showing (same as its own header ✕), reopens it otherwise. A no-op info balloon (not an error) if nothing has ever been recorded yet — there's simply nothing to show.</summary>
+    /// <summary>
+    /// TopBar "Übersicht" button — the single entry point for the Ablauf-
+    /// Übersicht now (used to be split between this toggle and a separate
+    /// tray-menu "Ablauf öffnen..." item, which lived one right-click and
+    /// one submenu away from the always-visible top bar). If something is
+    /// already loaded — a live recording, or a file opened earlier this
+    /// run — this just toggles it, exactly as before: closes it if it's
+    /// currently showing (same as its own header ✕), reopens it otherwise.
+    /// Only when *nothing* is loaded yet does it ask for a file at all,
+    /// via the same picker <see cref="OnOpenFlowRequested"/> already used —
+    /// a running recording with no clicks captured yet gets an info
+    /// balloon instead, since there's nothing on disk yet worth a picker.
+    /// </summary>
     private void OnShowFlowPreviewRequested()
     {
-        if (_flowPreviewOverlay is null)
+        if (_flowPreviewOverlay is not null)
+        {
+            if (_flowPreviewOverlay.IsVisible)
+            {
+                _flowPreviewManuallyHidden = true;
+                _flowPreviewOverlay.Hide();
+            }
+            else
+            {
+                _flowPreviewManuallyHidden = false;
+                _flowPreviewOverlay.Show();
+            }
+            return;
+        }
+
+        if (_sessionManager!.IsRunning)
         {
             _trayApp?.ShowInfo("Noch keine Ablauf-Übersicht vorhanden — sie erscheint mit dem ersten aufgezeichneten Klick.");
             return;
         }
 
-        if (_flowPreviewOverlay.IsVisible)
-        {
-            _flowPreviewManuallyHidden = true;
-            _flowPreviewOverlay.Hide();
-        }
-        else
-        {
-            _flowPreviewManuallyHidden = false;
-            _flowPreviewOverlay.Show();
-        }
+        OnOpenFlowRequested();
     }
 
     /// <summary>
@@ -500,8 +558,8 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Tray menu: converts an existing .canvas session into a .drawio file
-    /// in one pass — draw.io is no longer a live-recording mode (see
+    /// Tray menu: converts an existing Canvas-mode session into a .drawio
+    /// file in one pass — draw.io is no longer a live-recording mode (see
     /// DrawIoConverter's own doc comment for why), so this is now the only
     /// way to get one. Synchronous/blocking is fine here: it's a short,
     /// explicit, one-time action the user just asked for, not a recurring
@@ -520,9 +578,9 @@ public partial class App : Application
 
         var openDialog = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "Canvas-Datei für den draw.io-Export wählen",
+            Title = "Ablauf für den draw.io-Export wählen",
             InitialDirectory = _config.VaultPath,
-            Filter = "Obsidian Canvas (*.canvas)|*.canvas",
+            Filter = "DocuClick-Ablauf (*.html)|*.html",
             CheckFileExists = true
         };
         if (openDialog.ShowDialog() != true)
@@ -550,6 +608,100 @@ public partial class App : Application
         catch (Exception ex)
         {
             LogService.Log($"draw.io-Export fehlgeschlagen: {ex}");
+            MessageBox.Show($"Export fehlgeschlagen:\n{ex.Message}", "DocuClick", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
+    /// Tray menu "Ablauf öffnen...": lets a Canvas session be reviewed/edited
+    /// in the Ablauf-Übersicht (rename, delete, connect, jump) without
+    /// starting a recording — DocuClick doesn't need Obsidian open (or even
+    /// installed) just to work with an already-recorded flow.
+    /// </summary>
+    private void OnOpenFlowRequested()
+    {
+        if (string.IsNullOrWhiteSpace(_config!.VaultPath) || !Directory.Exists(_config.VaultPath))
+        {
+            MessageBox.Show(
+                "Kein gültiger Vault-Pfad konfiguriert — in den Einstellungen setzen, dann erneut versuchen.",
+                "DocuClick", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var openDialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Ablauf zum Ansehen/Bearbeiten wählen",
+            InitialDirectory = _config.VaultPath,
+            Filter = "DocuClick-Ablauf (*.html)|*.html",
+            CheckFileExists = true
+        };
+        if (openDialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var relativeFileName = Path.GetRelativePath(_config.VaultPath, openDialog.FileName);
+        _sessionManager!.OpenForEditing(relativeFileName);
+        RememberLastSession(relativeFileName);
+    }
+
+    /// <summary>
+    /// Tray menu "Nach HTML exportieren...": converts an existing Canvas-
+    /// mode session into a single fully self-contained .html file
+    /// (Cytoscape.js and every screenshot embedded as base64) — opens in
+    /// any browser with no sibling Attachments folder needed, for sharing
+    /// the result with someone who has none of DocuClick's dependencies.
+    /// The live session file is *also* .html now (see
+    /// CanvasFlowWriter.BuildLiveHtml), so the export deliberately gets its
+    /// own distinct "(Export).html" name rather than Path.ChangeExtension —
+    /// same source and target extension would otherwise make this silently
+    /// overwrite the live, still-editable session file with a dead,
+    /// read-only copy that has no embedded data left to reopen for editing.
+    /// </summary>
+    private void OnExportToHtmlRequested()
+    {
+        if (string.IsNullOrWhiteSpace(_config!.VaultPath) || !Directory.Exists(_config.VaultPath))
+        {
+            MessageBox.Show(
+                "Kein gültiger Vault-Pfad konfiguriert — in den Einstellungen setzen, dann erneut versuchen.",
+                "DocuClick", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var openDialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Ablauf für den HTML-Export wählen",
+            InitialDirectory = _config.VaultPath,
+            Filter = "DocuClick-Ablauf (*.html)|*.html",
+            CheckFileExists = true
+        };
+        if (openDialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var exportDir = Path.GetDirectoryName(openDialog.FileName)!;
+        var exportName = Path.GetFileNameWithoutExtension(openDialog.FileName) + " (Export).html";
+        var htmlPath = Path.Combine(exportDir, exportName);
+        if (File.Exists(htmlPath))
+        {
+            var overwrite = MessageBox.Show(
+                $"\"{Path.GetFileName(htmlPath)}\" existiert bereits. Überschreiben?",
+                "DocuClick", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (overwrite != MessageBoxResult.Yes)
+            {
+                return;
+            }
+        }
+
+        try
+        {
+            HtmlFlowExporter.Convert(openDialog.FileName, _config.VaultPath, htmlPath);
+            _trayApp?.ShowInfo($"Nach HTML exportiert: {Path.GetFileName(htmlPath)}");
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"HTML-Export fehlgeschlagen: {ex}");
             MessageBox.Show($"Export fehlgeschlagen:\n{ex.Message}", "DocuClick", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
