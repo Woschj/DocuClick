@@ -10,13 +10,13 @@ namespace DocuClick;
 /// file is always either an explicitly typed new name or a deliberately
 /// chosen existing file — never a name so generic it silently collides
 /// with (and resumes) an earlier session. Also asks which (sub)folder
-/// relative to the vault path the file belongs in, so captures can be
-/// filed straight into a vault's existing structure instead of always
+/// relative to the output path the file belongs in, so captures can be
+/// filed straight into the output folder's existing structure instead of always
 /// landing at its root.
 /// </summary>
 public partial class SessionStartWindow : Window
 {
-    private readonly string _vaultPath;
+    private readonly string _outputPath;
     private readonly string _extension;
 
     // Tracks whether the user has typed their own name, so the
@@ -38,21 +38,21 @@ public partial class SessionStartWindow : Window
     {
         InitializeComponent();
 
-        _vaultPath = config.VaultPath;
-        _extension = SessionManager.ExtensionForOutputMode(config.OutputMode);
+        _outputPath = config.OutputPath;
+        _extension = SessionManager.OutputExtension;
 
         var existingFiles = new List<string>();
         var existingFolders = new List<string>();
-        if (!string.IsNullOrWhiteSpace(_vaultPath) && Directory.Exists(_vaultPath))
+        if (!string.IsNullOrWhiteSpace(_outputPath) && Directory.Exists(_outputPath))
         {
-            existingFiles = Directory.GetFiles(_vaultPath, "*" + _extension, SearchOption.AllDirectories)
-                .Select(f => Path.GetRelativePath(_vaultPath, f))
-                .OrderByDescending(f => File.GetLastWriteTimeUtc(Path.Combine(_vaultPath, f)))
+            existingFiles = Directory.GetFiles(_outputPath, "*" + _extension, SearchOption.AllDirectories)
+                .Select(f => Path.GetRelativePath(_outputPath, f))
+                .OrderByDescending(f => File.GetLastWriteTimeUtc(Path.Combine(_outputPath, f)))
                 .ToList();
 
-            existingFolders = Directory.GetDirectories(_vaultPath, "*", SearchOption.AllDirectories)
-                .Select(d => Path.GetRelativePath(_vaultPath, d))
-                // Hide Obsidian's own config folder and anything nested under it/other dot-folders.
+            existingFolders = Directory.GetDirectories(_outputPath, "*", SearchOption.AllDirectories)
+                .Select(d => Path.GetRelativePath(_outputPath, d))
+                // Hide dot-folders (.git, .obsidian if the output folder happens to also be a vault, etc.) and anything nested under them.
                 .Where(d => !d.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
                     .Any(segment => segment.StartsWith('.')))
                 .OrderBy(d => d, StringComparer.OrdinalIgnoreCase)
@@ -114,7 +114,7 @@ public partial class SessionStartWindow : Window
         var folder = SanitizeRelativeFolder(TargetFolderBox.Text ?? "");
         var folderLabel = GetFolderLabel(folder);
         var datePart = DateTime.Now.ToString("yyyy-MM-dd");
-        var targetDir = string.IsNullOrEmpty(folder) ? _vaultPath : Path.Combine(_vaultPath, folder);
+        var targetDir = string.IsNullOrEmpty(folder) ? _outputPath : Path.Combine(_outputPath, folder);
 
         var existingNames = Directory.Exists(targetDir)
             ? Directory.GetFiles(targetDir, "*" + _extension)
@@ -139,8 +139,8 @@ public partial class SessionStartWindow : Window
     {
         if (string.IsNullOrWhiteSpace(relativeFolder))
         {
-            var vaultName = Path.GetFileName(_vaultPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-            return string.IsNullOrWhiteSpace(vaultName) ? "Session" : vaultName;
+            var folderName = Path.GetFileName(_outputPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            return string.IsNullOrWhiteSpace(folderName) ? "Session" : folderName;
         }
 
         var lastSegment = relativeFolder
@@ -217,7 +217,7 @@ public partial class SessionStartWindow : Window
 
     /// <summary>
     /// Splits on both slash styles, sanitizes each segment, and drops "."
-    /// / ".." so a typed folder path can never escape the vault root.
+    /// / ".." so a typed folder path can never escape the output root.
     /// </summary>
     private static string SanitizeRelativeFolder(string input)
     {

@@ -1,0 +1,14 @@
+# Blank template — real DocuClick sessions write HTML flow files and
+# screenshots into these folders. Keep that out of git so a live-in-place
+# output folder never leaks captured content into this public repo (see
+# OutputTemplate/README.md: copy this folder out first).
+/00 Inbox/*
+!/00 Inbox/.gitkeep
+/01 Prozesse/*
+!/01 Prozesse/.gitkeep
+/03 MOCs/*
+!/03 MOCs/.gitkeep
+/99 Archiv/*
+!/99 Archiv/.gitkeep
+/Attachments/*
+!/Attachments/.gitkeep

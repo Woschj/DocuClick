@@ -142,10 +142,17 @@
   // leave zoom alone and only pan to the newest node below.
   let hasFitted = false;
 
+  // Module-wide (unlike the node-level "large" datum above, which only
+  // exists per-node once rendered): read by the background-right-click
+  // "+ Neuer Knoten hier" handler below, which fires outside render()'s own
+  // scope and needs to know the current mode without a node to check.
+  let isLargeMode = false;
+
   function render(preview) {
     const nodes = preview.nodes || [];
     const edges = preview.edges || [];
     const large = !!preview.large;
+    isLargeMode = large;
 
     emptyHint.hidden = nodes.length > 0;
     if (nodes.length === 0) {
@@ -409,20 +416,20 @@
   });
 
   // ---- Right-click on a connector: delete it ------------------------
-  // Only ever offered for a *manual* cross-connect (added via drag-to-
-  // connect) — never a structural edge (the main recorded sequence, or
-  // into/out of a decision point or path-start): removing one of those
-  // would either break the main chain without DeleteNode's stitch repair,
-  // or silently detach a whole named path from its decision point while
-  // leaving the path's nodes behind, unreachable but not deleted (see
-  // IFlowWriter.DisconnectNodes — the backend refuses this too, so the
-  // menu staying in sync here is purely about not offering an action that
-  // would otherwise silently do nothing).
+  // Offered for any edge between two ordinary content nodes, structural or
+  // manual — never into/out of a decision point or path-start: removing
+  // one of those would silently detach a whole named path from its
+  // decision point while leaving the path's nodes behind, unreachable but
+  // not deleted (see IFlowWriter.DisconnectNodes — the backend refuses
+  // this too, so the menu staying in sync here is purely about not
+  // offering an action that would otherwise silently do nothing). Cutting
+  // a structural edge just turns its target into a new isolated root —
+  // the grid layout already handles that.
   cy.on("cxttap", "edge", (evt) => {
     const edge = evt.target;
     const source = edge.source();
     const target = edge.target();
-    if (!edge.data("manual") || source.data("isMarker") || target.data("isMarker")) {
+    if (source.data("isMarker") || target.data("isMarker")) {
       return;
     }
 
@@ -435,6 +442,30 @@
       })
     );
     positionNear(menu, evt.renderedPosition || renderedFromModel(edge.midpoint()));
+    menu.hidden = false;
+  });
+
+  // ---- Right-click on the empty canvas: add a new, isolated node -----
+  // Large/editing mode only — a UML-diagram-style way to place a node that
+  // was never actually clicked/recorded, positioned exactly where the user
+  // right-clicked. `evt.target !== cy` is the actual node/edge cxttap
+  // handlers above already firing for those cases; without this extra
+  // check here too, this handler would ALSO fire right alongside them on
+  // every node/edge right-click (cxttap bubbles to the core).
+  cy.on("cxttap", (evt) => {
+    if (evt.target !== cy || !isLargeMode) {
+      return;
+    }
+
+    pendingMenuNodeId = null;
+    menu.innerHTML = "";
+    menu.appendChild(
+      menuItem("+ Neuer Knoten hier", false, () => {
+        closeMenu();
+        sendToHost({ type: "addNode", x: evt.position.x, y: evt.position.y });
+      })
+    );
+    positionNear(menu, evt.renderedPosition);
     menu.hidden = false;
   });
 

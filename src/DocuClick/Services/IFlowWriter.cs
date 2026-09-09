@@ -10,7 +10,7 @@ namespace DocuClick.Services;
 /// node first — not by the individual writers.
 /// </summary>
 /// <param name="ImagePath">
-/// Vault-relative path to this node's screenshot (forward slashes), or null
+/// Output-relative path to this node's screenshot (forward slashes), or null
 /// for a marker node — lets the Ablauf-Übersicht and the HTML export
 /// actually show the captured image, not just a label.
 /// </param>
@@ -305,13 +305,12 @@ public readonly record struct BranchActionResult(bool Success);
 public readonly record struct PathInfo(string PathStartNodeId, string Name, int StepCount);
 
 /// <summary>
-/// Common contract for a branching output mode, implemented by
-/// CanvasFlowWriter (the only live-recording branching mode — see
-/// AppConfig.OutputMode). The plain note mode (ObsidianWriter) has no
-/// branching concept and deliberately does not implement this. draw.io is
-/// no longer a live-recording mode (see DrawIoConverter) and so no longer
-/// implements this interface either — it converts an existing Canvas
-/// session into a .drawio file in one pass instead.
+/// Common contract for the branching flow writer, implemented solely by
+/// CanvasFlowWriter — there is no other output mode (a separate, non-
+/// branching plain-note writer existed once and was removed once the HTML
+/// flow format no longer needed Obsidian). draw.io is not a live-recording
+/// target either (see DrawIoConverter) — it converts an existing session
+/// into a .drawio file in one pass instead of implementing this interface.
 ///
 /// Branching model: <see cref="MarkDecisionPoint"/> turns the current node
 /// into a small diamond — a decision point — and immediately forks the
@@ -441,4 +440,16 @@ public interface IFlowWriter
     /// new decision point/path) discards it again.
     /// </summary>
     BranchActionResult MoveNode(string nodeId, double x, double y);
+
+    /// <summary>
+    /// Creates a brand-new, isolated content node at an explicit position —
+    /// the Ablauf-Übersicht's UML-style "+ Neuer Knoten hier" gesture on the
+    /// empty canvas background. No screenshot and no edges: it starts out
+    /// exactly like a node that's been <see cref="DisconnectNodes"/>'d from
+    /// everything, ready to be connected via <see cref="ConnectNodes"/> or
+    /// moved via <see cref="MoveNode"/> like any other. Like MoveNode, does
+    /// *not* re-run the auto-layout — the whole point is placing it exactly
+    /// where the user right-clicked.
+    /// </summary>
+    BranchActionResult AddManualNode(string label, double x, double y);
 }

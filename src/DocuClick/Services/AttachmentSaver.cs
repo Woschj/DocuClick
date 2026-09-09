@@ -4,7 +4,7 @@ using System.IO;
 
 namespace DocuClick.Services;
 
-/// <summary>Shared by ObsidianWriter (note mode) and CanvasFlowWriter (canvas mode).</summary>
+/// <summary>Used by CanvasFlowWriter to save every click's screenshot.</summary>
 public static class AttachmentSaver
 {
     /// <summary>
@@ -16,13 +16,13 @@ public static class AttachmentSaver
     /// <returns>The saved file's path relative to the Attachments folder (e.g. "MySession/073934_321.png").</returns>
     public static string SaveScreenshot(AppConfig config, Bitmap screenshot, DateTime timestamp, string sessionName)
     {
-        if (string.IsNullOrWhiteSpace(config.VaultPath))
+        if (string.IsNullOrWhiteSpace(config.OutputPath))
         {
-            throw new InvalidOperationException("Kein Obsidian-Vault-Pfad konfiguriert.");
+            throw new InvalidOperationException("Kein Ausgabeordner konfiguriert.");
         }
 
         var subfolder = SanitizeSessionName(sessionName);
-        var attachmentsDir = Path.Combine(config.VaultPath, config.AttachmentsFolder, subfolder);
+        var attachmentsDir = Path.Combine(config.OutputPath, config.AttachmentsFolder, subfolder);
         Directory.CreateDirectory(attachmentsDir);
 
         // No "screenshot_" prefix and no date: the enclosing session

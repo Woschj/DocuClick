@@ -134,7 +134,16 @@ public sealed class FlowPreviewOverlay : Window
     private bool _collapsed;
     private double _expandedHeight;
     private bool _webViewReady;
-    private string? _mappedVaultPath;
+    private string? _mappedOutputPath;
+
+    // Keyed by output-relative path, populated lazily — a screenshot file is
+    // never modified after AttachmentSaver first writes it, so there is
+    // nothing to invalidate this against; without it, BuildImageDataUri was
+    // re-reading and re-base64-encoding *every* image-bearing node's
+    // screenshot on *every single* large-mode preview push (each move/
+    // rename/connect while editing), not just the one node that actually
+    // changed — confirmed as a real, avoidable per-push cost.
+    private readonly Dictionary<string, string> _imageDataUriCache = new();
 
     public event Action<string>? NodeClicked;
 
@@ -161,6 +170,9 @@ public sealed class FlowPreviewOverlay : Window
 
     /// <summary>Fired when a large-mode drag-to-move gesture completes — (nodeId, x, y), the node's new position in its own real coordinate space. Never fires from the compact live-recording minimap, which has no drag-to-move gesture at all (see flow.js's mousedown handler).</summary>
     public event Action<string, double, double>? MoveRequested;
+
+    /// <summary>Fired after the "+ Neuer Knoten hier" background context menu's naming dialog is confirmed — (label, x, y), where the user right-clicked. Large mode only, same reasoning as <see cref="MoveRequested"/>.</summary>
+    public event Action<string, double, double>? AddNodeRequested;
 
     /// <summary>Fired when the header's close (✕) icon is clicked — App.xaml.cs hides rather than destroys the window, so <see cref="UpdatePreview"/> keeps the state current for whenever the TopBar's reopen button brings it back.</summary>
     public event Action? CloseRequested;
@@ -409,40 +421,41 @@ public sealed class FlowPreviewOverlay : Window
         _webView.NavigationCompleted += (_, _) =>
         {
             _webViewReady = true;
-            EnsureVaultMapping();
+            EnsureOutputMapping();
             PostPreview(_lastPreview);
         };
         _webView.CoreWebView2.Navigate("https://docuclick.flowpreview/index.html");
     }
 
     /// <summary>
-    /// Exposes the vault as its own virtual host so node payloads can carry
-    /// a plain image URL (letting the browser load/cache screenshots itself)
-    /// instead of embedding every screenshot's bytes as base64 in *every*
-    /// preview push — that would bloat the WebView message on every single
-    /// click, the same per-click cost problem that made the old live draw.io
-    /// writer too slow to keep as a recording mode (see DrawIoConverter's own
-    /// doc comment). Re-checked on every push (cheap: one string compare)
-    /// rather than once at startup, since the vault path can change later in
-    /// Settings while this window is still alive.
+    /// Exposes the output folder as its own virtual host so node payloads
+    /// can carry a plain image URL (letting the browser load/cache
+    /// screenshots itself) instead of embedding every screenshot's bytes as
+    /// base64 in *every* preview push — that would bloat the WebView
+    /// message on every single click, the same per-click cost problem that
+    /// made the old live draw.io writer too slow to keep as a recording
+    /// mode (see DrawIoConverter's own doc comment). Re-checked on every
+    /// push (cheap: one string compare) rather than once at startup, since
+    /// the output path can change later in Settings while this window is
+    /// still alive.
     /// </summary>
-    private void EnsureVaultMapping()
+    private void EnsureOutputMapping()
     {
         if (!_webViewReady)
         {
             return;
         }
 
-        var vaultPath = _config.VaultPath;
-        if (string.IsNullOrWhiteSpace(vaultPath) || !System.IO.Directory.Exists(vaultPath)
-            || string.Equals(_mappedVaultPath, vaultPath, StringComparison.OrdinalIgnoreCase))
+        var outputPath = _config.OutputPath;
+        if (string.IsNullOrWhiteSpace(outputPath) || !System.IO.Directory.Exists(outputPath)
+            || string.Equals(_mappedOutputPath, outputPath, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
         _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-            "docuclick.vault", vaultPath, CoreWebView2HostResourceAccessKind.Allow);
-        _mappedVaultPath = vaultPath;
+            "docuclick.output", outputPath, CoreWebView2HostResourceAccessKind.Allow);
+        _mappedOutputPath = outputPath;
     }
 
     /// <summary>
@@ -557,11 +570,31 @@ public sealed class FlowPreviewOverlay : Window
                     root.GetProperty("y").GetDouble());
                 break;
 
+            case "addNode":
+            {
+                var x = root.GetProperty("x").GetDouble();
+                var y = root.GetProperty("y").GetDouble();
+                var nameWindow = new BranchNameWindow("DocuClick - Neuer Knoten", "Bezeichnung", "") { Owner = this };
+                NativeMethods.ModalDialogDepth++;
+                try
+                {
+                    if (nameWindow.ShowDialog() == true && nameWindow.BranchName is { } label)
+                    {
+                        AddNodeRequested?.Invoke(label, x, y);
+                    }
+                }
+                finally
+                {
+                    NativeMethods.ModalDialogDepth--;
+                }
+                break;
+            }
+
             // Diagnostic only (see flow.js's rebuildImageOverlays): a
             // thumbnail's <img> failed to load. Logged rather than shown to
             // the user — this HUD has no DevTools access in practice, so
             // LogService.Log's file is the only way to see the exact URL
-            // and pin down why (bad vault mapping, wrong escaping, the file
+            // and pin down why (bad output-folder mapping, wrong escaping, the file
             // genuinely missing, ...).
             case "imageLoadError":
                 LogService.Log($"Ablauf-Übersicht: Bild konnte nicht geladen werden: {root.GetProperty("url").GetString()}");
@@ -829,7 +862,7 @@ public sealed class FlowPreviewOverlay : Window
 
     private void PostPreview(FlowPreview preview)
     {
-        EnsureVaultMapping();
+        EnsureOutputMapping();
         var payload = BuildPreviewPayload(preview);
         _webView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(payload, JsonOptions));
     }
@@ -907,7 +940,7 @@ public sealed class FlowPreviewOverlay : Window
                 : isMarker ? permLabel : n.IsCurrent ? $"● {n.Label}" : n.Label;
 
             // Large mode embeds the screenshot as a data: URI instead of a
-            // docuclick.vault URL — confirmed via a real run (see
+            // docuclick.output URL — confirmed via a real run (see
             // LogService's "Bild konnte nicht geladen werden" entries) that
             // a plain <img> pointed at that virtual host still fails to
             // load the file, even though it exists at exactly that path;
@@ -933,33 +966,49 @@ public sealed class FlowPreviewOverlay : Window
     }
 
     /// <summary>
-    /// Turns a vault-relative screenshot path (as stored on the Canvas file's
-    /// sibling "file" node, e.g. "Attachments/Session/073934_321.png")
-    /// into a URL under the <see cref="EnsureVaultMapping"/> virtual host —
+    /// Turns an output-relative screenshot path (as stored on the Canvas
+    /// file's sibling "file" node, e.g. "Attachments/Session/073934_321.png")
+    /// into a URL under the <see cref="EnsureOutputMapping"/> virtual host —
     /// each path segment is escaped separately (not the whole string, which
-    /// would also escape the "/" separators the vault mapping needs intact),
-    /// since session/folder names routinely contain spaces or parentheses.
+    /// would also escape the "/" separators the mapping needs intact), since
+    /// session/folder names routinely contain spaces or parentheses.
     /// </summary>
-    private static string? BuildImageUrl(string? vaultRelativePath) => vaultRelativePath is null
+    private static string? BuildImageUrl(string? outputRelativePath) => outputRelativePath is null
         ? null
-        : "https://docuclick.vault/" + string.Join("/", vaultRelativePath.Split('/').Select(Uri.EscapeDataString));
+        : "https://docuclick.output/" + string.Join("/", outputRelativePath.Split('/').Select(Uri.EscapeDataString));
 
-    /// <summary>See the large-mode branch in <see cref="BuildPreviewPayload"/> for why this exists alongside <see cref="BuildImageUrl"/> instead of replacing it outright.</summary>
-    private string? BuildImageDataUri(string? vaultRelativePath)
+    /// <summary>
+    /// See the large-mode branch in <see cref="BuildPreviewPayload"/> for why
+    /// this exists alongside <see cref="BuildImageUrl"/> instead of replacing
+    /// it outright. Cached by path — see <see cref="_imageDataUriCache"/>'s
+    /// own doc comment.
+    /// </summary>
+    private string? BuildImageDataUri(string? outputRelativePath)
     {
-        if (vaultRelativePath is null)
+        if (outputRelativePath is null)
         {
             return null;
         }
 
-        var fullPath = System.IO.Path.Combine(_config.VaultPath, vaultRelativePath);
+        if (_imageDataUriCache.TryGetValue(outputRelativePath, out var cached))
+        {
+            return cached;
+        }
+
+        var fullPath = System.IO.Path.Combine(_config.OutputPath, outputRelativePath);
         try
         {
             var bytes = System.IO.File.ReadAllBytes(fullPath);
-            return $"data:image/png;base64,{Convert.ToBase64String(bytes)}";
+            var result = $"data:image/png;base64,{Convert.ToBase64String(bytes)}";
+            _imageDataUriCache[outputRelativePath] = result;
+            return result;
         }
         catch (Exception ex)
         {
+            // Deliberately not cached — a transient failure (e.g. a
+            // momentary antivirus lock right after the file was written)
+            // should get another chance on the next push, not be
+            // permanently remembered as broken for this window's lifetime.
             LogService.Log($"Ablauf-Übersicht: Screenshot konnte nicht eingebettet werden ({fullPath}): {ex.Message}");
             return null;
         }

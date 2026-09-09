@@ -16,7 +16,7 @@ public static class UiAutomationService
     // hard deadline instead: if it doesn't finish in time, this simply
     // returns "no element" (the caller already treats that as normal — see
     // DescriptionGenerator's fallback path) and the actual write to the
-    // vault carries on. The abandoned background call itself can't be
+    // output folder carries on. The abandoned background call itself can't be
     // cancelled (COM/UIA calls have no cooperative cancellation), so it
     // keeps running on its own pooled thread rather than the one that
     // asked for it — one leaked pool thread per genuine hang is a far

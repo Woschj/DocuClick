@@ -44,23 +44,14 @@ public partial class SettingsWindow : Window
 
     private void LoadIntoForm()
     {
-        VaultPathBox.Text = _config.VaultPath;
+        OutputPathBox.ItemsSource = _config.RecentOutputPaths;
+        OutputPathBox.Text = _config.OutputPath;
         AttachmentsFolderBox.Text = _config.AttachmentsFolder;
         UseUiAutomationBox.IsChecked = _config.UseUiAutomation;
         EnableClickSoundBox.IsChecked = _config.EnableClickSound;
         CaptureOnEnterBox.IsChecked = _config.CaptureOnEnter;
         CaptureOnRightClickBox.IsChecked = _config.CaptureOnRightClick;
         SelectSkipModifier(_config.SkipRecordingModifier);
-
-        switch (_config.OutputMode)
-        {
-            case "Canvas":
-                OutputModeCanvasRadio.IsChecked = true;
-                break;
-            default:
-                OutputModeNoteRadio.IsChecked = true;
-                break;
-        }
 
         _startStopModifiers = _config.StartStopModifiers;
         _startStopKey = _config.StartStopKey;
@@ -211,24 +202,31 @@ public partial class SettingsWindow : Window
         return string.Join("+", parts);
     }
 
-    // --- Vault / save / cancel ------------------------------------------
+    // --- Speicherort / save / cancel ------------------------------------
 
-    private void OnBrowseVaultClicked(object sender, RoutedEventArgs e)
+    private void OnBrowseOutputPathClicked(object sender, RoutedEventArgs e)
     {
         using var dialog = new System.Windows.Forms.FolderBrowserDialog
         {
-            SelectedPath = string.IsNullOrWhiteSpace(VaultPathBox.Text) ? string.Empty : VaultPathBox.Text
+            SelectedPath = string.IsNullOrWhiteSpace(OutputPathBox.Text) ? string.Empty : OutputPathBox.Text
         };
 
         if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
         {
-            VaultPathBox.Text = dialog.SelectedPath;
+            OutputPathBox.Text = dialog.SelectedPath;
+            // Reflected immediately (not just after "Speichern") so the
+            // very same folder just picked already shows up in the
+            // dropdown if the user reopens it before saving.
+            _config.RememberRecentOutputPath(dialog.SelectedPath);
+            OutputPathBox.ItemsSource = null;
+            OutputPathBox.ItemsSource = _config.RecentOutputPaths;
+            OutputPathBox.Text = dialog.SelectedPath;
         }
     }
 
     private void OnSaveClicked(object sender, RoutedEventArgs e)
     {
-        _config.VaultPath = VaultPathBox.Text.Trim();
+        _config.OutputPath = OutputPathBox.Text.Trim();
         _config.AttachmentsFolder = string.IsNullOrWhiteSpace(AttachmentsFolderBox.Text)
             ? "Attachments"
             : AttachmentsFolderBox.Text.Trim();
@@ -240,7 +238,6 @@ public partial class SettingsWindow : Window
         _config.SkipRecordingModifier = SkipModifierBox.SelectedItem is ComboBoxItem selected
             ? (string)selected.Tag
             : "None";
-        _config.OutputMode = OutputModeCanvasRadio.IsChecked == true ? "Canvas" : "Note";
 
         _config.StartStopModifiers = _startStopModifiers;
         _config.StartStopKey = _startStopKey;

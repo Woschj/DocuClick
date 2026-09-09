@@ -52,11 +52,11 @@ public static class DrawIoConverter
     /// <summary>
     /// Converts <paramref name="canvasFilePath"/> into a new .drawio file at
     /// <paramref name="drawioFilePath"/> (overwritten if it already exists).
-    /// <paramref name="vaultPath"/> resolves each card's screenshot — Canvas
-    /// mode stores those as separate files, referenced by vault-relative
+    /// <paramref name="outputPath"/> resolves each card's screenshot — Canvas
+    /// mode stores those as separate files, referenced by output-relative
     /// path from the node's own "file" property.
     /// </summary>
-    public static void Convert(string canvasFilePath, string vaultPath, string drawioFilePath)
+    public static void Convert(string canvasFilePath, string outputPath, string drawioFilePath)
     {
         var canvas = CanvasDocumentIo.Load(canvasFilePath);
 
@@ -132,7 +132,7 @@ public static class DrawIoConverter
             }
             else
             {
-                var screenshotPath = FindScreenshotPath(canvas, canvasNode, vaultPath);
+                var screenshotPath = FindScreenshotPath(canvas, canvasNode, outputPath);
                 using var screenshot = screenshotPath is not null && File.Exists(screenshotPath)
                     ? new Bitmap(screenshotPath)
                     : new Bitmap(1, 1); // missing/moved attachment — still export the card, just without a real image
@@ -171,11 +171,11 @@ public static class DrawIoConverter
     private static string AccentFor(int column) =>
         column == 0 ? MainColor : BranchColors[FlowPreviewBranching.StableColumnHash(column) % BranchColors.Length];
 
-    private static string? FindScreenshotPath(CanvasDocument canvas, CanvasNode textNode, string vaultPath)
+    private static string? FindScreenshotPath(CanvasDocument canvas, CanvasNode textNode, string outputPath)
     {
         var imageSibling = canvas.Nodes.FirstOrDefault(n =>
             n.Type == "file" && Math.Abs(n.X - textNode.X) < 0.5 && Math.Abs(n.Y - (textNode.Y + CanvasFlowWriter.TextNodeHeight + CanvasFlowWriter.TextToImageGap)) < 0.5);
-        return imageSibling?.File is { } relativePath ? Path.Combine(vaultPath, relativePath) : null;
+        return imageSibling?.File is { } relativePath ? Path.Combine(outputPath, relativePath) : null;
     }
 
     private static string BuildDecisionMarker(XElement root, double x, double y, string label)

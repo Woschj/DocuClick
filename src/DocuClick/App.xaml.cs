@@ -317,6 +317,7 @@ public partial class App : Application
                 _flowPreviewOverlay.ConnectRequested += (fromId, toId) => _sessionManager?.ConnectNodes(fromId, toId);
                 _flowPreviewOverlay.DisconnectRequested += (fromId, toId) => _sessionManager?.DisconnectNodes(fromId, toId);
                 _flowPreviewOverlay.MoveRequested += (nodeId, x, y) => _sessionManager?.MoveNode(nodeId, x, y);
+                _flowPreviewOverlay.AddNodeRequested += (label, x, y) => _sessionManager?.AddManualNode(label, x, y);
                 _flowPreviewOverlay.CloseRequested += () =>
                 {
                     _flowPreviewManuallyHidden = true;
@@ -433,8 +434,7 @@ public partial class App : Application
     /// <summary>
     /// The file "Start" should resume without prompting: the last file
     /// used, unless a resume-from-point is pending (that always needs the
-    /// dialog to actually apply) or the output mode changed since, making
-    /// the remembered file's extension stale.
+    /// dialog to actually apply).
     /// </summary>
     private string? ResolveResumeFileName()
     {
@@ -444,18 +444,19 @@ public partial class App : Application
         }
 
         var last = _config!.LastSessionFileName;
-        if (string.IsNullOrWhiteSpace(last))
-        {
-            return null;
-        }
-
-        var expectedExtension = SessionManager.ExtensionForOutputMode(_config.OutputMode);
-        return last.EndsWith(expectedExtension, StringComparison.OrdinalIgnoreCase) ? last : null;
+        return string.IsNullOrWhiteSpace(last) ? null : last;
     }
 
     private void RememberLastSession(string fileName)
     {
         _config!.LastSessionFileName = fileName;
+        // Also remembers the output folder itself for Settings' "Zuletzt
+        // verwendet" dropdown — every call site here is exactly "a session
+        // just started successfully against the currently-configured
+        // output path", the moment that path is actually demonstrated to
+        // work (as opposed to just typed/browsed-to in Settings, which the
+        // Browse button's own handler already remembers separately).
+        _config.RememberRecentOutputPath(_config.OutputPath);
         ConfigService.Save(_config);
     }
 
@@ -568,10 +569,10 @@ public partial class App : Application
     /// </summary>
     private void OnExportToDrawIoRequested()
     {
-        if (string.IsNullOrWhiteSpace(_config!.VaultPath) || !Directory.Exists(_config.VaultPath))
+        if (string.IsNullOrWhiteSpace(_config!.OutputPath) || !Directory.Exists(_config.OutputPath))
         {
             MessageBox.Show(
-                "Kein gültiger Vault-Pfad konfiguriert — in den Einstellungen setzen, dann erneut versuchen.",
+                "Kein gültiger Ausgabeordner konfiguriert — in den Einstellungen setzen, dann erneut versuchen.",
                 "DocuClick", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -579,7 +580,7 @@ public partial class App : Application
         var openDialog = new Microsoft.Win32.OpenFileDialog
         {
             Title = "Ablauf für den draw.io-Export wählen",
-            InitialDirectory = _config.VaultPath,
+            InitialDirectory = _config.OutputPath,
             Filter = "DocuClick-Ablauf (*.html)|*.html",
             CheckFileExists = true
         };
@@ -602,7 +603,7 @@ public partial class App : Application
 
         try
         {
-            DrawIoConverter.Convert(openDialog.FileName, _config.VaultPath, drawioPath);
+            DrawIoConverter.Convert(openDialog.FileName, _config.OutputPath, drawioPath);
             _trayApp?.ShowInfo($"Nach draw.io exportiert: {Path.GetFileName(drawioPath)}");
         }
         catch (Exception ex)
@@ -620,10 +621,10 @@ public partial class App : Application
     /// </summary>
     private void OnOpenFlowRequested()
     {
-        if (string.IsNullOrWhiteSpace(_config!.VaultPath) || !Directory.Exists(_config.VaultPath))
+        if (string.IsNullOrWhiteSpace(_config!.OutputPath) || !Directory.Exists(_config.OutputPath))
         {
             MessageBox.Show(
-                "Kein gültiger Vault-Pfad konfiguriert — in den Einstellungen setzen, dann erneut versuchen.",
+                "Kein gültiger Ausgabeordner konfiguriert — in den Einstellungen setzen, dann erneut versuchen.",
                 "DocuClick", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -631,7 +632,7 @@ public partial class App : Application
         var openDialog = new Microsoft.Win32.OpenFileDialog
         {
             Title = "Ablauf zum Ansehen/Bearbeiten wählen",
-            InitialDirectory = _config.VaultPath,
+            InitialDirectory = _config.OutputPath,
             Filter = "DocuClick-Ablauf (*.html)|*.html",
             CheckFileExists = true
         };
@@ -640,7 +641,7 @@ public partial class App : Application
             return;
         }
 
-        var relativeFileName = Path.GetRelativePath(_config.VaultPath, openDialog.FileName);
+        var relativeFileName = Path.GetRelativePath(_config.OutputPath, openDialog.FileName);
         _sessionManager!.OpenForEditing(relativeFileName);
         RememberLastSession(relativeFileName);
     }
@@ -660,10 +661,10 @@ public partial class App : Application
     /// </summary>
     private void OnExportToHtmlRequested()
     {
-        if (string.IsNullOrWhiteSpace(_config!.VaultPath) || !Directory.Exists(_config.VaultPath))
+        if (string.IsNullOrWhiteSpace(_config!.OutputPath) || !Directory.Exists(_config.OutputPath))
         {
             MessageBox.Show(
-                "Kein gültiger Vault-Pfad konfiguriert — in den Einstellungen setzen, dann erneut versuchen.",
+                "Kein gültiger Ausgabeordner konfiguriert — in den Einstellungen setzen, dann erneut versuchen.",
                 "DocuClick", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -671,7 +672,7 @@ public partial class App : Application
         var openDialog = new Microsoft.Win32.OpenFileDialog
         {
             Title = "Ablauf für den HTML-Export wählen",
-            InitialDirectory = _config.VaultPath,
+            InitialDirectory = _config.OutputPath,
             Filter = "DocuClick-Ablauf (*.html)|*.html",
             CheckFileExists = true
         };
@@ -696,7 +697,7 @@ public partial class App : Application
 
         try
         {
-            HtmlFlowExporter.Convert(openDialog.FileName, _config.VaultPath, htmlPath);
+            HtmlFlowExporter.Convert(openDialog.FileName, _config.OutputPath, htmlPath);
             _trayApp?.ShowInfo($"Nach HTML exportiert: {Path.GetFileName(htmlPath)}");
         }
         catch (Exception ex)

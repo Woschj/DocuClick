@@ -16,28 +16,16 @@
 
                 <Border Style="{StaticResource CardBorder}">
                     <StackPanel>
-                        <TextBlock Text="Ausgabeformat" Style="{StaticResource SectionHeader}"/>
+                        <TextBlock Text="Speicherort" Style="{StaticResource SectionHeader}"/>
 
-                        <RadioButton x:Name="OutputModeNoteRadio" GroupName="OutputMode" Margin="0,0,0,8"
-                                     Content="Notiz (Markdown, an eine .md-Datei anhängen)"/>
-                        <RadioButton x:Name="OutputModeCanvasRadio" GroupName="OutputMode" Margin="0,0,0,4"
-                                     Content="Ablauf (.html, Ablaufdiagramm mit Abzweigungen)"/>
-
-                        <TextBlock Style="{StaticResource HintText}"
-                                   Text="Schreibt jeden Klick als verbundenen Knoten in eine einzelne, interaktive .html-Datei (vertikaler Hauptfluss, Abzweigungspunkte mit neuen Pfaden als Spalten, gesteuert über die Ablauf-Übersicht) — öffnet direkt in jedem Browser, kein Obsidian nötig. Screenshots liegen als eigene Dateien im Attachments-Ordner daneben (dafür bleibt die Datei auch bei sehr langen Abläufen schnell); über das Tray-Symbol lässt sich daraus jederzeit ein einzelnes, komplett eigenständiges Export-Exemplar (Bilder eingebettet, zum Weitergeben) oder ein editierbares draw.io-Flowchart erzeugen."/>
-                    </StackPanel>
-                </Border>
-
-                <Border Style="{StaticResource CardBorder}">
-                    <StackPanel>
-                        <TextBlock x:Name="VaultCardHeader" Text="Obsidian-Vault" Style="{StaticResource SectionHeader}"/>
-
-                        <TextBlock x:Name="VaultPathLabel" Text="Vault-Pfad" Style="{StaticResource FieldLabel}"/>
-                        <DockPanel Margin="0,0,0,12">
+                        <TextBlock Text="Ausgabeordner" Style="{StaticResource FieldLabel}"/>
+                        <DockPanel Margin="0,0,0,4">
                             <Button Content="Durchsuchen..." DockPanel.Dock="Right" Margin="8,0,0,0"
-                                    Style="{StaticResource ModernButton}" Click="OnBrowseVaultClicked"/>
-                            <TextBox x:Name="VaultPathBox" Style="{StaticResource ModernTextBox}"/>
+                                    Style="{StaticResource ModernButton}" Click="OnBrowseOutputPathClicked"/>
+                            <ComboBox x:Name="OutputPathBox" Style="{StaticResource ModernComboBox}" IsEditable="True"/>
                         </DockPanel>
+                        <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,12"
+                                   Text="Jeder Klick wird als verbundener Knoten in eine einzelne, interaktive .html-Datei in diesem Ordner geschrieben (vertikaler Hauptfluss, Abzweigungspunkte mit neuen Pfaden als Spalten, gesteuert über die Ablauf-Übersicht) — öffnet direkt in jedem Browser. Das Dropdown zeigt zuletzt verwendete Ausgabeordner."/>
 
                         <StackPanel x:Name="AttachmentsRow">
                             <TextBlock Text="Attachments-Unterordner" Style="{StaticResource FieldLabel}"/>

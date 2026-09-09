@@ -46,7 +46,7 @@ public static class HtmlFlowExporter
         "#D97706", "#059669", "#DB2777", "#7C3AED", "#DC2626", "#0891B2"
     };
 
-    public static void Convert(string sourceFilePath, string vaultPath, string htmlFilePath)
+    public static void Convert(string sourceFilePath, string outputPath, string htmlFilePath)
     {
         var canvas = CanvasDocumentIo.Load(sourceFilePath);
 
@@ -104,7 +104,7 @@ public static class HtmlFlowExporter
             else
             {
                 stepCounter++;
-                var screenshotPath = FindScreenshotPath(canvas, canvasNode, vaultPath);
+                var screenshotPath = FindScreenshotPath(canvas, canvasNode, outputPath);
                 string? imageDataUrl = null;
                 if (screenshotPath is not null && File.Exists(screenshotPath))
                 {
@@ -142,10 +142,10 @@ public static class HtmlFlowExporter
     private static string TruncateLabel(string text) =>
         text.Length <= MaxLabelChars ? text : text[..MaxLabelChars].TrimEnd() + "…";
 
-    private static string? FindScreenshotPath(CanvasDocument canvas, CanvasNode textNode, string vaultPath)
+    private static string? FindScreenshotPath(CanvasDocument canvas, CanvasNode textNode, string outputPath)
     {
         var imageSibling = canvas.Nodes.FirstOrDefault(n =>
             n.Type == "file" && Math.Abs(n.X - textNode.X) < 0.5 && Math.Abs(n.Y - (textNode.Y + CanvasFlowWriter.TextNodeHeight + CanvasFlowWriter.TextToImageGap)) < 0.5);
-        return imageSibling?.File is { } relativePath ? Path.Combine(vaultPath, relativePath) : null;
+        return imageSibling?.File is { } relativePath ? Path.Combine(outputPath, relativePath) : null;
     }
 }

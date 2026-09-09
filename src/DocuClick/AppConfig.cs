@@ -1,10 +1,56 @@
+using System.Text.Json.Serialization;
+
 namespace DocuClick;
 
 /// <summary>Persisted user configuration, serialized as-is to config.json.</summary>
 public sealed class AppConfig
 {
-    public string VaultPath { get; set; } = string.Empty;
+    /// <summary>
+    /// Root output folder everything gets written under. Property renamed
+    /// from "VaultPath" (the app used to require an Obsidian vault here;
+    /// the live output is now a self-contained HTML file, no Obsidian
+    /// needed) — the JSON attribute keeps the on-disk key unchanged so an
+    /// existing config.json keeps loading with no migration step.
+    /// </summary>
+    [JsonPropertyName("VaultPath")]
+    public string OutputPath { get; set; } = string.Empty;
+
     public string AttachmentsFolder { get; set; } = "Attachments";
+
+    private const int MaxRecentOutputPaths = 8;
+
+    /// <summary>
+    /// Most-recently-used output folders, most-recent-first, deduplicated
+    /// case-insensitively, capped at <see cref="MaxRecentOutputPaths"/>
+    /// entries. Populated via <see cref="RememberRecentOutputPath"/>
+    /// whenever a folder is deliberately chosen (Settings' Browse button)
+    /// or actually put to use (a session starts successfully) — lets
+    /// switching between a few regularly-used output locations (e.g.
+    /// different clients/projects) happen from a dropdown instead of
+    /// retyping or re-browsing the full path every time.
+    /// </summary>
+    public List<string> RecentOutputPaths { get; set; } = new();
+
+    /// <summary>
+    /// Records <paramref name="path"/> as the most-recently-used output
+    /// folder: moves it to the front if already present (case-insensitive —
+    /// Windows paths), inserts it otherwise, then trims the list back down
+    /// to <see cref="MaxRecentOutputPaths"/>. No-op for a blank path.
+    /// </summary>
+    public void RememberRecentOutputPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        RecentOutputPaths.RemoveAll(p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
+        RecentOutputPaths.Insert(0, path);
+        if (RecentOutputPaths.Count > MaxRecentOutputPaths)
+        {
+            RecentOutputPaths.RemoveRange(MaxRecentOutputPaths, RecentOutputPaths.Count - MaxRecentOutputPaths);
+        }
+    }
 
     public bool UseUiAutomation { get; set; } = true;
 
@@ -17,18 +63,6 @@ public sealed class AppConfig
     public string HighlightColorHex { get; set; } = "#E63946";
     public int HighlightRadius { get; set; } = 24;
     public int HighlightThickness { get; set; } = 4;
-
-    /// <summary>
-    /// Where clicks get written to: "Note" (linear Markdown) or "Canvas"
-    /// (Obsidian .canvas flow diagram, supports branching via the decision-
-    /// point hotkey below). draw.io is no longer a live-recording mode —
-    /// its full-XML-rewrite-per-click cost measurably grows with session
-    /// length (confirmed via harness). A .drawio export is always
-    /// available afterward instead, converted from a .canvas session in one
-    /// pass (see DrawIoConverter, reachable from the tray menu) rather than
-    /// paying that cost throughout the whole recording.
-    /// </summary>
-    public string OutputMode { get; set; } = "Canvas";
 
     /// <summary>
     /// Global hotkey: marks the current node as a decision point. Starting
@@ -73,9 +107,7 @@ public sealed class AppConfig
     /// Target file name (with extension, possibly subfolder-prefixed) most
     /// recently used to start a session — persisted so a plain "Start"
     /// (tray/hotkey/top-bar) can resume it directly without prompting.
-    /// "Neue Session" always prompts regardless of this. Ignored if its
-    /// extension no longer matches the current OutputMode (e.g. after
-    /// switching from Canvas to DrawIo).
+    /// "Neue Session" always prompts regardless of this.
     /// </summary>
     public string? LastSessionFileName { get; set; }
 }

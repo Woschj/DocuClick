@@ -8,19 +8,19 @@ namespace DocuClick.Services;
 /// <summary>
 /// Glues the mouse/keyboard hooks to the capture pipeline (UI Automation
 /// lookup -> screenshot -> highlight -> write) and owns the current
-/// session's target file. Writes either a linear note (ObsidianWriter) or
-/// a branching flow (<see cref="IFlowWriter"/>: Obsidian Canvas), depending
-/// on <see cref="AppConfig.OutputMode"/>. A draw.io export is always
-/// available afterward instead of recording into it directly — see
-/// <see cref="DrawIoConverter"/>.
+/// session's target file. Writes a branching flow via
+/// <see cref="CanvasFlowWriter"/> (the sole <see cref="IFlowWriter"/>
+/// implementation — a separate, non-branching plain-note writer existed
+/// once and was removed once the HTML flow format no longer needed
+/// Obsidian). A draw.io export is always available afterward instead of
+/// recording into it directly — see <see cref="DrawIoConverter"/>.
 /// </summary>
 public sealed class SessionManager : IDisposable
 {
     private readonly MouseHookService _mouseHook = new();
     private readonly KeyboardHookService _keyboardHook = new();
     private readonly AppConfig _config;
-    private readonly ObsidianWriter _noteWriter;
-    private readonly CanvasFlowWriter _canvasWriter;
+    private readonly CanvasFlowWriter _writer;
     private string _currentTargetFileName = string.Empty;
     private bool _isRunning;
     private bool _zoomToCursorActive;
@@ -98,20 +98,13 @@ public sealed class SessionManager : IDisposable
             : "Zoom-auf-Cursor deaktiviert — Screenshots erfassen wieder das ganze Fenster.");
     }
 
-    /// <summary>Whether the active output mode supports branching (Canvas vs. plain Note).</summary>
-    public bool SupportsBranching => ActiveFlowWriter is not null;
-
-    private IFlowWriter? ActiveFlowWriter => _config.OutputMode switch
-    {
-        "Canvas" => _canvasWriter,
-        _ => null
-    };
+    /// <summary>Always true now that CanvasFlowWriter is the only writer — kept so App.xaml.cs's branch-button gating doesn't need its own special case.</summary>
+    public bool SupportsBranching => true;
 
     public SessionManager(AppConfig config)
     {
         _config = config;
-        _noteWriter = new ObsidianWriter(config);
-        _canvasWriter = new CanvasFlowWriter(config);
+        _writer = new CanvasFlowWriter(config);
         _mouseHook.LeftButtonDown += OnLeftButtonDown;
         _mouseHook.RightButtonDown += OnRightButtonDown;
         _keyboardHook.EnterPressed += OnEnterPressed;
@@ -178,39 +171,32 @@ public sealed class SessionManager : IDisposable
         return null;
     });
 
-    /// <summary>Extension for a given <see cref="AppConfig.OutputMode"/> value.</summary>
-    public static string ExtensionForOutputMode(string outputMode) => outputMode switch
-    {
-        // A single, self-contained interactive .html file now — see
-        // CanvasFlowWriter.BuildLiveHtml — rather than a bare .canvas JSON
-        // file only Obsidian could render. A session recorded before this
-        // switch is still a .canvas file and won't show up in file pickers
-        // filtered by this extension; CanvasDocumentIo.Load still reads its
-        // content if it's ever opened directly by full path.
-        "Canvas" => ".html",
-        _ => ".md"
-    };
+    // A single, self-contained interactive .html file — see
+    // CanvasFlowWriter.BuildLiveHtml — rather than a bare .canvas JSON file
+    // only Obsidian could render. A session recorded before this switch is
+    // still a .canvas file and won't show up in file pickers filtered by
+    // this extension; CanvasDocumentIo.Load still reads its content if it's
+    // ever opened directly by full path.
+    public const string OutputExtension = ".html";
 
     /// <summary>
-    /// Existing files for the active output mode anywhere under the
-    /// configured vault/target folder (as paths relative to it, so files
-    /// filed into subfolders stay distinguishable), newest first — used by
-    /// the session-start file picker and the "Ablauf fortsetzen" tray
-    /// action. Every session now requires an explicit file (chosen or
-    /// newly named) instead of an auto-generated name, so callers always
-    /// have something to list.
+    /// Existing files anywhere under the configured output folder (as paths
+    /// relative to it, so files filed into subfolders stay distinguishable),
+    /// newest first — used by the session-start file picker and the "Ablauf
+    /// fortsetzen" tray action. Every session now requires an explicit file
+    /// (chosen or newly named) instead of an auto-generated name, so callers
+    /// always have something to list.
     /// </summary>
     public List<string> ListExistingFiles()
     {
-        if (string.IsNullOrWhiteSpace(_config.VaultPath) || !Directory.Exists(_config.VaultPath))
+        if (string.IsNullOrWhiteSpace(_config.OutputPath) || !Directory.Exists(_config.OutputPath))
         {
             return new List<string>();
         }
 
-        var extension = ExtensionForOutputMode(_config.OutputMode);
-        return Directory.GetFiles(_config.VaultPath, "*" + extension, SearchOption.AllDirectories)
-            .Select(f => Path.GetRelativePath(_config.VaultPath, f))
-            .OrderByDescending(f => File.GetLastWriteTimeUtc(Path.Combine(_config.VaultPath, f)))
+        return Directory.GetFiles(_config.OutputPath, "*" + OutputExtension, SearchOption.AllDirectories)
+            .Select(f => Path.GetRelativePath(_config.OutputPath, f))
+            .OrderByDescending(f => File.GetLastWriteTimeUtc(Path.Combine(_config.OutputPath, f)))
             .ToList();
     }
 
@@ -225,7 +211,7 @@ public sealed class SessionManager : IDisposable
     {
         _currentTargetFileName = targetFileName;
 
-        var targetDirectory = Path.GetDirectoryName(Path.Combine(_config.VaultPath, targetFileName));
+        var targetDirectory = Path.GetDirectoryName(Path.Combine(_config.OutputPath, targetFileName));
         if (!string.IsNullOrEmpty(targetDirectory))
         {
             Directory.CreateDirectory(targetDirectory);
@@ -236,10 +222,8 @@ public sealed class SessionManager : IDisposable
         // finished processing yet.
         var snapshot = RunOnWriterQueue(() =>
         {
-            ActiveFlowWriter?.StartSession(_currentTargetFileName);
-            return ActiveFlowWriter is { } writer
-                ? new StatusSnapshot(BuildStatusText(), writer.GetPreview())
-                : default;
+            _writer.StartSession(_currentTargetFileName);
+            return new StatusSnapshot(BuildStatusText(), _writer.GetPreview());
         });
 
         _mouseHook.Start();
@@ -249,12 +233,9 @@ public sealed class SessionManager : IDisposable
         }
 
         _isRunning = true;
-        if (snapshot.StatusText is not null)
-        {
-            CanvasStatusChanged?.Invoke(snapshot.StatusText);
-            FlowPreviewChanged?.Invoke(snapshot.Preview);
-        }
-        LogService.Log($"Session gestartet. Ziel: {_currentTargetFileName} (Modus: {_config.OutputMode}), Vault: '{_config.VaultPath}'");
+        CanvasStatusChanged?.Invoke(snapshot.StatusText);
+        FlowPreviewChanged?.Invoke(snapshot.Preview);
+        LogService.Log($"Session gestartet. Ziel: {_currentTargetFileName}, Ausgabeordner: '{_config.OutputPath}'");
     }
 
     /// <summary>
@@ -265,9 +246,7 @@ public sealed class SessionManager : IDisposable
     /// session: no hooks armed, <see cref="IsRunning"/> stays false. Refuses
     /// while a session IS running, since it would otherwise silently
     /// redirect that session's writer (cursor/target file) onto a different
-    /// file out from under it, corrupting the next captured click. Canvas-
-    /// mode only: the plain Note writer has no preview/branching concept to
-    /// show here at all.
+    /// file out from under it, corrupting the next captured click.
     /// </summary>
     public void OpenForEditing(string targetFileName)
     {
@@ -277,17 +256,11 @@ public sealed class SessionManager : IDisposable
             return;
         }
 
-        if (ActiveFlowWriter is not { } writer)
-        {
-            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Ablauf-Übersicht.");
-            return;
-        }
-
         _currentTargetFileName = targetFileName;
         var preview = RunOnWriterQueue(() =>
         {
-            writer.StartSession(targetFileName);
-            return writer.GetPreview();
+            _writer.StartSession(targetFileName);
+            return _writer.GetPreview();
         });
 
         FlowPreviewChanged?.Invoke(preview);
@@ -302,7 +275,7 @@ public sealed class SessionManager : IDisposable
         // before Stop() finishes writing its card first, then this runs
         // right after — instead of racing it and potentially resetting
         // cursor state out from under a click still being processed.
-        RunOnWriterQueue(() => ActiveFlowWriter?.Stop());
+        RunOnWriterQueue(() => _writer.Stop());
         _isRunning = false;
         CanvasStatusChanged?.Invoke(null);
         // Deliberately NOT FlowPreviewChanged?.Invoke(null) — that would
@@ -326,9 +299,8 @@ public sealed class SessionManager : IDisposable
 
     private string BuildStatusText()
     {
-        var writer = ActiveFlowWriter!;
-        var label = writer.CurrentNodeLabel ?? "(noch kein Klick)";
-        return $"{_config.OutputMode}\nZuletzt: {label}";
+        var label = _writer.CurrentNodeLabel ?? "(noch kein Klick)";
+        return $"Zuletzt: {label}";
     }
 
     /// <summary>
@@ -343,9 +315,9 @@ public sealed class SessionManager : IDisposable
     /// </summary>
     public void MarkDecisionPoint(string firstPathName)
     {
-        if (!_isRunning || ActiveFlowWriter is not { } writer)
+        if (!_isRunning)
         {
-            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Abzweigungen.");
+            InfoOccurred?.Invoke("Aktion ignoriert: bitte zuerst eine Aufnahme starten.");
             return;
         }
 
@@ -356,8 +328,8 @@ public sealed class SessionManager : IDisposable
         // showing state that doesn't match what was just done.
         var (result, snapshot) = RunOnWriterQueue(() =>
         {
-            var actionResult = writer.MarkDecisionPoint(firstPathName);
-            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
+            var actionResult = _writer.MarkDecisionPoint(firstPathName);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), _writer.GetPreview()) : default;
             return (actionResult, statusSnapshot);
         });
 
@@ -375,21 +347,21 @@ public sealed class SessionManager : IDisposable
 
     /// <summary>Ablauf-Übersicht popup: every path already forking from a clicked decision point.</summary>
     public List<PathInfo> ListPaths(string decisionPointId) =>
-        ActiveFlowWriter is { } writer ? RunOnWriterQueue(() => writer.ListPaths(decisionPointId)) : new List<PathInfo>();
+        RunOnWriterQueue(() => _writer.ListPaths(decisionPointId));
 
     /// <summary>Ablauf-Übersicht popup action: forks a brand-new named path from a decision point.</summary>
     public void StartNewPath(string decisionPointId, string pathName)
     {
-        if (!_isRunning || ActiveFlowWriter is not { } writer)
+        if (!_isRunning)
         {
-            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Abzweigungen.");
+            InfoOccurred?.Invoke("Aktion ignoriert: bitte zuerst eine Aufnahme starten.");
             return;
         }
 
         var (result, snapshot) = RunOnWriterQueue(() =>
         {
-            var actionResult = writer.StartNewPath(decisionPointId, pathName);
-            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
+            var actionResult = _writer.StartNewPath(decisionPointId, pathName);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), _writer.GetPreview()) : default;
             return (actionResult, statusSnapshot);
         });
 
@@ -408,16 +380,16 @@ public sealed class SessionManager : IDisposable
     /// <summary>Ablauf-Übersicht popup action: resumes an existing path at wherever it currently ends.</summary>
     public void ContinuePath(string pathStartNodeId)
     {
-        if (!_isRunning || ActiveFlowWriter is not { } writer)
+        if (!_isRunning)
         {
-            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Abzweigungen.");
+            InfoOccurred?.Invoke("Aktion ignoriert: bitte zuerst eine Aufnahme starten.");
             return;
         }
 
         var (result, snapshot) = RunOnWriterQueue(() =>
         {
-            var actionResult = writer.ContinuePath(pathStartNodeId);
-            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
+            var actionResult = _writer.ContinuePath(pathStartNodeId);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), _writer.GetPreview()) : default;
             return (actionResult, statusSnapshot);
         });
 
@@ -436,17 +408,17 @@ public sealed class SessionManager : IDisposable
     /// <summary>Tree-preview overlay's click-to-navigate: jumps the cursor to an arbitrary existing (non-decision-point) node.</summary>
     public void JumpToNode(string nodeId)
     {
-        if (!_isRunning || ActiveFlowWriter is not { } writer)
+        if (!_isRunning)
         {
-            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Navigation.");
+            InfoOccurred?.Invoke("Aktion ignoriert: bitte zuerst eine Aufnahme starten.");
             return;
         }
 
         var (result, snapshot, currentLabel) = RunOnWriterQueue(() =>
         {
-            var actionResult = writer.JumpToNode(nodeId);
+            var actionResult = _writer.JumpToNode(nodeId);
             return actionResult.Success
-                ? (actionResult, new StatusSnapshot(BuildStatusText(), writer.GetPreview()), writer.CurrentNodeLabel)
+                ? (actionResult, new StatusSnapshot(BuildStatusText(), _writer.GetPreview()), _writer.CurrentNodeLabel)
                 : (actionResult, default, null);
         });
 
@@ -471,16 +443,10 @@ public sealed class SessionManager : IDisposable
     /// </summary>
     public void RenameNode(string nodeId, string newLabel)
     {
-        if (ActiveFlowWriter is not { } writer)
-        {
-            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Bearbeitung.");
-            return;
-        }
-
         var (result, snapshot) = RunOnWriterQueue(() =>
         {
-            var actionResult = writer.RenameNode(nodeId, newLabel);
-            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
+            var actionResult = _writer.RenameNode(nodeId, newLabel);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), _writer.GetPreview()) : default;
             return (actionResult, statusSnapshot);
         });
 
@@ -509,16 +475,10 @@ public sealed class SessionManager : IDisposable
     /// </summary>
     public void DeleteNode(string nodeId)
     {
-        if (ActiveFlowWriter is not { } writer)
-        {
-            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Bearbeitung.");
-            return;
-        }
-
         var (result, snapshot) = RunOnWriterQueue(() =>
         {
-            var actionResult = writer.DeleteNode(nodeId);
-            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
+            var actionResult = _writer.DeleteNode(nodeId);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), _writer.GetPreview()) : default;
             return (actionResult, statusSnapshot);
         });
 
@@ -540,16 +500,10 @@ public sealed class SessionManager : IDisposable
     /// <summary>Ablauf-Übersicht: manually connects two nodes with a new edge (the "Verbinden" toolbar gesture). Not gated on <see cref="_isRunning"/> — see <see cref="RenameNode"/>.</summary>
     public void ConnectNodes(string fromNodeId, string toNodeId)
     {
-        if (ActiveFlowWriter is not { } writer)
-        {
-            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Bearbeitung.");
-            return;
-        }
-
         var (result, snapshot) = RunOnWriterQueue(() =>
         {
-            var actionResult = writer.ConnectNodes(fromNodeId, toNodeId);
-            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
+            var actionResult = _writer.ConnectNodes(fromNodeId, toNodeId);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), _writer.GetPreview()) : default;
             return (actionResult, statusSnapshot);
         });
 
@@ -571,16 +525,10 @@ public sealed class SessionManager : IDisposable
     /// <summary>Ablauf-Übersicht: removes an existing manual/recorded edge (right-click a connector). Not gated on <see cref="_isRunning"/> — see <see cref="RenameNode"/>.</summary>
     public void DisconnectNodes(string fromNodeId, string toNodeId)
     {
-        if (ActiveFlowWriter is not { } writer)
-        {
-            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Bearbeitung.");
-            return;
-        }
-
         var (result, snapshot) = RunOnWriterQueue(() =>
         {
-            var actionResult = writer.DisconnectNodes(fromNodeId, toNodeId);
-            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
+            var actionResult = _writer.DisconnectNodes(fromNodeId, toNodeId);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), _writer.GetPreview()) : default;
             return (actionResult, statusSnapshot);
         });
 
@@ -602,16 +550,31 @@ public sealed class SessionManager : IDisposable
     /// <summary>Ablauf-Übersicht: drag-to-move a card to an explicit position (see IFlowWriter.MoveNode — no auto-layout re-run, so it isn't undone by the very drag that just set it). Not gated on <see cref="_isRunning"/> — see <see cref="RenameNode"/>.</summary>
     public void MoveNode(string nodeId, double x, double y)
     {
-        if (ActiveFlowWriter is not { } writer)
-        {
-            InfoOccurred?.Invoke("Aktion ignoriert: aktueller Ausgabemodus unterstützt keine Bearbeitung.");
-            return;
-        }
-
         var (result, snapshot) = RunOnWriterQueue(() =>
         {
-            var actionResult = writer.MoveNode(nodeId, x, y);
-            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), writer.GetPreview()) : default;
+            var actionResult = _writer.MoveNode(nodeId, x, y);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), _writer.GetPreview()) : default;
+            return (actionResult, statusSnapshot);
+        });
+
+        if (result.Success)
+        {
+            if (_isRunning)
+            {
+                CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            }
+
+            FlowPreviewChanged?.Invoke(snapshot.Preview);
+        }
+    }
+
+    /// <summary>Ablauf-Übersicht: creates a brand-new, isolated node at an explicit position (see IFlowWriter.AddManualNode — UML-style "+ Neuer Knoten hier" on the empty canvas). Not gated on <see cref="_isRunning"/> — see <see cref="RenameNode"/>.</summary>
+    public void AddManualNode(string label, double x, double y)
+    {
+        var (result, snapshot) = RunOnWriterQueue(() =>
+        {
+            var actionResult = _writer.AddManualNode(label, x, y);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), _writer.GetPreview()) : default;
             return (actionResult, statusSnapshot);
         });
 
@@ -628,10 +591,10 @@ public sealed class SessionManager : IDisposable
 
     /// <summary>For the Ablauf-Übersicht's resume-while-stopped flow: nodes already in <paramref name="fileName"/>.</summary>
     public List<ResumableNode> ListResumableCanvasNodes(string fileName) =>
-        ActiveFlowWriter?.ListNodesForResume(fileName) ?? new List<ResumableNode>();
+        _writer.ListNodesForResume(fileName);
 
     /// <summary>Queues a chosen node as the starting point of the next Start() call.</summary>
-    public void SetResumeAnchor(ResumableNode node) => ActiveFlowWriter?.SetResumeAnchor(node);
+    public void SetResumeAnchor(ResumableNode node) => _writer.SetResumeAnchor(node);
 
     private void OnLeftButtonDown(object? sender, MouseClickEventArgs e) => HandleMouseButtonDown(e, isRightClick: false);
 
@@ -809,15 +772,8 @@ public sealed class SessionManager : IDisposable
                 HighlightRenderer.DrawClickCircle(screenshot, localPoint, highlightColor, _config.HighlightRadius, _config.HighlightThickness);
             }
 
-            if (ActiveFlowWriter is { } writer)
-            {
-                writer.AddClickNode(description, screenshot, timestamp);
-                FlowPreviewChanged?.Invoke(writer.GetPreview());
-            }
-            else
-            {
-                _noteWriter.AppendEntry(targetFileName, description, screenshot, timestamp);
-            }
+            _writer.AddClickNode(description, screenshot, timestamp);
+            FlowPreviewChanged?.Invoke(_writer.GetPreview());
 
             LogService.Log($"Eintrag geschrieben: \"{description}\" -> {targetFileName}");
 
@@ -835,7 +791,7 @@ public sealed class SessionManager : IDisposable
         }
         catch (Exception ex)
         {
-            // One failed capture (missing vault path, UIA hiccup, locked
+            // One failed capture (missing output path, UIA hiccup, locked
             // file, ...) must not tear down the running session.
             LogService.Log($"Erfassung fehlgeschlagen: {ex}");
             if (_config.EnableClickSound)

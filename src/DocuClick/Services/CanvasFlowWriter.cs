@@ -8,11 +8,14 @@ namespace DocuClick.Services;
 public sealed record ResumableNode(string Id, string Label, double X, double Y);
 
 /// <summary>
-/// Writes clicks as connected nodes into an Obsidian .canvas file (plain
-/// JSON — no plugin needed) instead of a linear note. Each click becomes a
-/// text node (the description) with a sibling "file" node (the screenshot,
-/// Canvas's native embed type) directly beneath it; the text nodes form the
-/// linked spine, linked from the previous click's text node.
+/// Writes clicks as connected nodes into a single, self-contained HTML flow
+/// file (see <see cref="HtmlViewerBuilder"/>/<see cref="CanvasDocumentIo"/>)
+/// — no Obsidian or any plugin needed to view or edit it. The underlying
+/// node/edge JSON still mirrors Obsidian Canvas's own schema (kept for
+/// compatibility with sessions recorded before this format existed). Each
+/// click becomes a text node (the description) with a sibling "file" node
+/// (the screenshot) directly beneath it; the text nodes form the linked
+/// spine, linked from the previous click's text node.
 ///
 /// Layout is vertical: the main line runs top-to-bottom in one column.
 ///
@@ -75,12 +78,12 @@ public sealed class CanvasFlowWriter : IFlowWriter
     /// </summary>
     public List<ResumableNode> ListNodesForResume(string canvasFileName)
     {
-        if (string.IsNullOrWhiteSpace(_config.VaultPath))
+        if (string.IsNullOrWhiteSpace(_config.OutputPath))
         {
             return new List<ResumableNode>();
         }
 
-        var path = Path.Combine(_config.VaultPath, canvasFileName);
+        var path = Path.Combine(_config.OutputPath, canvasFileName);
         var doc = LoadOrCreate(path);
 
         // Only offer real content nodes as resume points — not their
@@ -102,12 +105,12 @@ public sealed class CanvasFlowWriter : IFlowWriter
 
     public void StartSession(string canvasFileName)
     {
-        if (string.IsNullOrWhiteSpace(_config.VaultPath))
+        if (string.IsNullOrWhiteSpace(_config.OutputPath))
         {
-            throw new InvalidOperationException("Kein Obsidian-Vault-Pfad konfiguriert.");
+            throw new InvalidOperationException("Kein Ausgabeordner konfiguriert.");
         }
 
-        _canvasPath = Path.Combine(_config.VaultPath, canvasFileName);
+        _canvasPath = Path.Combine(_config.OutputPath, canvasFileName);
         _sessionName = Path.GetFileNameWithoutExtension(canvasFileName);
         _doc = LoadOrCreate(_canvasPath);
         _nextColumnX = _doc.Nodes.Count > 0 ? _doc.Nodes.Max(n => n.X) + NodeWidth + BranchColumnSpacing : 0;
@@ -198,10 +201,14 @@ public sealed class CanvasFlowWriter : IFlowWriter
         // Snapshot each content node's sibling image/group before any
         // position changes — FindImageSibling/FindGroupSibling match by
         // *current* relative position, which would misfire once earlier
-        // nodes have already moved to their new slot.
+        // nodes have already moved to their new slot. Indexed lookup (see
+        // BuildSiblingIndex) rather than the single-node linear-scan
+        // overload — this runs once per node in the whole document, so the
+        // O(n) scan-per-node version made this O(n²).
         var textNodesById = _doc.Nodes.Where(n => n.Type == "text").ToDictionary(n => n.Id);
+        var (imageIndex, groupIndex) = BuildSiblingIndex();
         var siblingsOf = textNodesById.Values.ToDictionary(
-            n => n.Id, n => (Image: FindImageSibling(n), Group: FindGroupSibling(n)));
+            n => n.Id, n => (Image: FindImageSibling(n, imageIndex), Group: FindGroupSibling(n, groupIndex)));
 
         var rowHeight = new Dictionary<int, double>();
         foreach (var node in preview.Nodes)
@@ -272,7 +279,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
         // Screenshots land in Attachments/<session>/ instead of flat in
         // Attachments/.
         var imageRelativeToAttachments = AttachmentSaver.SaveScreenshot(_config, screenshot, timestamp, _sessionName);
-        var imageVaultPath = Path.Combine(_config.AttachmentsFolder, imageRelativeToAttachments).Replace('\\', '/');
+        var imageOutputRelativePath = Path.Combine(_config.AttachmentsFolder, imageRelativeToAttachments).Replace('\\', '/');
 
         var newY = _cursorNodeId is null ? _cursorY : _cursorY + NodeHeight + SequentialSpacing;
 
@@ -313,7 +320,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
         {
             Id = Guid.NewGuid().ToString("N"),
             Type = "file",
-            File = imageVaultPath,
+            File = imageOutputRelativePath,
             X = _cursorX,
             Y = newY + TextNodeHeight + TextToImageGap,
             Width = NodeWidth,
@@ -452,6 +459,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
 
     public FlowPreview GetPreview()
     {
+        var (imageIndex, _) = BuildSiblingIndex();
         var nodes = _doc.Nodes
             .Where(n => n.Type == "text")
             .Select(n =>
@@ -463,7 +471,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
                 // content node's is found by the same fixed relative-position
                 // lookup DeleteNode/Relayout already use to move it alongside
                 // its text node.
-                var imagePath = isDecisionPoint || isPathStart ? null : FindImageSibling(n)?.File;
+                var imagePath = isDecisionPoint || isPathStart ? null : FindImageSibling(n, imageIndex)?.File;
                 return new PreviewNode(
                     n.Id, label, n.X, n.Y, n.Width, n.Height,
                     n.Id == _cursorNodeId, isDecisionPoint, isPathStart,
@@ -696,12 +704,16 @@ public sealed class CanvasFlowWriter : IFlowWriter
 
     /// <summary>
     /// Only ordinary content nodes qualify, on both ends — see
-    /// <see cref="IFlowWriter.DisconnectNodes"/>. Only ever removes a
-    /// *manual* edge (added via <see cref="ConnectNodes"/>): a structural
-    /// edge is part of the actual recorded sequence, and severing one here
-    /// would break the main chain without DeleteNode's parent-to-child
-    /// stitch repair — this is strictly the undo for a manual connect, not
-    /// a general-purpose edge remover.
+    /// <see cref="IFlowWriter.DisconnectNodes"/>. Removes any edge between
+    /// them, structural or manual: cutting a structural edge just turns
+    /// <paramref name="toNodeId"/>'s node into a new isolated root (or the
+    /// root of whatever subtree still hangs off it) — Relayout()'s grid
+    /// layout already has a fallback for nodes with no incoming edge (used
+    /// for every fresh session start), so no separate stitch-repair is
+    /// needed the way DeleteNode's cascading removal requires. Decision
+    /// points/path-starts stay excluded on both ends — that marker check,
+    /// not the manual/structural distinction, is the actual safety
+    /// boundary here.
     /// </summary>
     public BranchActionResult DisconnectNodes(string fromNodeId, string toNodeId)
     {
@@ -714,7 +726,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
             return new BranchActionResult(false);
         }
 
-        var edge = _doc.Edges.FirstOrDefault(e => e.FromNode == fromNodeId && e.ToNode == toNodeId && e.Manual);
+        var edge = _doc.Edges.FirstOrDefault(e => e.FromNode == fromNodeId && e.ToNode == toNodeId);
         if (edge is null)
         {
             return new BranchActionResult(false);
@@ -773,13 +785,74 @@ public sealed class CanvasFlowWriter : IFlowWriter
         return new BranchActionResult(true);
     }
 
-    /// <summary>The sibling "file" (image) node created alongside a content node in <see cref="AddClickNode"/> — identified by its fixed position relative to the text node, since the two are never edge-linked to each other.</summary>
+    /// <summary>See <see cref="IFlowWriter.AddManualNode"/> — like MoveNode, deliberately skips Relayout().</summary>
+    public BranchActionResult AddManualNode(string label, double x, double y)
+    {
+        var node = new CanvasNode
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Type = "text",
+            Text = label,
+            X = x,
+            Y = y,
+            Width = NodeWidth,
+            Height = NodeHeight
+        };
+        _doc.Nodes.Add(node);
+
+        Save();
+        return new BranchActionResult(true);
+    }
+
+    /// <summary>The sibling "file" (image) node created alongside a content node in <see cref="AddClickNode"/> — identified by its fixed position relative to the text node, since the two are never edge-linked to each other. A single-node lookup (linear scan) — fine for the handful of one-off call sites (MoveNode, DeleteNode); a loop over every node in the document should use the indexed overload below instead (see <see cref="BuildSiblingIndex"/>'s own doc comment for why).</summary>
     private CanvasNode? FindImageSibling(CanvasNode textNode) => _doc.Nodes.FirstOrDefault(n =>
         n.Type == "file" && Math.Abs(n.X - textNode.X) < 0.5 && Math.Abs(n.Y - (textNode.Y + TextNodeHeight + TextToImageGap)) < 0.5);
 
-    /// <summary>The sibling "group" node wrapping a content node and its image, created alongside both in <see cref="AddClickNode"/> — same fixed-position lookup as <see cref="FindImageSibling"/>. Marker nodes (decision points/path starts) never get one.</summary>
+    /// <summary>The sibling "group" node wrapping a content node and its image, created alongside both in <see cref="AddClickNode"/> — same fixed-position lookup as <see cref="FindImageSibling"/>. Marker nodes (decision points/path starts) never get one. Single-node lookup — see that method's own doc comment on when to use the indexed overload instead.</summary>
     private CanvasNode? FindGroupSibling(CanvasNode textNode) => _doc.Nodes.FirstOrDefault(n =>
         n.Type == "group" && Math.Abs(n.X - (textNode.X - GroupPadding)) < 0.5 && Math.Abs(n.Y - (textNode.Y - GroupPadding)) < 0.5);
+
+    /// <summary>
+    /// Precomputed once per pass, indexed variants of
+    /// <see cref="FindImageSibling(CanvasNode)"/>/<see cref="FindGroupSibling(CanvasNode)"/>
+    /// for the three call sites (<see cref="GetPreview"/>, <see cref="BuildLiveHtml"/>,
+    /// <see cref="Relayout"/>) that look up a sibling for *every* node in the
+    /// document in a loop — each single-node lookup above is itself a linear
+    /// scan over every node, so calling it once per node made a whole pass
+    /// O(n²) (confirmed as a real, worsening-with-session-length slowdown:
+    /// GetPreview() alone runs twice per recorded click). Positions here are
+    /// always the result of this same class's own deterministic arithmetic
+    /// (fixed-size constants added/subtracted, or MoveNode's dx/dy applied
+    /// identically to both siblings), never independently computed, so
+    /// rounding to the nearest whole pixel for the dictionary key can never
+    /// merge two genuinely different siblings (the smallest real gap between
+    /// node types is <see cref="GroupPadding"/>, 8 units) or miss a real
+    /// match (which is always exactly, not approximately, equal pre-rounding).
+    /// </summary>
+    private (Dictionary<(double X, double Y), CanvasNode> Images, Dictionary<(double X, double Y), CanvasNode> Groups) BuildSiblingIndex()
+    {
+        var images = new Dictionary<(double, double), CanvasNode>();
+        var groups = new Dictionary<(double, double), CanvasNode>();
+        foreach (var n in _doc.Nodes)
+        {
+            if (n.Type == "file")
+            {
+                images[(Math.Round(n.X), Math.Round(n.Y))] = n;
+            }
+            else if (n.Type == "group")
+            {
+                groups[(Math.Round(n.X), Math.Round(n.Y))] = n;
+            }
+        }
+
+        return (images, groups);
+    }
+
+    private static CanvasNode? FindImageSibling(CanvasNode textNode, Dictionary<(double X, double Y), CanvasNode> imageIndex) =>
+        imageIndex.TryGetValue((Math.Round(textNode.X), Math.Round(textNode.Y + TextNodeHeight + TextToImageGap)), out var n) ? n : null;
+
+    private static CanvasNode? FindGroupSibling(CanvasNode textNode, Dictionary<(double X, double Y), CanvasNode> groupIndex) =>
+        groupIndex.TryGetValue((Math.Round(textNode.X - GroupPadding), Math.Round(textNode.Y - GroupPadding)), out var n) ? n : null;
 
     private static bool IsDecisionPointNode(CanvasNode n) => n.Type == "text" && n.Text == DecisionPointLabel;
 
@@ -871,7 +944,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
     private string BuildLiveHtml()
     {
         var dataJson = JsonSerializer.Serialize(_doc, _jsonOptions);
-        var htmlDir = Path.GetDirectoryName(_canvasPath!) ?? _config.VaultPath;
+        var htmlDir = Path.GetDirectoryName(_canvasPath!) ?? _config.OutputPath;
 
         // Reuses GetPreview()'s own PathId tagging for column-based accent
         // colors, matching DrawIoConverter/HtmlFlowExporter's palette —
@@ -882,6 +955,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
         var slotOf = FlowPreviewBranching.ComputeGridLayout(preview);
         var textNodesById = _doc.Nodes.Where(n => n.Type == "text").ToDictionary(n => n.Id);
         var previewNodesById = preview.Nodes.ToDictionary(n => n.Id);
+        var (imageIndex, _) = BuildSiblingIndex();
 
         string AccentFor(int column) => column == 0 ? HtmlMainColor : HtmlBranchColors[FlowPreviewBranching.StableColumnHash(column) % HtmlBranchColors.Length];
 
@@ -912,9 +986,9 @@ public sealed class CanvasFlowWriter : IFlowWriter
             {
                 color = accent;
                 label = BuildLabel(canvasNode.Text);
-                if (FindImageSibling(canvasNode)?.File is { } relativeToVault)
+                if (FindImageSibling(canvasNode, imageIndex)?.File is { } relativeToOutput)
                 {
-                    var fullImagePath = Path.Combine(_config.VaultPath, relativeToVault);
+                    var fullImagePath = Path.Combine(_config.OutputPath, relativeToOutput);
                     imageSrc = ToRelativeUrl(htmlDir, fullImagePath);
                 }
             }

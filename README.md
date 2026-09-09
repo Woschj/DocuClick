@@ -2,14 +2,14 @@
 
 Windows-Screenshot-Tool, das bei jedem Mausklick (optional auch bei
 Rechtsklick und Enter) automatisch einen Screenshot mit Klick-Markierung
-erstellt und samt Beschreibungstext entweder an eine Obsidian-Notiz
-anhängt oder — im **Ablauf-Modus** — als verbundenen Knoten in eine
-einzelne, interaktive `.html`-Datei schreibt, die sich direkt in jedem
-Browser öffnet und in DocuClicks eigener Ablauf-Übersicht bearbeiten
-lässt, ganz ohne Obsidian. Aus einer solchen Ablauf-Session lässt sich
-jederzeit zusätzlich ein voll editierbares draw.io-Flowchart oder eine
-einzelne, komplett eigenständige HTML-Kopie zum Weitergeben exportieren.
-Details zu beiden Aufnahme-Modi und den Exporten weiter unten.
+erstellt und samt Beschreibungstext als verbundenen Knoten in eine
+einzelne, interaktive `.html`-Datei schreibt — der **Ablauf**. Die Datei
+öffnet sich direkt in jedem Browser und lässt sich in DocuClicks eigener
+Ablauf-Übersicht bearbeiten, ganz ohne zusätzliche Software. Aus einer
+solchen Ablauf-Session lässt sich jederzeit zusätzlich ein voll
+editierbares draw.io-Flowchart oder eine einzelne, komplett eigenständige
+HTML-Kopie zum Weitergeben exportieren. Details zum Aufnahme-Format und
+den Exporten weiter unten.
 
 App-Icon: [Assets/app.ico](src/DocuClick/Assets/app.ico) (im selben
 Rot-auf-Dunkel-Stil wie das Tray-Icon).
@@ -30,53 +30,40 @@ Nach dem Start läuft DocuClick als Tray-Icon im Infobereich der
 Taskleiste — kein sichtbares Fenster, siehe [Funktionsumfang](#funktionsumfang)
 für die Bedienung.
 
-## Vault einrichten (Notiz-Modus) bzw. Zielordner wählen (Ablauf-Modus)
+## Ausgabeordner einrichten
 
-Der **Ablauf-Modus** braucht kein Obsidian — die Sessions sind eigenständige
-`.html`-Dateien, die DocuClicks eigene Ablauf-Übersicht direkt öffnen/
-bearbeiten kann und die auch in jedem normalen Browser lesbar sind. Ein
-beliebiger Ordner als Zielordner reicht.
+Die Sessions sind eigenständige `.html`-Dateien, die DocuClicks eigene
+Ablauf-Übersicht direkt öffnen/bearbeiten kann und die auch in jedem
+normalen Browser lesbar sind — ein beliebiger Ordner als Ausgabeordner
+reicht.
 
-Für den **Notiz-Modus** (linearer Markdown-Text) empfiehlt sich trotzdem
-[Obsidian](https://obsidian.md) — kostenlos, kein Account nötig, öffnet
-einfach einen lokalen Ordner als "Vault", kein Plugin erforderlich. Wer nur
-den Ablauf-Modus nutzt, kann diesen Abschnitt überspringen und direkt einen
-beliebigen Ordner als "Vault-Pfad" in den Einstellungen eintragen.
-
-1. **Obsidian installieren** (nur für den Notiz-Modus nötig): Installer von
-   [obsidian.md](https://obsidian.md/download) herunterladen und ausführen.
-2. **Vault/Zielordner vorbereiten**: [VaultTemplate/](VaultTemplate/) aus
+1. **Ausgabeordner vorbereiten**: [OutputTemplate/](OutputTemplate/) aus
    diesem Repo an einen Ort außerhalb des Repos kopieren (z. B.
-   `%USERPROFILE%\Documents\Prozess-Vault`) — Details und der Grund dafür
-   (Screenshots landen sonst im öffentlichen Git-Verlauf) in
-   [VaultTemplate/README.md](VaultTemplate/README.md).
-3. **Als Vault öffnen** (nur für den Notiz-Modus nötig): In Obsidian "Open
-   folder as vault" → den kopierten Ordner auswählen. Das mitgelieferte
-   Theme (inkl. automatischer Ordnerfärbung) wird direkt übernommen.
-4. **DocuClick verbinden**: In den DocuClick-Einstellungen den
-   Vault-/Zielordner-Pfad auf denselben kopierten Ordner setzen,
-   Ausgabeformat auf Notiz oder Ablauf stellen.
+   `%USERPROFILE%\Documents\Prozess-Ablaeufe`) — Details und der Grund
+   dafür (Screenshots landen sonst im öffentlichen Git-Verlauf) in
+   [OutputTemplate/README.md](OutputTemplate/README.md).
+2. **DocuClick verbinden**: In den DocuClick-Einstellungen unter
+   "Speicherort" den Ausgabeordner auf denselben kopierten Ordner setzen
+   (Dropdown merkt sich zuletzt verwendete Ordner).
 
 Danach läuft die Aufnahme unabhängig von jedem anderen Programm — die App
 muss beim Aufzeichnen nicht mal geöffnet sein, DocuClick schreibt direkt in
-die Dateien. Im Notiz-Modus aktualisiert Obsidian offene Notizen automatisch,
-sobald sich die Datei auf der Festplatte ändert; im Ablauf-Modus zeigt
-DocuClicks eigene Ablauf-Übersicht den aktuellen Stand ohnehin live an.
+die Datei; DocuClicks eigene Ablauf-Übersicht zeigt den aktuellen Stand
+ohnehin live an.
 
 Alltags-Workflow:
 
 - Beim Start einer Aufnahme fragt DocuClick nach Zieldatei **und
-  -ordner** innerhalb des Vaults/Zielordners (siehe [Zieldatei bei jedem
+  -ordner** innerhalb des Ausgabeordners (siehe [Zieldatei bei jedem
   Session-Start](#start-vs-neue-session-zieldatei)) — damit landet
   jede Aufnahme direkt dort, wo sie in der Ordnerstruktur hingehört,
   statt alles im Wurzelordner zu sammeln.
 - Für länger geplante Abläufe lohnt es sich, vorher eine Vorlage aus
   `02 Vorlagen/` zu kopieren und mit Titel/Zweck auszufüllen, dann beim
   Session-Start "Bestehende Datei fortsetzen" wählen.
-- Verzweigt sich ein Ablauf (z. B. Fehlerfall vs. Erfolgsfall), im
-  Ablauf-Modus über die Ablauf-Übersicht einen Abzweigungspunkt setzen
-  und benannte Pfade anlegen (siehe [Abzweigungen im
-  Ablauf-Modus](#abzweigungen-im-ablauf-modus)).
+- Verzweigt sich ein Ablauf (z. B. Fehlerfall vs. Erfolgsfall), über die
+  Ablauf-Übersicht einen Abzweigungspunkt setzen und benannte Pfade
+  anlegen (siehe [Abzweigungen im Ablauf](#abzweigungen-im-ablauf)).
 
 ## Funktionsumfang
 
@@ -106,12 +93,8 @@ auf ..."):
 4. Speichern des Bilds im konfigurierten Attachments-Ordner (in einem
    Unterordner benannt nach der Zieldatei, z. B.
    `Attachments/Onboarding-Flow/073934_321.png`, statt alles flach zu
-   sammeln) und Anhängen von Beschreibung +
-   `![bild.png](relativer/Pfad.png)` (Standard-Markdown, kein
-   Obsidian-spezifisches Wikilink — funktioniert daher auch in GitHub-/
-   GitLab-Wikis und anderen Markdown-Renderern, nicht nur in Obsidian) an
-   die Session-Notiz (im Ablauf-Modus stattdessen als verbundener Knoten in
-   der `.html`-Datei, siehe unten)
+   sammeln) und Anhängen von Beschreibung + Screenshot als neuem,
+   verbundenem Knoten in der `.html`-Datei (siehe unten)
 
 Klicks auf DocuClicks eigene Fenster (Top-Leiste, Ablauf-Übersicht,
 Session-Start, Einstellungen, ...) sowie auf das Tray-Icon selbst zählen
@@ -131,35 +114,32 @@ einer anderen bzw. neuen Datei zu wechseln:
 - **Neue Datei anlegen**: Ein Name wird automatisch vorgeschlagen
   (**Zielordner-Name + Datum + laufende Nummer**, z. B.
   `IT-Support 2026-08-04 (1)`, statt eines generischen "Screenshots"), lässt
-  sich aber frei überschreiben. Endung ergibt sich aus dem gewählten
-  Ausgabeformat. Optional ein **Zielordner** wählen (relativ zum
-  Vault-Pfad) — Vorschläge kommen aus allen bereits vorhandenen
-  Unterordnern, der Namensvorschlag passt sich beim Ordnerwechsel
-  automatisch an, solange der Name nicht von Hand geändert wurde. So
-  landen Aufnahmen direkt in der Vault-Struktur (z. B.
+  sich aber frei überschreiben (Endung immer `.html`). Optional ein
+  **Zielordner** wählen (relativ zum Ausgabeordner) — Vorschläge kommen aus
+  allen bereits vorhandenen Unterordnern, der Namensvorschlag passt sich
+  beim Ordnerwechsel automatisch an, solange der Name nicht von Hand
+  geändert wurde. So landen Aufnahmen direkt in der Ordnerstruktur (z. B.
   `Prozesse/IT-Support`) statt immer im Wurzelordner, und die laufende
   Nummer verhindert, dass ein zweiter Klick auf "Neue Session" am selben
   Tag versehentlich eine bestehende Datei fortsetzt.
-- **Bestehende Datei fortsetzen**: Auswahl aus allen vorhandenen Dateien
-  mit passender Endung im konfigurierten Vault (inkl. Unterordner),
-  neueste zuerst. Neue Klicks werden an diese Datei angehängt (im
-  Ablauf-Modus ab dem bisherigen Cursor-Stand, siehe Abzweigungs-Logik
-  unten).
+- **Bestehende Datei fortsetzen**: Auswahl aus allen vorhandenen `.html`-
+  Dateien im konfigurierten Ausgabeordner (inkl. Unterordner), neueste
+  zuerst. Neue Klicks werden an diese Datei angehängt, ab dem bisherigen
+  Cursor-Stand (siehe Abzweigungs-Logik unten).
 
 Der Dialog erscheint außerdem beim allerersten "Start" nach Installation
-(noch keine Datei zum Fortsetzen vorhanden) oder wenn das Ausgabeformat
-seit der letzten Aufnahme gewechselt wurde. Wird der Dialog abgebrochen,
+(noch keine Datei zum Fortsetzen vorhanden). Wird der Dialog abgebrochen,
 bleibt die Aufnahme aus (bzw. bei "Neue Session" während einer laufenden
 Aufnahme: die laufende Session bleibt unverändert bestehen).
 
-### Vault-Template für Prozessdokumentation
+### Ausgabeordner-Vorlage für Prozessdokumentation
 
-[VaultTemplate/](VaultTemplate/) enthält eine leere, für DocuClick
-vorbereitete Obsidian-Vault-Struktur (Zielordner, Attachments-Unterordner,
-Blanko-Vorlagen für Prozessnotizen/-canvases) als Startpunkt für eine
-Knowledge Base. **Vor echter Nutzung außerhalb dieses Repos kopieren** —
-siehe [VaultTemplate/README.md](VaultTemplate/README.md) für Details und
-den Grund dafür (Screenshots landen sonst im öffentlichen Git-Verlauf).
+[OutputTemplate/](OutputTemplate/) enthält eine leere, für DocuClick
+vorbereitete Ordnerstruktur (Zielordner, Attachments-Unterordner,
+Blanko-Vorlage für Abläufe) als Startpunkt für eine Knowledge Base.
+**Vor echter Nutzung außerhalb dieses Repos kopieren** — siehe
+[OutputTemplate/README.md](OutputTemplate/README.md) für Details und den
+Grund dafür (Screenshots landen sonst im öffentlichen Git-Verlauf).
 
 ### Top-Leiste, Ablauf-Übersicht und "Neue Session"
 
@@ -184,7 +164,7 @@ enthält vier Bereiche:
   über die Einstellungen; der Regler passt die Größe dieses Bereichs live
   an (mit Vorschau-Rahmen um den Cursor).
 
-Im **Ablauf-Modus** öffnet sich zusätzlich automatisch die
+Zusätzlich öffnet sich automatisch die
 **Ablauf-Übersicht** — ein frei verschiebbares, größenveränderliches
 Panel mit einer Miniaturkarte des gesamten Ablaufs (per Maus frei
 zoom-/schwenkbar): der aktuelle Knoten ist rot hervorgehoben, jeder Pfad
@@ -200,7 +180,17 @@ der Ablauf direkt bearbeiten:
 - **Ziehen von einem Knoten auf einen anderen**: manuelle Querverbindung
   ("Verbinden") — für Rücksprünge/Referenzen, die der lineare Ablauf sonst
   nicht abbilden kann. Rein additiv (verändert nichts an der bestehenden
-  Struktur), per Rechtsklick auf die Verbindungslinie wieder entfernbar.
+  Struktur). Per Rechtsklick auf die Verbindungslinie wieder entfernbar —
+  das gilt für **jede** Verbindung, nicht nur manuell hinzugefügte: auch
+  eine strukturelle Kante aus der eigentlichen Aufnahme lässt sich so
+  auftrennen (der abgetrennte Knoten wird dadurch zu einer neuen,
+  eigenständigen Wurzel im Baum statt gelöscht zu werden), nur die
+  Kanten rund um Abzweigungspunkte/Pfad-Anfänge bleiben geschützt.
+- **Rechtsklick auf die leere Fläche** (nur im großen Editier-Fenster, siehe
+  "Ablauf öffnen..." unten): "+ Neuer Knoten hier" legt einen komplett
+  neuen, freien Knoten genau an dieser Stelle an — UML-Diagramm-Stil, ohne
+  Screenshot und ohne Verbindungen, danach ganz normal umbenennbar,
+  verschiebbar und verbindbar wie jeder aufgezeichnete Knoten auch.
 - **Umschalt+Ziehen** wählt mehrere Knoten per Rahmen aus, **Entf** löscht
   die Auswahl gesammelt.
 
@@ -217,26 +207,20 @@ gewertet (kein Screenshot, kein Eintrag) — die App erkennt und filtert
 das automatisch, und beide Fenster werden aktiv aus Screenshots
 ausgeschlossen, tauchen also nie selbst im aufgenommenen Bild auf.
 
-## Ausgabeformat: Notiz oder Ablauf (HTML), draw.io als Export
+## Der Ablauf: interaktive HTML-Datei, draw.io als Export
 
-In den Einstellungen lässt sich eines von zwei Live-Aufnahmeformaten
-wählen:
-
-- **Notiz**: linearer Markdown-Text + Bild-Link, an eine `.md`-Datei
-  angehängt (Standard).
-- **Ablauf**: jeder Klick wird ein verbundener Knoten auf einer Fläche in
-  einer einzigen, interaktiven `.html`-Datei — der einzige Modus, der
-  Abzweigungen/Pfade unterstützt (siehe [Abzweigungen im
-  Ablauf-Modus](#abzweigungen-im-ablauf-modus)). Die Datei ist sofort in
-  jedem Browser lesbar (Diagramm frei zoom-/schwenkbar, Klick auf eine
-  Karte zeigt den Screenshot in voller Größe) — Bearbeiten (umbenennen,
-  löschen, verbinden, springen) geht über das Tray-Menü **"Ablauf
-  öffnen..."**, das die Datei in DocuClicks eigener Ablauf-Übersicht
-  aufmacht, ganz ohne laufende Aufnahme. Screenshots liegen als eigene
-  Dateien im Attachments-Ordner daneben und werden per relativem Pfad
-  eingebunden statt bei jedem Klick neu einzubetten — das hält auch sehr
-  lange Sitzungen schnell (siehe unten für eine Variante ganz ohne diese
-  Abhängigkeit).
+Jeder Klick wird ein verbundener Knoten auf einer Fläche in einer
+einzigen, interaktiven `.html`-Datei — dem **Ablauf** (unterstützt
+Abzweigungen/Pfade, siehe [Abzweigungen im Ablauf](#abzweigungen-im-ablauf)).
+Die Datei ist sofort in jedem Browser lesbar (Diagramm frei
+zoom-/schwenkbar, Klick auf eine Karte zeigt den Screenshot in voller
+Größe) — Bearbeiten (umbenennen, löschen, verbinden, springen) geht über
+das Tray-Menü **"Ablauf öffnen..."**, das die Datei in DocuClicks eigener
+Ablauf-Übersicht aufmacht, ganz ohne laufende Aufnahme. Screenshots liegen
+als eigene Dateien im Attachments-Ordner daneben und werden per relativem
+Pfad eingebunden statt bei jedem Klick neu einzubetten — das hält auch
+sehr lange Sitzungen schnell (siehe unten für eine Variante ganz ohne
+diese Abhängigkeit).
 
 Aus einer bestehenden Ablauf-Session lassen sich über das Tray-Menü zwei
 verschiedene Exporte erzeugen:
@@ -267,10 +251,10 @@ verschiedene Exporte erzeugen:
   VS-Code-Extension), lässt sich von dort aus auch nach Visio (`.vsdx`)
   exportieren.
 
-### Abzweigungen im Ablauf-Modus
+### Abzweigungen im Ablauf
 
 Ein Ablauf verzweigt sich in der Realität oft (z. B. Fehlerfall vs.
-Erfolgsfall) — im Ablauf-Modus lässt sich das direkt abbilden:
+Erfolgsfall) — das lässt sich direkt abbilden:
 
 - **Abzweigungspunkt setzen** (Hotkey, Standard `F9`): fragt sofort nach
   dem Namen des ersten Pfads (z. B. "Login-Fehler") und legt eine kleine,
@@ -301,7 +285,7 @@ Einstellungen (kein Neustart nötig).
 
 ### Ablauf nachträglich fortsetzen (an einem bestimmten Punkt statt am Dateiende)
 
-Bei **gestoppter** Aufnahme im Ablauf-Modus zeigt die Ablauf-Übersicht
+Bei **gestoppter** Aufnahme zeigt die Ablauf-Übersicht
 weiterhin die zuletzt bearbeitete Datei — ein Klick auf einen beliebigen
 Knoten dort markiert ihn als Ansatzpunkt für die *nächste* Aufnahme-Session
 (Balloon-Tip bestätigt die Auswahl). Neue Klicks werden dann als neue
@@ -372,24 +356,25 @@ weder im Log noch als Notiz etwas ankommt, wurde der Klick vom Mouse-Hook gar
 nicht erst erkannt (Session nicht gestartet, oder der Hook konnte nicht
 registriert werden — siehe Log-Zeile "Session gestartet").
 
-### Bilder fehlen in einer bestehenden Notiz/einem Ablauf ("... konnte nicht gefunden werden")
+### Bilder fehlen in einem bestehenden Ablauf ("... konnte nicht gefunden werden")
 
 Bis zur entsprechenden Fix-Version enthielt der automatische Namensvorschlag
 beim Session-Start ein `#` (z. B. `IT-Support 2026-08-04 #1`). Da dieser Name
-auch als Attachments-Unterordner verwendet wird, das `#` in Obsidian-Links
-aber als Trenner für Überschriften-/Block-Anker gilt, wurde alles nach dem
-`#` als Anker statt als Teil des Pfads interpretiert — die Bild-Referenz
-zeigt dann ins Leere, obwohl die Datei tatsächlich am angezeigten Ort liegt.
-Ab der Fix-Version wird `(1)` statt `#1` vorgeschlagen und ein manuell
-eingegebenes `#` zusätzlich automatisch ersetzt; **bereits erzeugte Dateien
-und Ordner mit `#` im Namen bleiben davon unberührt** und müssen händisch
-repariert werden:
+auch als Attachments-Unterordner verwendet wird und das Dateiformat intern
+weiterhin die Obsidian-Canvas-Schreibweise für Bild-Referenzen verwendet
+(kompatibel mit Drittanbieter-Tools), gilt `#` dort als Trenner für
+Überschriften-/Block-Anker — alles danach wurde als Anker statt als Teil
+des Pfads interpretiert, die Bild-Referenz zeigt dann ins Leere, obwohl die
+Datei tatsächlich am angezeigten Ort liegt. Ab der Fix-Version wird `(1)`
+statt `#1` vorgeschlagen und ein manuell eingegebenes `#` zusätzlich
+automatisch ersetzt; **bereits erzeugte Dateien und Ordner mit `#` im
+Namen bleiben davon unberührt** und müssen händisch repariert werden:
 
 1. Den betroffenen Attachments-Unterordner (z. B.
-   `Attachments/Mein Vault 2026-08-05 #1`) umbenennen — `#` durch z. B. `(1)`
-   ersetzen.
-2. Die zugehörige `.html`- bzw. `.md`-Datei in einem Texteditor öffnen und
-   den alten Ordnernamen per Suchen-und-Ersetzen durch den neuen ersetzen.
+   `Attachments/Mein Ablauf 2026-08-05 #1`) umbenennen — `#` durch z. B.
+   `(1)` ersetzen.
+2. Die zugehörige `.html`-Datei in einem Texteditor öffnen und den alten
+   Ordnernamen per Suchen-und-Ersetzen durch den neuen ersetzen.
 
 ---
 

@@ -19,7 +19,7 @@
                              Checked="OnModeChanged" Margin="0,0,0,10"/>
                 <TextBlock Text="Dateiname" Style="{StaticResource FieldLabel}" Margin="20,0,0,4"/>
                 <TextBox x:Name="NewFileNameBox" Style="{StaticResource ModernTextBox}" Margin="20,0,0,10"/>
-                <TextBlock Text="Zielordner (relativ, leer = Vault-Root — Vorschläge aus vorhandenen Ordnern, oder neuen Namen eintippen)"
+                <TextBlock Text="Zielordner (relativ, leer = Ausgabeordner-Root — Vorschläge aus vorhandenen Ordnern, oder neuen Namen eintippen)"
                            Style="{StaticResource HintText}" Margin="20,0,0,4"/>
                 <ComboBox x:Name="TargetFolderBox" Style="{StaticResource ModernComboBox}" Margin="20,0,0,12" IsEditable="True"/>
 

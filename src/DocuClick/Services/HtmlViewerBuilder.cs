@@ -20,6 +20,15 @@ namespace DocuClick.Services;
 /// </summary>
 public static class HtmlViewerBuilder
 {
+    // Lazily read once and cached for the process's lifetime — this file is
+    // ~365 KB, and BuildPage runs on *every single click* while a live
+    // session is recording (CanvasFlowWriter.Save() calls it every time);
+    // re-reading it from disk that often was a real, measured per-click
+    // cost completely independent of session size. The vendor file never
+    // changes at runtime, so there's nothing to invalidate this cache for.
+    private static readonly Lazy<string> CytoscapeJs = new(() =>
+        File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "WebAssets", "vendor", "cytoscape.min.js")));
+
     public sealed record NodeSpec(string Id, string Label, double X, double Y, string Color, string Shape, string? ImageSrc);
 
     public sealed record EdgeSpec(string Source, string Target, string Color, bool Manual);
@@ -55,7 +64,7 @@ public static class HtmlViewerBuilder
         // would wrongly create an image overlay (src "null") for it too.
         var jsonOptions = new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
         var dataJson = JsonSerializer.Serialize(new { nodes = jsNodes, edges = jsEdges }, jsonOptions);
-        var cytoscapeJs = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "WebAssets", "vendor", "cytoscape.min.js"));
+        var cytoscapeJs = CytoscapeJs.Value;
         // type="application/json" is never executed by the browser — purely
         // inert data storage, safe to embed regardless of where it sits.
         // System.Text.Json's default encoder already escapes '<'/'>' inside
