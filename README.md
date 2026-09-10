@@ -399,8 +399,8 @@ Neues Release erstellen (baut automatisch und hängt das Zip an ein neues
 GitHub Release):
 
 ```bash
-git tag v1.10.0
-git push origin v1.10.0
+git tag v1.11.0
+git push origin v1.11.0
 ```
 
 Offene Punkte: Feinschliff bei Multi-Monitor/DPI-Kantenfällen, robustere
