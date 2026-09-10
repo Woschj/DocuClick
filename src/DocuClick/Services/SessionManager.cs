@@ -44,8 +44,8 @@ public sealed class SessionManager : IDisposable
     public event Action<string?>? CanvasStatusChanged;
     public event Action<bool>? ZoomToCursorChanged;
 
-    /// <summary>Fired whenever the flow's nodes/current-position change (session start/stop, every click, branch actions, node jumps) — for the tree-preview overlay. Null means "hide the overlay" (stopped, or the active mode doesn't support branching).</summary>
-    public event Action<FlowPreview?>? FlowPreviewChanged;
+    /// <summary>Fired whenever the flow's nodes/current-position change (session start/stop, every click, branch actions, node jumps) — for the tree-preview overlay. Second arg is true ONLY when a live screenshot click was recorded.</summary>
+    public event Action<FlowPreview?, bool>? FlowPreviewChanged;
 
     /// <summary>PNG-encoded bytes of the most recently captured screenshot, fired after a successful capture — for the status overlay's thumbnail preview.</summary>
     public event Action<byte[]>? LastScreenshotCaptured;
@@ -84,6 +84,15 @@ public sealed class SessionManager : IDisposable
     /// shows this file's content.
     /// </summary>
     public string? CurrentTargetFileName => string.IsNullOrEmpty(_currentTargetFileName) ? null : _currentTargetFileName;
+
+    /// <summary>Whether a session target file is loaded and active (running or paused).</summary>
+    public bool HasActiveSession => !string.IsNullOrEmpty(_currentTargetFileName);
+
+    /// <summary>Whether a session is currently loaded but recording is paused.</summary>
+    public bool IsPaused => HasActiveSession && !_isRunning;
+
+    /// <summary>Retrieves the current flow preview snapshot from the writer thread.</summary>
+    public FlowPreview? GetPreview() => RunOnWriterQueue(() => _writer.GetPreview());
 
     /// <summary>Whether "Zoom-auf-Cursor" is currently active (see <see cref="ToggleZoomToCursor"/>).</summary>
     public bool IsZoomToCursorActive => _zoomToCursorActive;
@@ -209,6 +218,28 @@ public sealed class SessionManager : IDisposable
     /// </summary>
     public void Start(string targetFileName)
     {
+        if (HasActiveSession && string.Equals(_currentTargetFileName, targetFileName, StringComparison.OrdinalIgnoreCase) && !_isRunning)
+        {
+            // Resume paused session without re-opening from scratch
+            _mouseHook.Start();
+            if (_config.CaptureOnEnter)
+            {
+                _keyboardHook.Start();
+            }
+
+            _isRunning = true;
+            var resumeSnapshot = RunOnWriterQueue(() => new StatusSnapshot(BuildStatusText(), _writer.GetPreview()));
+            CanvasStatusChanged?.Invoke(resumeSnapshot.StatusText);
+            FlowPreviewChanged?.Invoke(resumeSnapshot.Preview, false);
+            LogService.Log($"Session fortgesetzt. Ziel: {_currentTargetFileName}");
+            return;
+        }
+
+        if (HasActiveSession && !_isRunning)
+        {
+            Stop();
+        }
+
         _currentTargetFileName = targetFileName;
 
         var targetDirectory = Path.GetDirectoryName(Path.Combine(_config.OutputPath, targetFileName));
@@ -234,7 +265,7 @@ public sealed class SessionManager : IDisposable
 
         _isRunning = true;
         CanvasStatusChanged?.Invoke(snapshot.StatusText);
-        FlowPreviewChanged?.Invoke(snapshot.Preview);
+        FlowPreviewChanged?.Invoke(snapshot.Preview, false);
         LogService.Log($"Session gestartet. Ziel: {_currentTargetFileName}, Ausgabeordner: '{_config.OutputPath}'");
     }
 
@@ -263,27 +294,35 @@ public sealed class SessionManager : IDisposable
             return _writer.GetPreview();
         });
 
-        FlowPreviewChanged?.Invoke(preview);
+        FlowPreviewChanged?.Invoke(preview, false);
         LogService.Log($"Ablauf zum Bearbeiten geöffnet: {targetFileName}");
+    }
+
+    /// <summary>
+    /// Pauses recording: stops capture hooks and flushes changes to disk,
+    /// while keeping the active target file, loaded document, and current cursor
+    /// intact so editing in the Ablauf-Übersicht can proceed seamlessly.
+    /// </summary>
+    public void Pause()
+    {
+        _mouseHook.Stop();
+        _keyboardHook.Stop();
+        _isRunning = false;
+        RunOnWriterQueue(() => _writer.Pause());
+        CanvasStatusChanged?.Invoke("Aufnahme pausiert");
+        var preview = RunOnWriterQueue(() => _writer.GetPreview());
+        FlowPreviewChanged?.Invoke(preview, false);
+        LogService.Log("Session pausiert.");
     }
 
     public void Stop()
     {
         _mouseHook.Stop();
         _keyboardHook.Stop();
-        // Runs on the writer thread: an already-queued click captured just
-        // before Stop() finishes writing its card first, then this runs
-        // right after — instead of racing it and potentially resetting
-        // cursor state out from under a click still being processed.
         RunOnWriterQueue(() => _writer.Stop());
         _isRunning = false;
+        _currentTargetFileName = string.Empty;
         CanvasStatusChanged?.Invoke(null);
-        // Deliberately NOT FlowPreviewChanged?.Invoke(null) — that would
-        // hide the Ablauf-Übersicht minimap on every Stop. Leaving it
-        // showing its last state lets it double as a reference while
-        // reviewing/planning the next session; it only actually closes via
-        // JumpToNode's own !_isRunning guard already making clicks in it a
-        // no-op, so nothing breaks by it staying open.
         LogService.Log("Session gestoppt.");
     }
 
@@ -315,9 +354,9 @@ public sealed class SessionManager : IDisposable
     /// </summary>
     public void MarkDecisionPoint(string firstPathName)
     {
-        if (!_isRunning)
+        if (!HasActiveSession)
         {
-            InfoOccurred?.Invoke("Aktion ignoriert: bitte zuerst eine Aufnahme starten.");
+            InfoOccurred?.Invoke("Aktion ignoriert: bitte zuerst eine Aufnahme starten oder einen Ablauf öffnen.");
             return;
         }
 
@@ -335,9 +374,13 @@ public sealed class SessionManager : IDisposable
 
         if (result.Success)
         {
-            CanvasStatusChanged?.Invoke(snapshot.StatusText);
-            FlowPreviewChanged?.Invoke(snapshot.Preview);
-            InfoOccurred?.Invoke($"Abzweigungspunkt gesetzt, Pfad \"{firstPathName}\" gestartet — nächster Klick beginnt dort.");
+            if (_isRunning)
+            {
+                CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            }
+
+            FlowPreviewChanged?.Invoke(snapshot.Preview, false);
+            InfoOccurred?.Invoke($"Abzweigungspunkt gesetzt, Pfad \"{firstPathName}\" gestartet — nächste Aufnahme beginnt dort.");
         }
         else
         {
@@ -352,9 +395,9 @@ public sealed class SessionManager : IDisposable
     /// <summary>Ablauf-Übersicht popup action: forks a brand-new named path from a decision point.</summary>
     public void StartNewPath(string decisionPointId, string pathName)
     {
-        if (!_isRunning)
+        if (!HasActiveSession)
         {
-            InfoOccurred?.Invoke("Aktion ignoriert: bitte zuerst eine Aufnahme starten.");
+            InfoOccurred?.Invoke("Aktion ignoriert: bitte zuerst eine Aufnahme starten oder einen Ablauf öffnen.");
             return;
         }
 
@@ -367,9 +410,13 @@ public sealed class SessionManager : IDisposable
 
         if (result.Success)
         {
-            CanvasStatusChanged?.Invoke(snapshot.StatusText);
-            FlowPreviewChanged?.Invoke(snapshot.Preview);
-            InfoOccurred?.Invoke($"Neuer Pfad \"{pathName}\" gestartet — nächster Klick beginnt dort.");
+            if (_isRunning)
+            {
+                CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            }
+
+            FlowPreviewChanged?.Invoke(snapshot.Preview, false);
+            InfoOccurred?.Invoke($"Neuer Pfad \"{pathName}\" angelegt — nächste Aufnahme beginnt dort.");
         }
         else
         {
@@ -380,9 +427,9 @@ public sealed class SessionManager : IDisposable
     /// <summary>Ablauf-Übersicht popup action: resumes an existing path at wherever it currently ends.</summary>
     public void ContinuePath(string pathStartNodeId)
     {
-        if (!_isRunning)
+        if (!HasActiveSession)
         {
-            InfoOccurred?.Invoke("Aktion ignoriert: bitte zuerst eine Aufnahme starten.");
+            InfoOccurred?.Invoke("Aktion ignoriert: bitte zuerst eine Aufnahme starten oder einen Ablauf öffnen.");
             return;
         }
 
@@ -395,9 +442,13 @@ public sealed class SessionManager : IDisposable
 
         if (result.Success)
         {
-            CanvasStatusChanged?.Invoke(snapshot.StatusText);
-            FlowPreviewChanged?.Invoke(snapshot.Preview);
-            InfoOccurred?.Invoke("Pfad fortgesetzt — nächster Klick knüpft hier an.");
+            if (_isRunning)
+            {
+                CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            }
+
+            FlowPreviewChanged?.Invoke(snapshot.Preview, false);
+            InfoOccurred?.Invoke("Pfad ausgewählt — nächste Aufnahme knüpft hier an.");
         }
         else
         {
@@ -408,9 +459,9 @@ public sealed class SessionManager : IDisposable
     /// <summary>Tree-preview overlay's click-to-navigate: jumps the cursor to an arbitrary existing (non-decision-point) node.</summary>
     public void JumpToNode(string nodeId)
     {
-        if (!_isRunning)
+        if (!HasActiveSession)
         {
-            InfoOccurred?.Invoke("Aktion ignoriert: bitte zuerst eine Aufnahme starten.");
+            InfoOccurred?.Invoke("Aktion ignoriert: bitte zuerst eine Aufnahme starten oder einen Ablauf öffnen.");
             return;
         }
 
@@ -424,9 +475,13 @@ public sealed class SessionManager : IDisposable
 
         if (result.Success)
         {
-            CanvasStatusChanged?.Invoke(snapshot.StatusText);
-            FlowPreviewChanged?.Invoke(snapshot.Preview);
-            InfoOccurred?.Invoke($"Zu \"{currentLabel ?? "(ohne Beschreibung)"}\" gesprungen — nächster Klick knüpft hier an.");
+            if (_isRunning)
+            {
+                CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            }
+
+            FlowPreviewChanged?.Invoke(snapshot.Preview, false);
+            InfoOccurred?.Invoke($"Zu \"{currentLabel ?? "(ohne Beschreibung)"}\" gesprungen — nächste Aufnahme knüpft hier an.");
         }
         else
         {
@@ -457,7 +512,7 @@ public sealed class SessionManager : IDisposable
                 CanvasStatusChanged?.Invoke(snapshot.StatusText);
             }
 
-            FlowPreviewChanged?.Invoke(snapshot.Preview);
+            FlowPreviewChanged?.Invoke(snapshot.Preview, false);
         }
         else
         {
@@ -489,7 +544,7 @@ public sealed class SessionManager : IDisposable
                 CanvasStatusChanged?.Invoke(snapshot.StatusText);
             }
 
-            FlowPreviewChanged?.Invoke(snapshot.Preview);
+            FlowPreviewChanged?.Invoke(snapshot.Preview, false);
         }
         else
         {
@@ -514,7 +569,7 @@ public sealed class SessionManager : IDisposable
                 CanvasStatusChanged?.Invoke(snapshot.StatusText);
             }
 
-            FlowPreviewChanged?.Invoke(snapshot.Preview);
+            FlowPreviewChanged?.Invoke(snapshot.Preview, false);
         }
         else
         {
@@ -539,7 +594,7 @@ public sealed class SessionManager : IDisposable
                 CanvasStatusChanged?.Invoke(snapshot.StatusText);
             }
 
-            FlowPreviewChanged?.Invoke(snapshot.Preview);
+            FlowPreviewChanged?.Invoke(snapshot.Preview, false);
         }
         else
         {
@@ -564,16 +619,16 @@ public sealed class SessionManager : IDisposable
                 CanvasStatusChanged?.Invoke(snapshot.StatusText);
             }
 
-            FlowPreviewChanged?.Invoke(snapshot.Preview);
+            FlowPreviewChanged?.Invoke(snapshot.Preview, false);
         }
     }
 
     /// <summary>Ablauf-Übersicht: creates a brand-new, isolated node at an explicit position (see IFlowWriter.AddManualNode — UML-style "+ Neuer Knoten hier" on the empty canvas). Not gated on <see cref="_isRunning"/> — see <see cref="RenameNode"/>.</summary>
-    public void AddManualNode(string label, double x, double y)
+    public void AddManualNode(string label, double x, double y, string? shape = null, string? color = null)
     {
         var (result, snapshot) = RunOnWriterQueue(() =>
         {
-            var actionResult = _writer.AddManualNode(label, x, y);
+            var actionResult = _writer.AddManualNode(label, x, y, shape, color);
             var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), _writer.GetPreview()) : default;
             return (actionResult, statusSnapshot);
         });
@@ -585,7 +640,7 @@ public sealed class SessionManager : IDisposable
                 CanvasStatusChanged?.Invoke(snapshot.StatusText);
             }
 
-            FlowPreviewChanged?.Invoke(snapshot.Preview);
+            FlowPreviewChanged?.Invoke(snapshot.Preview, false);
         }
     }
 
@@ -773,7 +828,7 @@ public sealed class SessionManager : IDisposable
             }
 
             _writer.AddClickNode(description, screenshot, timestamp);
-            FlowPreviewChanged?.Invoke(_writer.GetPreview());
+            FlowPreviewChanged?.Invoke(_writer.GetPreview(), true);
 
             LogService.Log($"Eintrag geschrieben: \"{description}\" -> {targetFileName}");
 

@@ -68,6 +68,21 @@ public sealed class TrayApp : IDisposable
     /// </summary>
     public void SyncRecordingState(bool isRecording) => SetRecording(isRecording, raiseEvent: false);
 
+    /// <summary>
+    /// Updates the tray menu and tooltip to indicate whether a session is currently paused.
+    /// </summary>
+    public void UpdatePausedState(bool isPaused)
+    {
+        if (_isRecording)
+        {
+            return;
+        }
+
+        _toggleItem.Text = isPaused ? "Aufnahme fortsetzen" : "Aufnahme starten";
+        _baseStatusText = isPaused ? "DocuClick - Aufnahme pausiert" : "DocuClick - Aufnahme gestoppt";
+        UpdateTooltip();
+    }
+
     private void SetRecording(bool isRecording, bool raiseEvent)
     {
         if (_isRecording == isRecording)

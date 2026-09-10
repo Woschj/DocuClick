@@ -1,0 +1,147 @@
+{
+  "tasks": [
+    {
+      "id": "task-01-config-datadir-override",
+      "title": "DOCUCLICK_DATA_DIR override in ConfigService",
+      "description": "Datei: src/DocuClick/Services/ConfigService.cs. Aktuell (Zeilen 9-10):\n\nprivate static readonly string ConfigDir = Path.Combine(\n    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), \"DocuClick\");\n\nAendere dies so, dass ein Environment-Variablen-Override moeglich ist, OHNE das Standardverhalten zu aendern: wenn die Umgebungsvariable DOCUCLICK_DATA_DIR gesetzt und nicht leer ist, wird ihr Wert als ConfigDir verwendet; sonst bleibt es exakt wie bisher (%APPDATA%\\DocuClick). Beispiel:\n\nprivate static readonly string ConfigDir = ResolveDataDir();\n\nprivate static string ResolveDataDir()\n{\n    var overrideDir = Environment.GetEnvironmentVariable(\"DOCUCLICK_DATA_DIR\");\n    if (!string.IsNullOrWhiteSpace(overrideDir))\n        return overrideDir;\n    return Path.Combine(\n        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), \"DocuClick\");\n}\n\nDer Rest der Datei (ConfigPath, Load/Save) bleibt unveraendert - ConfigPath baut weiterhin auf ConfigDir auf. Aendere sonst nichts an der Datei.",
+      "allowedPaths": ["src/DocuClick/Services/ConfigService.cs"],
+      "acceptanceCriteria": ["dotnet build DocuClick.sln"],
+      "maxAttempts": 3,
+      "status": "pending",
+      "alwaysSpotReview": false,
+      "attempts": []
+    },
+    {
+      "id": "task-02-log-datadir-override",
+      "title": "DOCUCLICK_DATA_DIR override in LogService",
+      "description": "Datei: src/DocuClick/Services/LogService.cs. Aktuell (Zeilen 25-26):\n\nprivate static readonly string LogPath = Path.Combine(\n    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), \"DocuClick\", \"log.txt\");\n\nWende exakt das gleiche Muster wie in ConfigService.cs an (siehe task-01): wenn DOCUCLICK_DATA_DIR gesetzt ist, wird log.txt darunter abgelegt (Path.Combine(overrideDir, \"log.txt\")), sonst wie bisher %APPDATA%\\DocuClick\\log.txt. Fuege eine private static ResolveDataDir()-Hilfsmethode analog zu ConfigService.cs hinzu (Code darf dupliziert sein, KEINE gemeinsame neue Datei anlegen - das ist ausserhalb des erlaubten Pfads dieser Aufgabe). Aendere sonst nichts an der Datei, insbesondere nicht die Queue/Threading-Logik.",
+      "allowedPaths": ["src/DocuClick/Services/LogService.cs"],
+      "acceptanceCriteria": ["dotnet build DocuClick.sln"],
+      "maxAttempts": 3,
+      "status": "pending",
+      "alwaysSpotReview": false,
+      "attempts": []
+    },
+    {
+      "id": "task-03-topbar-automationids",
+      "title": "AutomationIds fuer TopBarWindow-Buttons",
+      "description": "Datei: src/DocuClick/TopBarWindow.cs. Diese Datei baut ihre UI komplett im Code (kein XAML), die Buttons/Controls haben aktuell keine AutomationId. Fuege 'using System.Windows.Automation;' hinzu (falls nicht vorhanden) und rufe direkt nach der Konstruktion jedes folgenden Controls AutomationProperties.SetAutomationId(control, \"<id>\") auf:\n- Start/Stop-Button (um Zeile 120, das Feld/die Variable fuer den Aufnahme-Start/Stop-Button) -> Id \"TopBar.ToggleRecording\"\n- \"Uebersicht\"-Button (um Zeile 124) -> Id \"TopBar.ShowFlowPreview\"\n- \"Neue Session\"-Button (um Zeile 127) -> Id \"TopBar.NewSession\"\n- Zoom-zu-Cursor-Toggle-Button (um Zeile 133) -> Id \"TopBar.ZoomToggle\"\n- Zoom-Radius-Slider (falls als eigenes Slider-Control vorhanden) -> Id \"TopBar.ZoomRadiusSlider\"\n\nSuche die tatsaechlichen Variablennamen im Code (die Zeilenangaben sind ungefaehr, der Code kann sich seitdem leicht verschoben haben) und wende SetAutomationId auf das jeweils passende Control an. Aendere KEINE Click-Handler-Logik, KEIN Layout - nur die AutomationId-Zuweisungen ergaenzen.",
+      "allowedPaths": ["src/DocuClick/TopBarWindow.cs"],
+      "acceptanceCriteria": ["dotnet build DocuClick.sln"],
+      "maxAttempts": 3,
+      "status": "pending",
+      "alwaysSpotReview": false,
+      "attempts": []
+    },
+    {
+      "id": "task-04-flowpreview-automationids",
+      "title": "AutomationIds fuer FlowPreviewOverlay native Chrome",
+      "description": "Datei: src/DocuClick/FlowPreviewOverlay.cs. Diese Datei hostet ein WebView2 (der Cytoscape-Graph selbst ist NICHT per UI Automation erreichbar und soll NICHT angefasst werden), aber die native WPF-Chrome drumherum (z.B. Close-Button/Header-Buttons, die als echte WPF-Controls im Code erzeugt werden) soll AutomationIds bekommen, analog zu task-03: 'using System.Windows.Automation;' ergaenzen falls noetig, dann AutomationProperties.SetAutomationId auf jeden im Code erzeugten Button/Control der nativen Chrome anwenden, z.B. \"FlowPreview.CloseButton\" fuer den Schliessen-Button. Es gibt bereits eine Stelle 'border.Name = \"ButtonBorder\"' (ca. Zeile 337) - das ist NICHT dasselbe wie eine AutomationId und darf unveraendert bleiben oder zusaetzlich eine AutomationId bekommen, falls dieses Border-Element tatsaechlich interaktiv/klickbar ist. Ziel: alle nativen (nicht-WebView2) interaktiven Controls in dieser Datei sind per AutomationId auffindbar. Keine Aenderung an der WebView2-Initialisierung oder den WebAssets.",
+      "allowedPaths": ["src/DocuClick/FlowPreviewOverlay.cs"],
+      "acceptanceCriteria": ["dotnet build DocuClick.sln"],
+      "maxAttempts": 3,
+      "status": "pending",
+      "alwaysSpotReview": false,
+      "attempts": []
+    },
+    {
+      "id": "task-05-harness-scaffold",
+      "title": "DocuClick.TestHarness Projekt anlegen",
+      "description": "Lege ein neues .NET-Konsolenprojekt an: tools/ai-test-loop/DocuClick.TestHarness/DocuClick.TestHarness.csproj (TargetFramework net8.0-windows, OutputType Exe, UseWPF nicht noetig, aber Windows-spezifische APIs muessen nutzbar sein). Fuege NuGet-Package-Referenzen fuer FlaUI.Core und FlaUI.UIA3 hinzu (aktuelle stabile Versionen, per 'dotnet add package' oder direkt im csproj als PackageReference - benutze run_command mit 'dotnet build ...' NICHT fuer 'dotnet add', letzteres ist nicht auf der Allowlist, also PackageReference-Eintraege direkt im .csproj per write_file ergaenzen). Fuege das neue Projekt zur bestehenden DocuClick.sln als zweites Projekt hinzu (die .sln liegt im Repo-Root; du darfst NUR die .sln-Datei UND Dateien unter tools/ai-test-loop/DocuClick.TestHarness/ schreiben - trage den neuen Projekteintrag manuell in der .sln-Datei nach dem bestehenden Muster ein, inkl. GUID, Project()-Block und den Konfigurationszeilen in GlobalSection(ProjectConfigurationPlatforms)). Program.cs darf zunaechst nur ein leeres 'Console.WriteLine(\"DocuClick.TestHarness\");' enthalten - die eigentliche Logik kommt in spaeteren Aufgaben. Zusaetzlich: eine leere Datei tools/ai-test-loop/DocuClick.TestHarness/Models/.gitkeep und tools/ai-test-loop/DocuClick.TestHarness/Actions/.gitkeep anlegen, damit die Ordnerstruktur fuer die folgenden Aufgaben existiert. WICHTIG: das Projekt darf NICHT von src/DocuClick/DocuClick.csproj referenziert werden und NICHT in dessen Build-Pipeline eingreifen.",
+      "allowedPaths": ["tools/ai-test-loop/DocuClick.TestHarness/**", "DocuClick.sln"],
+      "acceptanceCriteria": ["dotnet build DocuClick.sln"],
+      "maxAttempts": 3,
+      "status": "pending",
+      "alwaysSpotReview": false,
+      "attempts": []
+    },
+    {
+      "id": "task-06-scenario-model",
+      "title": "ScenarioModel.cs POCOs fuer scenarios.json",
+      "description": "Lege tools/ai-test-loop/DocuClick.TestHarness/ScenarioModel.cs an mit C#-Record-/Klassen-Typen, die exakt folgendes JSON-Schema deserialisieren koennen (System.Text.Json, PropertyNameCaseInsensitive):\n\n{\n  \"id\": \"string\",\n  \"title\": \"string\",\n  \"preconditions\": { \"outputMode\": \"Note|Canvas\", \"captureOnRightClick\": true, \"skipModifier\": \"string oder null\" },\n  \"steps\": [ { \"type\": \"launch|click|rightClick|sendHotkey|typeText|setToggle|waitForWindow|waitForCondition|physicalClickAt|sleep|captureEvidence\", \"automationId\": \"string optional\", \"keys\": \"string optional\", \"text\": \"string optional\", \"value\": true/false optional, \"titlePattern\": \"string optional\", \"fileExists\": \"string optional (Pfad mit {vault}-Platzhalter)\", \"logContains\": \"string optional\", \"target\": \"string optional (z.B. notepad)\", \"offsetX\": 0, \"offsetY\": 0, \"ms\": 0, \"label\": \"string optional\" } ],\n  \"expectedOutcome\": \"string\",\n  \"evidenceFiles\": { \"logExcerptSince\": \"string\", \"artifacts\": [\"string\"] },\n  \"tags\": [\"string\"]\n}\n\nDefiniere: ScenarioFile (Wrapper mit List<Scenario> Scenarios oder passend zur Root-Struktur), Scenario, Preconditions, ScenarioStep, EvidenceFiles. Alle Felder optional/nullable wo sinnvoll (nicht jeder Step nutzt alle Parameter). Nur Datenklassen, keine Logik. Ziel ist reine Deserialisierbarkeit, das genaue JSON-Root-Format (ob top-level Array oder {\"scenarios\":[...]}) darfst du selbst waehlen, dokumentiere es aber in einem kurzen Kommentar am Dateianfang, da task-11 (scenarios.json) sich exakt danach richten muss.",
+      "allowedPaths": ["tools/ai-test-loop/DocuClick.TestHarness/**"],
+      "acceptanceCriteria": ["dotnet build DocuClick.sln"],
+      "maxAttempts": 3,
+      "status": "pending",
+      "alwaysSpotReview": false,
+      "attempts": []
+    },
+    {
+      "id": "task-07-app-launcher",
+      "title": "AppLauncher.cs - isolierter App-Start/-Stop",
+      "description": "Lege tools/ai-test-loop/DocuClick.TestHarness/AppLauncher.cs an. Verantwortlich fuer: (1) ein frisches Temp-Verzeichnis pro Lauf erzeugen (z.B. Path.Combine(Path.GetTempPath(), \"docuclick-e2e\", Guid.NewGuid().ToString(\"N\"))) mit einem 'Vault'-Unterordner; (2) eine minimale config.json mit sinnvollen Defaults (VaultPath = der Vault-Unterordner) in dieses Verzeichnis schreiben, passend zur AppConfig-Struktur aus src/DocuClick/Services/AppConfig.cs (diese Datei DARFST du lesen, aber nicht schreiben - sie liegt ausserhalb deines allowedPaths); (3) evtl. laufende DocuClick.exe-Prozesse aus vorherigen abgebrochenen Laeufen per Process.GetProcessesByName(\"DocuClick\") beenden, BEVOR ein neuer Prozess gestartet wird; (4) den DocuClick-Prozess starten (Pfad zur exe als Parameter/Konstante, z.B. relativ zu src/DocuClick/bin/Release/net8.0-windows/win-x64/DocuClick.exe) mit der Umgebungsvariable DOCUCLICK_DATA_DIR auf das Temp-Verzeichnis gesetzt (ProcessStartInfo.EnvironmentVariables); (5) auf das Erscheinen der Tray-Anwendung/TopBarWindow warten (kurzes Polling mit Timeout, z.B. per FlaUI Application.Attach oder Retry.WhileNull auf ein UIA-Fenster mit passendem Titel); (6) eine Shutdown-Methode, die den Prozess sauber beendet und danach das Temp-Verzeichnis loescht (ausser ein keepArtifacts-Flag ist gesetzt). Nutze das FlaUI.Core-Package (bereits in task-05 referenziert). Keine Interaktion mit der echten %APPDATA%\\DocuClick config - ausschliesslich das isolierte Temp-Verzeichnis.",
+      "allowedPaths": ["tools/ai-test-loop/DocuClick.TestHarness/**"],
+      "acceptanceCriteria": ["dotnet build DocuClick.sln"],
+      "maxAttempts": 3,
+      "status": "pending",
+      "alwaysSpotReview": false,
+      "attempts": []
+    },
+    {
+      "id": "task-08-scenario-runner",
+      "title": "ScenarioRunner.cs + Actions/* Step-DSL",
+      "description": "Lege tools/ai-test-loop/DocuClick.TestHarness/ScenarioRunner.cs sowie Helferklassen unter tools/ai-test-loop/DocuClick.TestHarness/Actions/ an, die die in ScenarioModel.cs (task-06) definierten Step-Typen ausfuehren, gegen die von AppLauncher.cs (task-07) gestartete App-Instanz:\n- launch: ruft AppLauncher.Start() auf\n- click / rightClick: findet ein Element per FlaUI ByAutomationId (Timeout+Retry, z.B. FlaUI.Core.Tools.Retry.WhileNull ueber 5s) und klickt es (links bzw. rechts)\n- sendHotkey: simuliert eine globale Tastenkombination auf OS-Ebene (FlaUI.Core.Input.Keyboard), NICHT auf ein bestimmtes Fenster fokussiert\n- typeText: findet Element per AutomationId, setzt/tippt Text hinein\n- setToggle: findet Element (Checkbox/RadioButton) per AutomationId, setzt den gewuenschten Zustand\n- waitForWindow: wartet per Polling bis ein Fenster mit passendem Titel-Pattern oder AutomationId erscheint\n- waitForCondition: pollt entweder auf Datei-Existenz (fileExists, {vault}-Platzhalter durch den tatsaechlichen Vault-Pfad ersetzen) oder ob log.txt einen bestimmten String enthaelt (logContains), mit Timeout\n- physicalClickAt: simuliert einen echten OS-Level-Mausklick (nicht UIA-Invoke) auf Koordinaten relativ zu einem Zielfenster (target, z.B. \"notepad\" - Notepad-Prozess per Process.Start(\"notepad.exe\") starten falls nicht vorhanden, Fensterposition per FlaUI ermitteln, offsetX/offsetY addieren, per P/Invoke SetCursorPos + mouse_event oder FlaUI.Core.Input.Mouse klicken)\n- sleep: Thread.Sleep(ms)\n- captureEvidence: sammelt aktuellen log.txt-Tail, config.json-Inhalt und relevante Vault-Dateien in ein In-Memory-Evidence-Objekt (Struktur wird in task-09 definiert - lege hier nur einen einfachen Dictionary<string,string> als Platzhalter an, task-09 baut ScenarioResult.cs darauf auf und darf diese Datei ebenfalls anpassen)\n\nJeder Step-Fehler (Element nicht gefunden, Timeout) wird abgefangen und als fehlgeschlagener StepLog-Eintrag festgehalten, bricht aber NICHT zwingend den gesamten Scenario-Lauf ab (das Sammeln von Evidence soll robust weiterlaufen, damit der Judge auch bei Teil-Fehlschlaegen sinnvolle Informationen bekommt).",
+      "allowedPaths": ["tools/ai-test-loop/DocuClick.TestHarness/**"],
+      "acceptanceCriteria": ["dotnet build DocuClick.sln"],
+      "maxAttempts": 4,
+      "status": "pending",
+      "alwaysSpotReview": false,
+      "attempts": []
+    },
+    {
+      "id": "task-09-scenario-result",
+      "title": "ScenarioResult.cs Evidence-Envelope + JSON-Writer",
+      "description": "Lege tools/ai-test-loop/DocuClick.TestHarness/Models/ScenarioResult.cs an mit folgender Struktur (C# record, System.Text.Json-serialisierbar):\n\npublic record StepLog(string StepType, string? Detail, bool Success, DateTime At);\n\npublic record ScenarioResult(\n    string ScenarioId,\n    string Title,\n    bool HarnessCompletedWithoutError,\n    string? HarnessErrorMessage,\n    List<StepLog> StepLog,\n    string LogExcerpt,\n    string? ConfigDiffJson,\n    Dictionary<string,string> OutputArtifacts,\n    string? ScreenshotPath\n);\n\nErgaenze eine statische Methode ScenarioResult.WriteTo(string path) oder eine kleine Writer-Klasse, die ein ScenarioResult als JSON (WriteIndented=true) nach tools/ai-test-loop/test-results/raw/<scenarioId>.json schreibt (Verzeichnis anlegen falls noetig). Passe ScenarioRunner.cs (aus task-08, liegt in deinem erlaubten Pfad) so an, dass sie am Ende eines Scenario-Laufs ein ScenarioResult zusammenbaut (aus den gesammelten StepLogs und Evidence) und ueber diesen Writer speichert.",
+      "allowedPaths": ["tools/ai-test-loop/DocuClick.TestHarness/**"],
+      "acceptanceCriteria": ["dotnet build DocuClick.sln"],
+      "maxAttempts": 3,
+      "status": "pending",
+      "alwaysSpotReview": false,
+      "attempts": []
+    },
+    {
+      "id": "task-10-harness-cli",
+      "title": "Program.cs CLI fuer DocuClick.TestHarness",
+      "description": "Passe tools/ai-test-loop/DocuClick.TestHarness/Program.cs an: CLI-Args '--scenario <id>' (Pflicht) und '--scenarios-file <path>' (optional, Default: tools/ai-test-loop/scenarios.json relativ zum Repo-Root - Repo-Root per Aufwaertssuche nach DocuClick.sln ermitteln oder als weiteres optionales Arg '--repo-root') sowie '--keep-artifacts' (optional Flag, an AppLauncher durchreichen). Ablauf: scenarios.json laden (ScenarioModel aus task-06), das Szenario mit passender id heraussuchen (Fehler + Exit-Code 1 falls nicht gefunden), ScenarioRunner (task-08/09) fuer dieses Szenario ausfuehren, Exit-Code 0 wenn der Harness-Lauf selbst ohne internen Fehler durchlief (HarnessCompletedWithoutError=true im ScenarioResult), sonst Exit-Code 1. Die inhaltliche PASS/FAIL-Bewertung passiert NICHT hier (das macht der Judge spaeter) - dieses Programm bewertet nur, ob der Testlauf selbst technisch sauber durchgelaufen ist.",
+      "allowedPaths": ["tools/ai-test-loop/DocuClick.TestHarness/**"],
+      "acceptanceCriteria": ["dotnet build DocuClick.sln"],
+      "maxAttempts": 3,
+      "status": "pending",
+      "alwaysSpotReview": false,
+      "attempts": []
+    },
+    {
+      "id": "task-11-scenarios-json",
+      "title": "scenarios.json - erste 10 Testszenarien",
+      "description": "Lege tools/ai-test-loop/scenarios.json an, konform zum Schema aus task-06 (ScenarioModel.cs - lies diese Datei zuerst, sie liegt ausserhalb deines allowedPaths, du darfst sie aber lesen um das exakte Root-Format zu uebernehmen; falls sie noch nicht existiert, nutze das oben im Schema beschriebene Format mit Top-Level-Objekt { \"scenarios\": [...] }). Erstelle ~10 Szenarien basierend auf der DocuClick-Funktionalitaet (siehe README.md im Repo-Root fuer die Feature-Beschreibung - Note-Modus, Canvas-Modus, Rechtsklick-Erfassung an/aus, Skip-Modifier, Passwortfeld-Skip per UI Automation, Branch-Marking per F9-Hotkey, bestehende Datei fortsetzen, Settings-Persistenz, Zoom-zu-Cursor Toggle/Radius, draw.io-Export, Ablauf-Uebersicht oeffnen). Jedes Szenario braucht eine praezise, ueberpruefbare expectedOutcome-Beschreibung (was genau in log.txt/config.json/Vault-Dateien zu erwarten ist) und eine sinnvolle steps-Sequenz unter Verwendung der in task-08 implementierten Step-Typen. Nutze {vault} als Platzhalter fuer den isolierten Vault-Pfad in Datei-Pfaden. Diese Datei wird IMMER von Claude stichprobengeprueft (alwaysSpotReview) - falsche expectedOutcome-Formulierungen wuerden die gesamte Test-Loop-Aussagekraft untergraben, also formuliere praezise und realistisch anhand der tatsaechlichen App-Logik (lies bei Unsicherheit die relevanten Services unter src/DocuClick/Services/ - lesend, das ist erlaubt, auch wenn du dort nichts schreiben darfst).",
+      "allowedPaths": ["tools/ai-test-loop/scenarios.json"],
+      "acceptanceCriteria": ["dotnet build DocuClick.sln"],
+      "maxAttempts": 3,
+      "status": "pending",
+      "alwaysSpotReview": true,
+      "attempts": []
+    },
+    {
+      "id": "task-12-judge",
+      "title": "judge.ps1 + judge-prompt.md",
+      "description": "Lege tools/ai-test-loop/judge/judge-prompt.md und tools/ai-test-loop/judge/judge.ps1 an. judge-prompt.md ist ein Template mit einem SYSTEM-Teil (QA-Richter-Rolle fuer DocuClick, erzwingt strikte JSON-Antwort {\"verdict\":\"PASS\"|\"FAIL\",\"confidence\":0-1,\"reasoning\":\"...\",\"suspectedRootCause\":\"...oder null\"}, darf keine nicht gezeigte Evidenz erfinden) und Platzhaltern fuer Szenario-Titel/id/preconditions/expectedOutcome sowie die Felder aus ScenarioResult (StepLog, LogExcerpt, ConfigDiffJson, OutputArtifacts). judge.ps1 (PowerShell, Parameter -ScenarioId [Mandatory], -ScenariosFile, -LMStudioUrl Default http://localhost:1234/v1, -Model Default aus Env DOCUCLICK_JUDGE_MODEL oder \"mistral-small-3.2-24b-instruct-2506\"). WICHTIGER BUGFIX-HINWEIS: in Windows PowerShell 5.1 ist $PSScriptRoot in einem Parameter-Default NICHT zuverlaessig verfuegbar, wenn das Skript gleichzeitig einen Mandatory-Parameter deklariert (bekannter Bug - der Default wird ausgewertet bevor $PSScriptRoot gesetzt ist). Deshalb: -ScenariosFile als Default \"\" deklarieren und im Skriptkoerper (NICHT im param-Default-Ausdruck) mit 'if ([string]::IsNullOrEmpty($ScenariosFile)) { $ScenariosFile = Join-Path $PSScriptRoot \"..\\scenarios.json\" }' aufloesen, genau nach diesem Muster. liest tools/ai-test-loop/test-results/raw/<ScenarioId>.json (ScenarioResult) und das passende Szenario aus scenarios.json, rendert den Prompt, ruft POST $LMStudioUrl/chat/completions (response_format json_object falls unterstuetzt, sonst das JSON per Regex aus der Antwort extrahieren), validiert dass die Antwort verdict/confidence/reasoning enthaelt (bei ungueltigem JSON: EIN Retry, danach Fehler), prueft vorab per GET $LMStudioUrl/models ob LM Studio erreichbar ist (klarer Fehler statt stillem Fehlschlag falls nicht), schreibt das Verdict nach tools/ai-test-loop/test-results/verdicts/<ScenarioId>.json.",
+      "allowedPaths": ["tools/ai-test-loop/judge/**"],
+      "acceptanceCriteria": ["dotnet build DocuClick.sln"],
+      "maxAttempts": 3,
+      "status": "pending",
+      "alwaysSpotReview": false,
+      "attempts": []
+    },
+    {
+      "id": "task-13-test-loop-orchestrator",
+      "title": "tools/ai-test-loop/orchestrator.ps1",
+      "description": "Lege tools/ai-test-loop/orchestrator.ps1 an (PowerShell, fuer pwsh). Ablauf: (1) 'dotnet build DocuClick.sln -c Release' - bei Fehler sofort abbrechen mit Exit-Code ungleich 0; (2) tools/ai-test-loop/scenarios.json laden; (3) tools/ai-test-loop/test-results/latest.json laden falls vorhanden (Struktur: { \"runAt\":..., \"results\": [ {\"id\":..., \"verdict\":..., \"consecutivePasses\": N, \"done\": bool} ], \"allDone\": bool } - 'done' wenn consecutivePasses >= 2); (4) fuer jedes Szenario, das noch nicht done ist: sicherstellen dass kein verwaister DocuClick.exe-Prozess laeuft (Process.GetProcessesByName analog task-07, hier per Stop-Process in PowerShell), 'dotnet run --project tools/ai-test-loop/DocuClick.TestHarness -- --scenario <id> --scenarios-file tools/ai-test-loop/scenarios.json' ausfuehren, dann 'powershell tools/ai-test-loop/judge/judge.ps1 -ScenarioId <id>' ausfuehren; (5) Verdicts einsammeln, consecutivePasses hochzaehlen bei PASS / auf 0 zuruecksetzen bei FAIL, latest.json aktualisieren und zusaetzlich eine Kopie nach tools/ai-test-loop/test-results/history/<timestamp>.json schreiben; (6) unterstuetze optionale Parameter -Scenario <id> (nur dieses eine Szenario laufen lassen, fuer manuelles Debugging) und -KeepArtifacts (an den Harness durchreichen); (7) Exit-Code 0 wenn allDone=true, sonst Exit-Code 1.",
+      "allowedPaths": ["tools/ai-test-loop/orchestrator.ps1", "tools/ai-test-loop/test-results/**"],
+      "acceptanceCriteria": ["dotnet build DocuClick.sln"],
+      "maxAttempts": 3,
+      "status": "pending",
+      "alwaysSpotReview": false,
+      "attempts": []
+    }
+  ]
+}

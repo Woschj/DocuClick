@@ -9,11 +9,43 @@
 <div id="cy"></div>
 <div id="image-overlays"></div>
 <div id="node-handles"></div>
+<div id="node-labels"></div>
+<div id="current-badge" hidden>Nächster Klick hier ▶</div>
 <svg id="connect-line" class="hud-connect-line" hidden><line x1="0" y1="0" x2="0" y2="0"/></svg>
 <div id="empty-hint" class="hud-empty-hint" hidden>Noch keine Klicks aufgezeichnet.</div>
 <div id="tooltip" class="hud-tooltip" hidden></div>
 <img id="image-preview" class="hud-image-preview" hidden alt="">
 <div id="menu" class="hud-menu" hidden></div>
+
+<!-- Modern Floating HUD Dock -->
+<header class="hud-topbar" id="hud-topbar">
+  <div class="hud-brand">
+    <span class="hud-brand-title">Ablauf-Übersicht</span>
+    <span id="hud-stats-pill" class="hud-pill">0 Schritte</span>
+  </div>
+  <div class="hud-search-group">
+    <svg class="hud-search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="search" id="hud-search" class="hud-search-input" placeholder="Suchen..." autocomplete="off" spellcheck="false" />
+    <button id="hud-search-clear" class="hud-btn-clear" title="Suche löschen" hidden>&times;</button>
+  </div>
+  <div class="hud-dock-controls">
+    <button id="hud-btn-add-element" class="hud-btn hud-btn-action" title="Neues Flowchart-Element einfügen">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <span>+ Element</span>
+    </button>
+    <div class="hud-dock-separator"></div>
+    <button id="hud-btn-zoom-out" class="hud-btn" title="Verkleinern">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    <button id="hud-btn-fit" class="hud-btn" title="Ansicht einpassen">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+    </button>
+    <button id="hud-btn-zoom-in" class="hud-btn" title="Vergrößern">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+  </div>
+</header>
+
 <script src="vendor/cytoscape.min.js"></script>
 <script src="flow.js"></script>
 </body>

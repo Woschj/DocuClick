@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using DocuClick.Services;
 
 namespace DocuClick;
@@ -165,7 +166,29 @@ public partial class SessionStartWindow : Window
         var isNewFile = NewFileRadio.IsChecked == true;
         NewFileNameBox.IsEnabled = isNewFile;
         TargetFolderBox.IsEnabled = isNewFile;
-        ExistingFilesListBox.IsEnabled = ExistingFileRadio.IsChecked == true;
+        var isExisting = ExistingFileRadio.IsChecked == true;
+        ExistingFilesListBox.IsEnabled = isExisting;
+
+        if (isExisting)
+        {
+            if (ExistingFilesListBox.SelectedItem is null && ExistingFilesListBox.Items.Count > 0)
+            {
+                ExistingFilesListBox.SelectedIndex = 0;
+            }
+            ExistingFilesListBox.Focus();
+        }
+        else
+        {
+            NewFileNameBox.Focus();
+        }
+    }
+
+    private void OnExistingFileDoubleClicked(object sender, MouseButtonEventArgs e)
+    {
+        if (ExistingFilesListBox.SelectedItem is not null)
+        {
+            OnStartClicked(sender, e);
+        }
     }
 
     private void OnStartClicked(object sender, RoutedEventArgs e)

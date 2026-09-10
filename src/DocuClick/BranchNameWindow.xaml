@@ -17,6 +17,7 @@
         <TextBlock x:Name="LabelText" DockPanel.Dock="Top" Text="Pfad-Name" Style="{StaticResource FieldLabel}"/>
 
         <TextBox x:Name="BranchNameBox" DockPanel.Dock="Top" Style="{StaticResource ModernTextBox}"
-                 ToolTip="z. B. &quot;Login-Fehler&quot; — später in der Ablauf-Übersicht am Abzweigungspunkt wiederfindbar."/>
+                 AcceptsReturn="True" TextWrapping="Wrap" MinHeight="65" MaxHeight="160" VerticalScrollBarVisibility="Auto"
+                 ToolTip="Bezeichnung für diesen Schritt. Tipp: Zeilenumbruch mit Enter, Speichern mit Strg+Enter oder Button."/>
     </DockPanel>
 </Window>

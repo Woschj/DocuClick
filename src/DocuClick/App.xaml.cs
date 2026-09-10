@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Threading;
 using DocuClick.Services;
 
@@ -25,9 +26,6 @@ public partial class App : Application
 
     /// <summary>Set when the user closes the Ablauf-Übersicht via its own header ✕ — stops <see cref="OnFlowPreviewChanged"/> from popping it back open on the very next click, until the TopBar's "Übersicht" button explicitly asks for it again.</summary>
     private bool _flowPreviewManuallyHidden;
-
-    /// <summary>The target file the Ablauf-Übersicht's compact/large mode was last decided for — see <see cref="OnFlowPreviewChanged"/>. Null before anything has ever been loaded.</summary>
-    private string? _lastFlowPreviewTargetFileName;
 
     /// <summary>Set by clicking a node in the Ablauf-Übersicht while stopped (see <see cref="OnFlowPreviewNodeClicked"/>), consumed once by the next session-start file picker.</summary>
     private string? _pendingResumeFileName;
@@ -128,10 +126,18 @@ public partial class App : Application
                     continue;
                 }
 
-                var bounds = new System.Drawing.Rectangle((int)window.Left, (int)window.Top, (int)window.ActualWidth, (int)window.ActualHeight);
-                if (bounds.Contains(drawingPoint))
+                // Window.Left/Top/Width are in WPF DIPs, while the low-level hook's
+                // point is in physical screen coordinates. GetWindowRect retrieves
+                // the true physical pixel bounds on screen, correctly matching
+                // across any display scaling (125%/150%/200%).
+                var hwnd = new WindowInteropHelper(window).Handle;
+                if (hwnd != 0 && NativeMethods.GetWindowRect(hwnd, out var rect))
                 {
-                    return true;
+                    if (drawingPoint.X >= rect.Left && drawingPoint.X < rect.Right &&
+                        drawingPoint.Y >= rect.Top && drawingPoint.Y < rect.Bottom)
+                    {
+                        return true;
+                    }
                 }
             }
 
@@ -262,7 +268,7 @@ public partial class App : Application
             return;
         }
 
-        if (!_sessionManager.IsRunning || !_sessionManager.SupportsBranching)
+        if (!_sessionManager.HasActiveSession || !_sessionManager.SupportsBranching)
         {
             _sessionManager.MarkDecisionPoint(string.Empty);
             return;
@@ -292,7 +298,7 @@ public partial class App : Application
     /// <summary>Ablauf-Übersicht popup: an existing path was chosen to continue.</summary>
     private void OnContinuePathRequested(string pathStartNodeId) => _sessionManager?.ContinuePath(pathStartNodeId);
 
-    private void OnFlowPreviewChanged(FlowPreview? preview)
+    private void OnFlowPreviewChanged(FlowPreview? preview, bool isRecordedClick)
     {
         // Fires from SessionManager's dedicated writer thread for every
         // click/branch action — the overlay is WPF UI and must only be
@@ -307,6 +313,16 @@ public partial class App : Application
 
             if (_flowPreviewOverlay is null)
             {
+                // Always the full editing window — real persisted
+                // coordinates, base64-embedded screenshots, and every
+                // editing gesture (move/connect/add-node) available
+                // regardless of whether a recording is currently running.
+                // There used to be a second, smaller "live minimap" preset
+                // that only showed real images/editing gestures once
+                // stopped, but that meant a session started fresh always
+                // came up broken-looking and non-editable until manually
+                // reopened later — exactly the "one overlay, not two views"
+                // complaint this replaces.
                 _flowPreviewOverlay = new FlowPreviewOverlay(_config!);
                 _flowPreviewOverlay.NodeClicked += OnFlowPreviewNodeClicked;
                 _flowPreviewOverlay.PathsProvider = decisionPointId => _sessionManager?.ListPaths(decisionPointId) ?? new List<PathInfo>();
@@ -317,7 +333,7 @@ public partial class App : Application
                 _flowPreviewOverlay.ConnectRequested += (fromId, toId) => _sessionManager?.ConnectNodes(fromId, toId);
                 _flowPreviewOverlay.DisconnectRequested += (fromId, toId) => _sessionManager?.DisconnectNodes(fromId, toId);
                 _flowPreviewOverlay.MoveRequested += (nodeId, x, y) => _sessionManager?.MoveNode(nodeId, x, y);
-                _flowPreviewOverlay.AddNodeRequested += (label, x, y) => _sessionManager?.AddManualNode(label, x, y);
+                _flowPreviewOverlay.AddNodeRequested += (label, x, y, shape, color) => _sessionManager?.AddManualNode(label, x, y, shape, color);
                 _flowPreviewOverlay.CloseRequested += () =>
                 {
                     _flowPreviewManuallyHidden = true;
@@ -325,25 +341,7 @@ public partial class App : Application
                 };
             }
 
-            // Big editing window when there's no active recording to keep
-            // small/out of the way for (i.e. this preview came from "Ablauf
-            // öffnen", not a live click) — see FlowPreviewOverlay.SetLargeMode.
-            // Only *decided* when the target file actually changes, though —
-            // continuing to record into a file that's already open in the
-            // large editing window (e.g. adding one more click there) must
-            // not suddenly shrink it back to the live minimap mid-session;
-            // the user is still looking at the same flow, just adding to
-            // it. CurrentTargetFileName and IsRunning are both already
-            // updated by the time Start()/OpenForEditing fire this event,
-            // so this correctly only re-decides on an actual file switch.
-            var targetFileName = _sessionManager?.CurrentTargetFileName;
-            if (targetFileName != _lastFlowPreviewTargetFileName)
-            {
-                _lastFlowPreviewTargetFileName = targetFileName;
-                _flowPreviewOverlay.SetLargeMode(_sessionManager?.IsRunning != true);
-            }
-
-            _flowPreviewOverlay.UpdatePreview(preview);
+            _flowPreviewOverlay.UpdatePreview(preview, isRecordedClick);
             if (!_flowPreviewManuallyHidden)
             {
                 _flowPreviewOverlay.Show();
@@ -401,7 +399,7 @@ public partial class App : Application
     /// </summary>
     private void OnFlowPreviewNodeClicked(string nodeId)
     {
-        if (_sessionManager!.IsRunning)
+        if (_sessionManager!.HasActiveSession)
         {
             _sessionManager.JumpToNode(nodeId);
             return;
@@ -438,6 +436,11 @@ public partial class App : Application
     /// </summary>
     private string? ResolveResumeFileName()
     {
+        if (_sessionManager?.HasActiveSession == true && !string.IsNullOrWhiteSpace(_sessionManager.CurrentTargetFileName))
+        {
+            return _sessionManager.CurrentTargetFileName;
+        }
+
         if (_pendingResumeFileName is not null)
         {
             return null;
@@ -492,10 +495,12 @@ public partial class App : Application
         }
         else
         {
-            _sessionManager!.Stop();
+            _sessionManager!.Pause();
         }
 
-        _topBar?.UpdateStatus(isRecording, detail: null, _sessionManager!.SupportsBranching);
+        var detail = !isRecording && _sessionManager!.IsPaused ? "Pausiert" : null;
+        _topBar?.UpdateStatus(isRecording, detail: detail, _sessionManager!.SupportsBranching);
+        _trayApp?.UpdatePausedState(_sessionManager!.IsPaused);
     }
 
     /// <summary>"Neue Session" (top-bar button only): always prompts for a target file, whether currently recording or not.</summary>
@@ -581,7 +586,7 @@ public partial class App : Application
         {
             Title = "Ablauf für den draw.io-Export wählen",
             InitialDirectory = _config.OutputPath,
-            Filter = "DocuClick-Ablauf (*.html)|*.html",
+            Filter = "DocuClick-Ablauf (*.html;*.canvas)|*.html;*.canvas|HTML-Abläufe (*.html)|*.html|Obsidian Canvas (*.canvas)|*.canvas|Alle Dateien (*.*)|*.*",
             CheckFileExists = true
         };
         if (openDialog.ShowDialog() != true)
@@ -633,7 +638,7 @@ public partial class App : Application
         {
             Title = "Ablauf zum Ansehen/Bearbeiten wählen",
             InitialDirectory = _config.OutputPath,
-            Filter = "DocuClick-Ablauf (*.html)|*.html",
+            Filter = "DocuClick-Ablauf (*.html;*.canvas)|*.html;*.canvas|HTML-Abläufe (*.html)|*.html|Obsidian Canvas (*.canvas)|*.canvas|Alle Dateien (*.*)|*.*",
             CheckFileExists = true
         };
         if (openDialog.ShowDialog() != true)
@@ -673,7 +678,7 @@ public partial class App : Application
         {
             Title = "Ablauf für den HTML-Export wählen",
             InitialDirectory = _config.OutputPath,
-            Filter = "DocuClick-Ablauf (*.html)|*.html",
+            Filter = "DocuClick-Ablauf (*.html;*.canvas)|*.html;*.canvas|HTML-Abläufe (*.html)|*.html|Obsidian Canvas (*.canvas)|*.canvas|Alle Dateien (*.*)|*.*",
             CheckFileExists = true
         };
         if (openDialog.ShowDialog() != true)
@@ -713,6 +718,7 @@ public partial class App : Application
         _sessionManager?.Dispose();
         _trayApp?.Dispose();
         _topBar?.Close();
+        _flowPreviewOverlay?.Close();
         _zoomCursorBox?.Close();
         _singleInstanceMutex?.ReleaseMutex();
         _singleInstanceMutex?.Dispose();

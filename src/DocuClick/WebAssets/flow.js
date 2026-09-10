@@ -63,69 +63,80 @@
           shape: "data(shape)",
           width: "data(width)",
           height: "data(height)",
-          "border-color": "#ffffff",
+          "border-color": "rgba(255, 255, 255, 0.45)",
           "border-width": "data(borderWidth)",
-          label: "data(displayLabel)",
-          color: "#ffffff",
-          "font-size": 10,
-          "font-weight": "bold",
-          "text-valign": "top",
-          "text-halign": "right",
-          "text-margin-x": 4,
-          "text-background-color": "rgba(0,0,0,0.75)",
-          "text-background-opacity": 1,
-          "text-background-padding": 3,
-          "text-wrap": "none",
-        },
-      },
-      {
-        // Large mode (see FlowPreviewOverlay.SetLargeMode) shows the card's
-        // actual description instead of compact mode's short marker-only
-        // tag — same idea as the exported/live HTML's own always-visible
-        // label, sized and wrapped to fit instead of compact mode's
-        // single-line marker tag.
-        selector: "node[?large]",
-        style: {
-          "font-size": 12,
-          "text-halign": "center",
-          "text-valign": "top",
-          "text-margin-x": 0,
-          "text-margin-y": -8,
-          "text-wrap": "wrap",
-          "text-max-width": "data(width)",
         },
       },
       {
         selector: "edge",
         style: {
-          width: 1,
-          "line-color": "rgba(255,255,255,0.51)",
-          "curve-style": "straight",
+          width: 2.5,
+          "line-color": "rgba(148, 163, 184, 0.65)",
+          "curve-style": "bezier",
           "target-arrow-shape": "none",
           "mid-target-arrow-shape": "triangle",
-          "mid-target-arrow-color": "rgba(255,255,255,0.51)",
-          "arrow-scale": 0.9,
+          "mid-target-arrow-color": "rgba(148, 163, 184, 0.85)",
+          "arrow-scale": 1.15,
+          "underlay-color": "#38bdf8",
+          "underlay-padding": 8,
+          "underlay-opacity": 0,
         },
       },
       {
-        // Drag-to-connect feedback: the fixed source node while the line is
-        // being dragged...
+        selector: "edge[?manual]",
+        style: {
+          width: 2.5,
+          "line-color": "#38bdf8",
+          "line-style": "dashed",
+          "line-dash-pattern": [6, 4],
+          "mid-target-arrow-color": "#38bdf8",
+          "underlay-color": "#38bdf8",
+          "underlay-padding": 8,
+          "underlay-opacity": 0,
+        },
+      },
+      {
+        selector: "edge:selected",
+        style: {
+          width: 4.5,
+          "line-color": "#38bdf8",
+          "mid-target-arrow-color": "#38bdf8",
+          opacity: 1,
+          "z-index": 999,
+          "underlay-opacity": 0.15,
+        },
+      },
+      {
         selector: "node.connect-from",
-        style: { "border-color": "#22C55E", "border-width": 3 },
+        style: { "border-color": "#10b981", "border-width": 3.5 },
       },
       {
-        // ...and whichever valid node is currently under the cursor.
         selector: "node.drop-target",
-        style: { "border-color": "#4CAFE8", "border-width": 3 },
+        style: { "border-color": "#38bdf8", "border-width": 3.5 },
       },
       {
-        // Cytoscape's built-in selection state — tap selects one node
-        // (deselecting others), shift+drag box-selects several at once for
-        // bulk delete (see the Delete-key handler below). Purely visual on
-        // its own; every action still lives in the right-click menu or the
-        // drag-to-connect gesture.
         selector: "node:selected",
-        style: { "border-color": "#F5A623", "border-width": 3 },
+        style: { "border-color": "#3b82f6", "border-width": 3.5 },
+      },
+      {
+        selector: "node.search-hit",
+        style: {
+          "border-color": "#60a5fa",
+          "border-width": 4,
+          opacity: 1,
+        },
+      },
+      {
+        selector: "node.search-dimmed",
+        style: {
+          opacity: 0.2,
+        },
+      },
+      {
+        selector: "edge.search-dimmed",
+        style: {
+          opacity: 0.12,
+        },
       },
     ],
     elements: [],
@@ -152,63 +163,120 @@
     const nodes = preview.nodes || [];
     const edges = preview.edges || [];
     const large = !!preview.large;
+    const isRecordedClick = !!preview.isRecordedClick;
     isLargeMode = large;
 
     emptyHint.hidden = nodes.length > 0;
     if (nodes.length === 0) {
       cy.elements().remove();
+      rebuildImageOverlays();
+      rebuildNodeLabels();
+      rebuildConnectHandles();
+      updateCurrentBadge();
       hasFitted = false; // next session's first render should fit fresh
       return;
     }
 
-    const elements = [
-      ...nodes.map((n) => ({
-        group: "nodes",
-        data: {
-          id: n.id,
-          label: n.label,
-          permLabel: n.permLabel || "",
-          displayLabel: n.displayLabel || "",
-          large: large || undefined, // undefined (not false), so the node[?large] selector correctly doesn't match in compact mode
-          color: n.color,
-          shape: n.isMarker ? "ellipse" : "round-rectangle",
-          width: n.width,
-          height: n.height,
-          borderWidth: n.isCurrent ? 2 : 1,
-          hasChildren: n.hasChildren,
-          isMarker: n.isMarker,
-          isDecisionPoint: n.isDecisionPoint,
-          isPathStart: n.isPathStart,
-          isCurrent: n.isCurrent,
-          tooltip: n.pathName ? `${n.label} · Pfad: ${n.pathName}` : n.label,
-          imageUrl: n.imageUrl || undefined, // undefined (not null), so [imageUrl] selectors above correctly don't match a marker
-        },
-        position: { x: n.x, y: n.y },
-        // Never grabbable — nodes stay fixed in their schematic slot even
-        // during the drag-to-connect gesture below, which draws a line to
-        // the cursor instead of moving the node itself.
-        grabbable: false,
-      })),
-      ...edges.map((e) => ({
-        group: "edges",
-        data: { id: `${e.source}->${e.target}`, source: e.source, target: e.target, manual: e.manual },
-      })),
-    ];
+    const newNodeIds = new Set(nodes.map((n) => n.id));
+    const newEdgeIds = new Set(edges.map((e) => `${e.source}->${e.target}`));
 
-    cy.elements().remove();
-    cy.add(elements);
-    cy.layout({ name: "preset", fit: !hasFitted }).run();
-    hasFitted = true;
-    rebuildImageOverlays();
-    rebuildConnectHandles();
+    cy.batch(() => {
+      // Remove nodes not in new payload
+      cy.nodes().filter((n) => !newNodeIds.has(n.id())).remove();
 
-    // Keep the current (just-added) node in view after every redraw, same
-    // as the old ScrollViewer.BringIntoView()-on-current-node behavior —
-    // pan only, zoom stays exactly as the layout above left it.
-    const current = cy.nodes('[?isCurrent]');
-    if (current.length > 0 && !isInViewport(current[0])) {
-      cy.animate({ center: { eles: current }, duration: 150 });
+      // Remove edges not in new payload
+      cy.edges().filter((e) => !newEdgeIds.has(e.id())).remove();
+
+      const toAdd = [];
+
+      // Update existing or add new nodes
+      for (let i = 0; i < nodes.length; i++) {
+        const n = nodes[i];
+        const data = buildNodeData(n, large);
+        const cyNode = cy.getElementById(n.id);
+        if (cyNode.length > 0) {
+          const curPos = cyNode.position();
+          if (curPos.x !== n.x || curPos.y !== n.y) {
+            cyNode.position({ x: n.x, y: n.y });
+          }
+          cyNode.data(data);
+        } else {
+          toAdd.push({
+            group: "nodes",
+            data: data,
+            position: { x: n.x, y: n.y },
+            grabbable: false,
+          });
+        }
+      }
+
+      // Add missing edges
+      for (let i = 0; i < edges.length; i++) {
+        const e = edges[i];
+        const edgeId = `${e.source}->${e.target}`;
+        if (cy.getElementById(edgeId).length === 0) {
+          toAdd.push({
+            group: "edges",
+            data: { id: edgeId, source: e.source, target: e.target, manual: e.manual },
+          });
+        }
+      }
+
+      if (toAdd.length > 0) {
+        cy.add(toAdd);
+      }
+    });
+
+    if (!hasFitted) {
+      cy.layout({ name: "preset", fit: true }).run();
+      hasFitted = true;
     }
+
+    syncImageOverlays();
+    syncNodeLabels();
+    syncConnectHandles();
+    updateCurrentBadge();
+
+    const statsPill = document.getElementById("hud-stats-pill");
+    if (statsPill) {
+      const count = nodes.length;
+      statsPill.textContent = count === 1 ? "1 Schritt" : `${count} Schritte`;
+    }
+
+    if (searchInput && searchInput.value.trim().length > 0) {
+      applySearch(searchInput.value);
+    }
+
+    // Keep the current (just-added) node in view ONLY when a NEW screenshot was actually captured in live recording mode!
+    // Never jump when adding manual elements, moving, connecting, branching, or editing!
+    if (isRecordedClick) {
+      const current = cy.nodes('[?isCurrent]');
+      if (current.length > 0 && !isInViewport(current[0])) {
+        cy.animate({ center: { eles: current }, duration: 150 });
+      }
+    }
+  }
+
+  function buildNodeData(n, large) {
+    return {
+      id: n.id,
+      label: n.label,
+      permLabel: n.permLabel || "",
+      displayLabel: n.displayLabel || "",
+      large: large || undefined,
+      color: n.color || "#3b82f6",
+      shape: n.isDecisionPoint ? "diamond" : n.isMarker ? "ellipse" : (n.shape || "round-rectangle"),
+      width: n.width,
+      height: n.height,
+      borderWidth: n.isCurrent ? 2.5 : 1.5,
+      hasChildren: n.hasChildren,
+      isMarker: n.isMarker,
+      isDecisionPoint: n.isDecisionPoint,
+      isPathStart: n.isPathStart,
+      isCurrent: n.isCurrent,
+      tooltip: n.pathName ? `${n.label} · Pfad: ${n.pathName}` : n.label,
+      imageUrl: n.imageUrl || undefined,
+    };
   }
 
   function isInViewport(node) {
@@ -219,30 +287,47 @@
   }
 
   // ---- Screenshot thumbnails: real <img> overlays -----------------------
-  // Rebuilt wholesale on every render() (which itself replaces every
-  // Cytoscape element wholesale already, see cy.elements().remove() above)
-  // rather than diffed — sessions here are small enough that this is cheap,
-  // and it avoids tracking which nodes are "the same" across two preview
-  // pushes when ids can and do change (e.g. after a delete's stitch repair).
   const imageOverlayContainer = document.getElementById("image-overlays");
   let imageOverlays = new Map();
 
-  function rebuildImageOverlays() {
-    imageOverlayContainer.innerHTML = "";
-    imageOverlays = new Map();
+  function syncImageOverlays() {
+    if (!imageOverlayContainer) return;
+    const validIds = new Set();
     cy.nodes("[imageUrl]").forEach((node) => {
-      const img = document.createElement("img");
-      img.className = "hud-node-image";
-      img.alt = "";
-      // Reported to the host and logged to DocuClick's own log file — this
-      // HUD has no real DevTools access in practice, so this is the only
-      // way to actually see which URL failed and why.
-      img.onerror = () => sendToHost({ type: "imageLoadError", url: img.src });
-      img.src = node.data("imageUrl");
-      imageOverlayContainer.appendChild(img);
-      imageOverlays.set(node.id(), img);
+      const id = node.id();
+      validIds.add(id);
+      const url = node.data("imageUrl");
+      if (imageOverlays.has(id)) {
+        const img = imageOverlays.get(id);
+        if (img.src !== url) {
+          img.src = url;
+        }
+      } else {
+        const img = document.createElement("img");
+        img.className = "hud-node-image";
+        img.alt = "";
+        img.onerror = () => sendToHost({ type: "imageLoadError", url: img.src });
+        img.src = url;
+        imageOverlayContainer.appendChild(img);
+        imageOverlays.set(id, img);
+      }
     });
+
+    imageOverlays.forEach((img, id) => {
+      if (!validIds.has(id)) {
+        img.remove();
+        imageOverlays.delete(id);
+      }
+    });
+
     updateImageOverlays();
+  }
+
+  function rebuildImageOverlays() {
+    if (!imageOverlayContainer) return;
+    imageOverlayContainer.innerHTML = "";
+    imageOverlays.clear();
+    syncImageOverlays();
   }
 
   function updateImageOverlays() {
@@ -265,6 +350,265 @@
   }
   cy.on("pan zoom position", updateImageOverlays);
 
+  // ---- Node Text Box Overlays (crisp HTML typography, word-wrap, click-to-edit) ----
+  // Rendered as real DOM elements in #node-labels instead of Cytoscape
+  // canvas text so typography remains razor-sharp at any zoom, wraps
+  // cleanly to full readability without being truncated, and allows
+  // direct single-click editing right in the text box.
+  const nodeLabelsContainer = document.getElementById("node-labels");
+  let nodeLabels = new Map();
+  let editingNodeId = null;
+
+  function createNodeLabelElement(node) {
+    const data = node.data();
+    const text = data.displayLabel || data.label || "";
+
+    const labelEl = document.createElement("div");
+    labelEl.className = "hud-node-label";
+    if (data.isDecisionPoint) {
+      labelEl.classList.add("decision-point");
+    } else if (data.isPathStart) {
+      labelEl.classList.add("path-start");
+    }
+    if (data.shape) {
+      labelEl.classList.add(`shape-${data.shape}`);
+    }
+
+    labelEl.textContent = text;
+    labelEl.title = data.isDecisionPoint ? text : "Klicken zum Bearbeiten (oder Rechtsklick für Menü)";
+
+    // Right-click opens context menu just like clicking the node
+    labelEl.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      pendingMenuNodeId = data.id;
+      pendingMenuPos = { x: e.clientX, y: e.clientY };
+      sendToHost({ type: "requestPaths", nodeId: data.id });
+    });
+
+    // Click: select node and start inline editing (if not a decision point marker)
+    labelEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+      cy.nodes().unselect();
+      node.select();
+
+      if (data.isDecisionPoint) {
+        return;
+      }
+
+      if (editingNodeId === data.id) {
+        return;
+      }
+
+      startInlineLabelEdit(node, labelEl);
+    });
+
+    return labelEl;
+  }
+
+  function syncNodeLabels() {
+    if (!nodeLabelsContainer) return;
+    const validIds = new Set();
+
+    cy.nodes().forEach((node) => {
+      const data = node.data();
+      const id = node.id();
+      const text = data.displayLabel || data.label || "";
+      if (!text) {
+        return;
+      }
+      validIds.add(id);
+
+      if (nodeLabels.has(id)) {
+        if (editingNodeId !== id) {
+          const labelEl = nodeLabels.get(id);
+          if (labelEl.textContent !== text) {
+            labelEl.textContent = text;
+          }
+          labelEl.classList.toggle("decision-point", !!data.isDecisionPoint);
+          labelEl.classList.toggle("path-start", !!data.isPathStart);
+        }
+      } else {
+        const labelEl = createNodeLabelElement(node);
+        nodeLabelsContainer.appendChild(labelEl);
+        nodeLabels.set(id, labelEl);
+      }
+    });
+
+    nodeLabels.forEach((labelEl, id) => {
+      if (!validIds.has(id)) {
+        labelEl.remove();
+        nodeLabels.delete(id);
+      }
+    });
+
+    updateNodeLabels();
+  }
+
+  function rebuildNodeLabels() {
+    if (!nodeLabelsContainer) return;
+    nodeLabelsContainer.innerHTML = "";
+    nodeLabels.clear();
+    editingNodeId = null;
+    syncNodeLabels();
+  }
+
+  function startInlineLabelEdit(node, labelEl) {
+    const data = node.data();
+    editingNodeId = data.id;
+
+    // Use pure label or path name without "↳ " or "● " prefixes
+    const initialText = data.pathName || data.label || "";
+    labelEl.innerHTML = "";
+    labelEl.classList.add("editing");
+
+    const textarea = document.createElement("textarea");
+    textarea.className = "hud-node-label-textarea";
+    textarea.value = initialText;
+    textarea.rows = 1;
+    textarea.spellcheck = false;
+    textarea.autocomplete = "off";
+
+    function autoFitHeight() {
+      textarea.style.height = "auto";
+      textarea.style.height = `${Math.max(textarea.scrollHeight, 24)}px`;
+    }
+
+    labelEl.appendChild(textarea);
+    autoFitHeight();
+    updateNodeLabels();
+    textarea.focus();
+    textarea.select();
+
+    let committed = false;
+
+    function commit() {
+      if (committed) return;
+      committed = true;
+      const newText = textarea.value.trim();
+      labelEl.classList.remove("editing");
+      editingNodeId = null;
+
+      if (newText.length > 0 && newText !== initialText) {
+        const display = data.isPathStart ? `↳ ${newText}` : data.isCurrent ? `● ${newText}` : newText;
+        labelEl.textContent = display;
+        sendToHost({ type: "rename", nodeId: data.id, newLabel: newText });
+      } else {
+        labelEl.textContent = data.displayLabel || data.label || "";
+      }
+      updateNodeLabels();
+    }
+
+    function cancel() {
+      if (committed) return;
+      committed = true;
+      labelEl.classList.remove("editing");
+      editingNodeId = null;
+      labelEl.textContent = data.displayLabel || data.label || "";
+      updateNodeLabels();
+    }
+
+    textarea.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        commit();
+      } else if (e.key === "Enter" && e.shiftKey) {
+        setTimeout(autoFitHeight, 0);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        cancel();
+      }
+    });
+
+    textarea.addEventListener("input", autoFitHeight);
+
+    textarea.addEventListener("blur", () => {
+      commit();
+    });
+
+    textarea.addEventListener("click", (e) => {
+      e.stopPropagation();
+    });
+  }
+
+  function updateNodeLabels() {
+    const zoom = cy.zoom();
+    nodeLabels.forEach((labelEl, id) => {
+      const node = cy.getElementById(id);
+      if (node.empty()) {
+        labelEl.remove();
+        nodeLabels.delete(id);
+        return;
+      }
+      const box = node.renderedBoundingBox({ includeLabels: false });
+      if (box.x2 < -120 || box.x1 > cy.width() + 120 || box.y2 < -120 || box.y1 > cy.height() + 120) {
+        labelEl.style.display = "none";
+        return;
+      }
+      labelEl.style.display = "";
+      const centerX = (box.x1 + box.x2) / 2;
+
+      const isEditing = editingNodeId === id;
+      const scale = isEditing ? Math.max(zoom, 0.95) : zoom;
+
+      const hasImage = !!node.data("imageUrl");
+      if (hasImage) {
+        const topY = box.y1 - 4 * zoom;
+        labelEl.style.left = `${centerX}px`;
+        labelEl.style.top = `${topY}px`;
+        labelEl.style.transform = `translate(-50%, -100%) scale(${scale})`;
+        labelEl.classList.remove("center-inside");
+      } else {
+        const centerY = (box.y1 + box.y2) / 2;
+        labelEl.style.left = `${centerX}px`;
+        labelEl.style.top = `${centerY}px`;
+        labelEl.style.transform = `translate(-50%, -50%) scale(${scale})`;
+        labelEl.classList.add("center-inside");
+      }
+
+      const modelWidth = node.width();
+      labelEl.style.width = `${Math.max(modelWidth - (hasImage ? 0 : 16), 120)}px`;
+      labelEl.style.maxWidth = `${Math.max(modelWidth * 1.5, 260)}px`;
+    });
+  }
+  cy.on("pan zoom position", updateNodeLabels);
+
+  // ---- Current-node badge -------------------------------------------
+  // A small floating tag pointing at the writer's cursor node — where the
+  // *next* screenshot attaches (PreviewNode.IsCurrent) — positioned as a
+  // plain DOM element rather than a Cytoscape style so its size stays fixed
+  // and legible regardless of zoom (a border/color on the node itself
+  // shrinks into an unnoticeable sliver once a longer flow is zoomed out to
+  // fit; see the CSS pulse animation for why this alone is easy to miss on
+  // a stationary badge too).
+  const currentBadge = document.getElementById("current-badge");
+
+  function updateCurrentBadge() {
+    const current = cy.nodes('[?isCurrent]');
+    if (current.length === 0) {
+      currentBadge.hidden = true;
+      return;
+    }
+
+    const box = current[0].renderedBoundingBox({ includeLabels: false });
+    // Viewport check: if the current node is scrolled completely out of view, hide the badge
+    if (box.x2 < 0 || box.x1 > cy.width() || box.y2 < 0 || box.y1 > cy.height()) {
+      currentBadge.hidden = true;
+      return;
+    }
+
+    currentBadge.hidden = false;
+    const badgeWidth = currentBadge.offsetWidth || 120;
+    const placeLeft = (box.x1 - 6 - badgeWidth) >= 4;
+
+    currentBadge.classList.toggle("flip-right", !placeLeft);
+    currentBadge.textContent = placeLeft ? "Nächster Klick hier ▶" : "◀ Nächster Klick hier";
+    currentBadge.style.left = placeLeft ? `${box.x1 - 6}px` : `${box.x2 + 6}px`;
+    currentBadge.style.top = `${(box.y1 + box.y2) / 2}px`;
+  }
+  cy.on("pan zoom position", updateCurrentBadge);
+
   // ---- Connection handles (large/editing mode only) ----------------------
   // A small dot on each of the 4 sides of every connectable card, dragged
   // to another card to connect them — replaces compact mode's plain-drag-
@@ -279,36 +623,61 @@
   const handlesContainer = document.getElementById("node-handles");
   let handlesByNode = new Map();
 
-  function rebuildConnectHandles() {
-    handlesContainer.innerHTML = "";
-    handlesByNode = new Map();
+  function createConnectHandleDots(node) {
+    const sides = ["top", "right", "bottom", "left"];
+    return sides.map((side) => {
+      const dot = document.createElement("div");
+      dot.className = "hud-node-handle";
+      dot.dataset.side = side;
+      handlesContainer.appendChild(dot);
+      dot.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closeMenu();
+        connectFromId = node.id();
+        connectStartClient = { x: e.clientX, y: e.clientY };
+        connectArmed = true;
+        cy.getElementById(connectFromId).addClass("connect-from");
+        connectLine.hidden = false;
+        connectLineEl.setAttribute("x1", e.clientX);
+        connectLineEl.setAttribute("y1", e.clientY);
+        connectLineEl.setAttribute("x2", e.clientX);
+        connectLineEl.setAttribute("y2", e.clientY);
+      });
+      return dot;
+    });
+  }
+
+  function syncConnectHandles() {
+    if (!handlesContainer) return;
+    const validIds = new Set();
     cy.nodes().forEach((node) => {
       const data = node.data();
       if (!data.large || data.isMarker) {
         return;
       }
-      const dots = ["top", "right", "bottom", "left"].map(() => {
-        const dot = document.createElement("div");
-        dot.className = "hud-node-handle";
-        handlesContainer.appendChild(dot);
-        dot.addEventListener("mousedown", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          connectFromId = node.id();
-          connectStartClient = { x: e.clientX, y: e.clientY };
-          connectArmed = true;
-          cy.getElementById(connectFromId).addClass("connect-from");
-          connectLine.hidden = false;
-          connectLineEl.setAttribute("x1", e.clientX);
-          connectLineEl.setAttribute("y1", e.clientY);
-          connectLineEl.setAttribute("x2", e.clientX);
-          connectLineEl.setAttribute("y2", e.clientY);
-        });
-        return dot;
-      });
-      handlesByNode.set(node.id(), dots);
+      validIds.add(node.id());
+      if (!handlesByNode.has(node.id())) {
+        const dots = createConnectHandleDots(node);
+        handlesByNode.set(node.id(), dots);
+      }
     });
+
+    handlesByNode.forEach((dots, id) => {
+      if (!validIds.has(id)) {
+        dots.forEach((d) => d.remove());
+        handlesByNode.delete(id);
+      }
+    });
+
     updateConnectHandles();
+  }
+
+  function rebuildConnectHandles() {
+    if (!handlesContainer) return;
+    handlesContainer.innerHTML = "";
+    handlesByNode.clear();
+    syncConnectHandles();
   }
 
   function updateConnectHandles() {
@@ -329,6 +698,13 @@
     });
   }
   cy.on("pan zoom position", updateConnectHandles);
+
+  window.addEventListener("resize", () => {
+    cy.resize();
+    updateImageOverlays();
+    updateConnectHandles();
+    updateCurrentBadge();
+  });
 
   const HANDLE_REVEAL_PADDING = 24;
   document.addEventListener("mousemove", (e) => {
@@ -391,7 +767,35 @@
   // where those actions moved to, and the Delete-key handler below for
   // what a multi-node selection is actually for.
 
-  // ---- Double-click: rename ---------------------------------------------
+  // ---- Double-click: rename (on node) or fit-view (on empty canvas) ----
+  function fitView() {
+    if (cy.elements().length === 0) {
+      return;
+    }
+    cy.animate({
+      fit: { eles: cy.elements(), padding: 30 },
+      duration: 250,
+      complete: () => {
+        updateImageOverlays();
+        updateNodeLabels();
+        updateConnectHandles();
+        updateCurrentBadge();
+      },
+    });
+    setTimeout(() => {
+      updateImageOverlays();
+      updateNodeLabels();
+      updateConnectHandles();
+      updateCurrentBadge();
+    }, 270);
+  }
+
+  cy.on("dbltap", (evt) => {
+    if (evt.target === cy) {
+      fitView();
+    }
+  });
+
   cy.on("dbltap", "node", (evt) => {
     const data = evt.target.data();
     if (!data.isDecisionPoint) {
@@ -415,16 +819,21 @@
     sendToHost({ type: "requestPaths", nodeId: data.id });
   });
 
+  // ---- Edge Selection (Draw.io / Visio Style) -----------------------
+  cy.on("tap", "edge", (evt) => {
+    const edge = evt.target;
+    const source = edge.source();
+    const target = edge.target();
+    if (source.data("isMarker") || target.data("isMarker")) {
+      return;
+    }
+    evt.originalEvent?.stopPropagation();
+    cy.nodes().unselect();
+    cy.edges().unselect();
+    edge.select();
+  });
+
   // ---- Right-click on a connector: delete it ------------------------
-  // Offered for any edge between two ordinary content nodes, structural or
-  // manual — never into/out of a decision point or path-start: removing
-  // one of those would silently detach a whole named path from its
-  // decision point while leaving the path's nodes behind, unreachable but
-  // not deleted (see IFlowWriter.DisconnectNodes — the backend refuses
-  // this too, so the menu staying in sync here is purely about not
-  // offering an action that would otherwise silently do nothing). Cutting
-  // a structural edge just turns its target into a new isolated root —
-  // the grid layout already handles that.
   cy.on("cxttap", "edge", (evt) => {
     const edge = evt.target;
     const source = edge.source();
@@ -433,7 +842,10 @@
       return;
     }
 
-    pendingMenuNodeId = null; // a late pathsResult for an earlier node-menu request must not clobber this
+    pendingMenuNodeId = null;
+    cy.edges().unselect();
+    edge.select();
+
     menu.innerHTML = "";
     menu.appendChild(
       menuItem("Verbindung löschen", false, () => {
@@ -445,28 +857,51 @@
     menu.hidden = false;
   });
 
+  // ---- Flowchart Element Palette ------------------------------------
+  const FLOWCHART_NODE_TYPES = [
+    { label: "🟢 Start / Ende", shape: "ellipse", color: "#10b981", defaultText: "Start" },
+    { label: "🟦 Prozessschritt", shape: "round-rectangle", color: "#3b82f6", defaultText: "Prozess" },
+    { label: "🔶 Entscheidung", shape: "diamond", color: "#f59e0b", defaultText: "Entscheidung?" },
+    { label: "🔷 Eingabe / Ausgabe", shape: "rhomboid", color: "#06b6d4", defaultText: "Daten" },
+    { label: "📑 Dokument / Beleg", shape: "tag", color: "#0d9488", defaultText: "Dokument" },
+    { label: "📝 Notiz / Anmerkung", shape: "rectangle", color: "#eab308", defaultText: "Notiz" },
+  ];
+
+  function showAddNodeMenu(posModel, posScreen) {
+    pendingMenuNodeId = null;
+    menu.innerHTML = "";
+
+    const header = document.createElement("div");
+    header.className = "hud-menu-header";
+    header.textContent = "+ Element einfügen";
+    menu.appendChild(header);
+
+    FLOWCHART_NODE_TYPES.forEach((t) => {
+      menu.appendChild(
+        menuItem(t.label, false, () => {
+          closeMenu();
+          sendToHost({
+            type: "addNode",
+            x: posModel.x,
+            y: posModel.y,
+            shape: t.shape,
+            color: t.color,
+            label: t.defaultText,
+          });
+        })
+      );
+    });
+
+    positionNear(menu, posScreen);
+    menu.hidden = false;
+  }
+
   // ---- Right-click on the empty canvas: add a new, isolated node -----
-  // Large/editing mode only — a UML-diagram-style way to place a node that
-  // was never actually clicked/recorded, positioned exactly where the user
-  // right-clicked. `evt.target !== cy` is the actual node/edge cxttap
-  // handlers above already firing for those cases; without this extra
-  // check here too, this handler would ALSO fire right alongside them on
-  // every node/edge right-click (cxttap bubbles to the core).
   cy.on("cxttap", (evt) => {
     if (evt.target !== cy || !isLargeMode) {
       return;
     }
-
-    pendingMenuNodeId = null;
-    menu.innerHTML = "";
-    menu.appendChild(
-      menuItem("+ Neuer Knoten hier", false, () => {
-        closeMenu();
-        sendToHost({ type: "addNode", x: evt.position.x, y: evt.position.y });
-      })
-    );
-    positionNear(menu, evt.renderedPosition);
-    menu.hidden = false;
+    showAddNodeMenu(evt.position, evt.renderedPosition);
   });
 
   cy.on("tap pan zoom", () => closeMenu());
@@ -557,16 +992,30 @@
   // once; Delete sends one "delete" per selected node through the exact
   // same host message a single right-click Löschen already uses, so C#'s
   // existing cascade-confirmation logic runs unchanged for each one.
+  // ---- Delete/Backspace key: delete selected edges or nodes ---------
   document.addEventListener("keydown", (e) => {
-    if (e.key !== "Delete") {
+    if (e.key !== "Delete" && e.key !== "Backspace") {
       return;
     }
-    const selected = cy.nodes(":selected");
-    if (selected.length === 0) {
+    // Don't delete diagram elements if user is typing in a textarea or search input
+    if (editingNodeId !== null || (searchInput && document.activeElement === searchInput)) {
       return;
     }
-    e.preventDefault();
-    selected.forEach((n) => sendToHost({ type: "delete", nodeId: n.id() }));
+
+    const selectedEdges = cy.edges(":selected");
+    if (selectedEdges.length > 0) {
+      e.preventDefault();
+      selectedEdges.forEach((edge) => {
+        sendToHost({ type: "disconnect", fromId: edge.source().id(), toId: edge.target().id() });
+      });
+      return;
+    }
+
+    const selectedNodes = cy.nodes(":selected");
+    if (selectedNodes.length > 0) {
+      e.preventDefault();
+      selectedNodes.forEach((n) => sendToHost({ type: "delete", nodeId: n.id() }));
+    }
   });
 
   // ---- Drag-to-connect (line-based; the source node never moves) --------
@@ -628,28 +1077,38 @@
   // nodes from their real, persisted coordinates instead specifically so a
   // drag here (see IFlowWriter.MoveNode — deliberately skips the
   // auto-layout) actually sticks.
-  const MOVE_DRAG_THRESHOLD = 6; // px of movement before this counts as a drag — see below for why that matters
+  const MOVE_DRAG_THRESHOLD = 5; // px of movement before this counts as a drag
   let moveNodeId = null;
   let moveStartClient = null;
   let moveStartPos = null;
   let moveArmed = false;
+  let moveMultiNodes = []; // Tracks all selected nodes for multi-node drag
 
   cy.on("mousedown", "node", (evt) => {
     const data = evt.target.data();
     if (data.large) {
+      closeMenu();
       moveNodeId = data.id;
       moveStartClient = { x: evt.originalEvent.clientX, y: evt.originalEvent.clientY };
       moveStartPos = { ...evt.target.position() };
       moveArmed = false;
+
+      // If this node is part of a multi-selection, drag all selected nodes together (Draw.io style)
+      const selected = cy.nodes(":selected");
+      if (selected.length > 1 && selected.contains(evt.target)) {
+        moveMultiNodes = selected.map((n) => ({ id: n.id(), startPos: { ...n.position() } }));
+      } else {
+        moveMultiNodes = [{ id: data.id, startPos: { ...evt.target.position() } }];
+      }
       return;
     }
 
-    // Compact mode: unchanged from before large mode existed — plain drag
-    // on a node connects it to whatever's under the cursor on release.
+    // Compact mode: plain drag on a node connects it to whatever's under the cursor on release.
     if (data.isMarker) {
       return; // decision points/path starts are never valid connect endpoints
     }
 
+    closeMenu();
     connectFromId = data.id;
     connectStartClient = { x: evt.originalEvent.clientX, y: evt.originalEvent.clientY };
     connectArmed = false;
@@ -657,17 +1116,6 @@
 
   document.addEventListener("mousemove", (e) => {
     if (moveNodeId !== null) {
-      // Below the threshold, this is still "just a click" — a plain tap
-      // (selecting the card) or the first half of a double-click (see the
-      // dbltap-to-rename handler below) both start with a mousedown here
-      // too. Without this gate, every single click sent a "move" message
-      // and triggered a full save + Cytoscape element rebuild (render()
-      // replaces every element wholesale) even when nothing actually
-      // moved — and that rebuild, landing squarely between the two clicks
-      // of a double-click, is exactly what made renaming feel unreliable
-      // (confirmed as a real bug: the rebuilt node is a new object, so
-      // Cytoscape's own dbltap tracking can no longer tell the second
-      // click belongs to the same one as the first).
       if (!moveArmed) {
         if (Math.hypot(e.clientX - moveStartClient.x, e.clientY - moveStartClient.y) < MOVE_DRAG_THRESHOLD) {
           return;
@@ -677,9 +1125,15 @@
       const zoom = cy.zoom();
       const dx = (e.clientX - moveStartClient.x) / zoom;
       const dy = (e.clientY - moveStartClient.y) / zoom;
-      cy.getElementById(moveNodeId).position({ x: moveStartPos.x + dx, y: moveStartPos.y + dy });
+
+      for (const item of moveMultiNodes) {
+        cy.getElementById(item.id).position({ x: item.startPos.x + dx, y: item.startPos.y + dy });
+      }
+
       updateImageOverlays();
+      updateNodeLabels(); // Keep text boxes locked to moving nodes!
       updateConnectHandles();
+      updateCurrentBadge();
       return;
     }
 
@@ -698,42 +1152,61 @@
 
     connectLineEl.setAttribute("x1", connectStartClient.x);
     connectLineEl.setAttribute("y1", connectStartClient.y);
-    connectLineEl.setAttribute("x2", e.clientX);
-    connectLineEl.setAttribute("y2", e.clientY);
 
     cy.nodes(".drop-target").removeClass("drop-target");
+    document.querySelectorAll(".hud-node-handle.snapped").forEach((el) => el.classList.remove("snapped"));
+
     const target = findConnectTarget(connectFromId, modelPositionFromClient(e.clientX, e.clientY));
     if (target) {
-      target.addClass("drop-target");
+      target.node.addClass("drop-target");
+      const snappedClient = renderedFromModel(target.port);
+      connectLineEl.setAttribute("x2", snappedClient.x);
+      connectLineEl.setAttribute("y2", snappedClient.y);
+
+      const targetDots = handlesByNode.get(target.node.id());
+      if (targetDots) {
+        const portDot = targetDots.find((d) => d.dataset.side === target.port.side);
+        if (portDot) {
+          portDot.classList.add("snapped", "visible");
+        }
+      }
+    } else {
+      connectLineEl.setAttribute("x2", e.clientX);
+      connectLineEl.setAttribute("y2", e.clientY);
     }
   });
 
   document.addEventListener("mouseup", (e) => {
     if (moveNodeId !== null) {
       if (moveArmed) {
-        const pos = cy.getElementById(moveNodeId).position();
-        sendToHost({ type: "move", nodeId: moveNodeId, x: pos.x, y: pos.y });
+        for (const item of moveMultiNodes) {
+          const pos = cy.getElementById(item.id).position();
+          sendToHost({ type: "move", nodeId: item.id, x: pos.x, y: pos.y });
+        }
       }
       moveNodeId = null;
       moveStartClient = null;
       moveStartPos = null;
       moveArmed = false;
+      moveMultiNodes = [];
       return;
     }
     endConnectGesture(e.clientX, e.clientY);
   });
 
-  // Safety nets for the ways a release can happen where no mouseup ever
-  // reaches this page at all: the cursor crossing out of the document
-  // entirely (e.g. into the WPF resize-grip corner deliberately excluded
-  // from the WebView2 control's own bounds — see FlowPreviewOverlay's
-  // ResizeGripSize margin) — a real button-up there fires *outside*
-  // Chromium's world and this page never learns about it — or the whole
-  // window losing focus mid-drag (alt-tab, a native dialog stealing it).
-  // Both just cancel rather than try to finalize: once the cursor is gone,
-  // there's no reliable "what's under it" to connect to anyway.
-  document.addEventListener("mouseleave", () => { moveNodeId = null; moveArmed = false; endConnectGesture(null, null); });
-  window.addEventListener("blur", () => { moveNodeId = null; moveArmed = false; endConnectGesture(null, null); });
+  document.addEventListener("mouseleave", () => {
+    moveNodeId = null;
+    moveArmed = false;
+    moveMultiNodes = [];
+    endConnectGesture(null, null);
+  });
+
+  window.addEventListener("blur", () => {
+    moveNodeId = null;
+    moveArmed = false;
+    moveMultiNodes = [];
+    endConnectGesture(null, null);
+  });
 
   function endConnectGesture(clientX, clientY) {
     if (connectFromId === null) {
@@ -743,44 +1216,75 @@
     if (connectArmed && clientX !== null) {
       const target = findConnectTarget(connectFromId, modelPositionFromClient(clientX, clientY));
       if (target) {
-        sendToHost({ type: "connect", fromId: connectFromId, toId: target.id() });
+        sendToHost({ type: "connect", fromId: connectFromId, toId: target.node.id() });
       }
     }
 
     cy.getElementById(connectFromId).removeClass("connect-from");
     cy.nodes(".drop-target").removeClass("drop-target");
+    document.querySelectorAll(".hud-node-handle.snapped").forEach((el) => el.classList.remove("snapped"));
     connectLine.hidden = true;
-    // Belt-and-suspenders: `hidden` alone left a stale painted line on
-    // screen sometimes in the real WebView2 host (confirmed via logging
-    // that this code was in fact running every time — a Chromium repaint
-    // gap, not a logic bug). Collapsing the line to a zero-length segment
-    // plus a forced reflow makes it invisible independent of whether that
-    // repaint actually happens.
     connectLineEl.setAttribute("x1", "0");
     connectLineEl.setAttribute("y1", "0");
     connectLineEl.setAttribute("x2", "0");
     connectLineEl.setAttribute("y2", "0");
-    void connectLine.offsetHeight; // force a synchronous reflow
+    void connectLine.offsetHeight;
     connectFromId = null;
     connectStartClient = null;
     connectArmed = false;
   }
 
+  function distanceToBox(box, p) {
+    const dx = Math.max(box.x1 - p.x, 0, p.x - box.x2);
+    const dy = Math.max(box.y1 - p.y, 0, p.y - box.y2);
+    return Math.hypot(dx, dy);
+  }
+
+  function getClosestPort(box, p) {
+    const midX = (box.x1 + box.x2) / 2;
+    const midY = (box.y1 + box.y2) / 2;
+    const ports = [
+      { side: "top", x: midX, y: box.y1 },
+      { side: "right", x: box.x2, y: midY },
+      { side: "bottom", x: midX, y: box.y2 },
+      { side: "left", x: box.x1, y: midY },
+    ];
+    let best = ports[0];
+    let minDist = Math.hypot(ports[0].x - p.x, ports[0].y - p.y);
+    for (let i = 1; i < ports.length; i++) {
+      const d = Math.hypot(ports[i].x - p.x, ports[i].y - p.y);
+      if (d < minDist) {
+        minDist = d;
+        best = ports[i];
+      }
+    }
+    return best;
+  }
+
   function findConnectTarget(fromId, modelPos) {
-    // A candidate that can already reach fromId (walking forward from the
-    // candidate) would close a cycle once fromId->candidate is added —
-    // exclude those, not fromId's own descendants (that direction would
-    // reject perfectly valid ancestor->distant-descendant merges instead).
     const invalidTargets = ancestorsOf(fromId);
     const candidates = cy.nodes().filter((n) => {
       const d = n.data();
       return n.id() !== fromId && !d.isMarker && !invalidTargets.has(n.id());
     });
 
-    return candidates.filter((n) => {
+    const SNAP_RADIUS = 35; // Model distance threshold for magnetic snapping
+    let bestTarget = null;
+    let minDistance = Infinity;
+
+    for (let i = 0; i < candidates.length; i++) {
+      const n = candidates[i];
       const box = n.boundingBox();
-      return modelPos.x >= box.x1 && modelPos.x <= box.x2 && modelPos.y >= box.y1 && modelPos.y <= box.y2;
-    })[0] || null;
+      const dist = distanceToBox(box, modelPos);
+      if (dist === 0) {
+        return { node: n, port: getClosestPort(box, modelPos), distance: 0 };
+      }
+      if (dist <= SNAP_RADIUS && dist < minDistance) {
+        minDistance = dist;
+        bestTarget = { node: n, port: getClosestPort(box, modelPos), distance: dist };
+      }
+    }
+    return bestTarget;
   }
 
   /// Every node that can reach nodeId via existing *structural* forward
@@ -812,6 +1316,109 @@
     return result;
   }
 
+  // ---- Modern HUD Dock & Search ------------------------------------
+  const searchInput = document.getElementById("hud-search");
+  const searchClear = document.getElementById("hud-search-clear");
+  const btnZoomIn = document.getElementById("hud-btn-zoom-in");
+  const btnZoomOut = document.getElementById("hud-btn-zoom-out");
+  const btnFit = document.getElementById("hud-btn-fit");
+
+  function applySearch(query) {
+    const q = (query || "").trim().toLowerCase();
+    if (searchClear) {
+      searchClear.hidden = q.length === 0;
+    }
+
+    if (!q) {
+      cy.elements().removeClass("search-hit search-dimmed");
+      nodeLabels.forEach((lbl) => lbl.classList.remove("search-hit", "search-dimmed"));
+      return;
+    }
+
+    const hits = [];
+    cy.batch(() => {
+      cy.nodes().forEach((n) => {
+        const d = n.data();
+        const text = `${d.label || ""} ${d.permLabel || ""} ${d.displayLabel || ""} ${d.tooltip || ""}`.toLowerCase();
+        const isHit = text.includes(q);
+        if (isHit) {
+          n.removeClass("search-dimmed").addClass("search-hit");
+          hits.push(n);
+        } else {
+          n.removeClass("search-hit").addClass("search-dimmed");
+        }
+        const lbl = nodeLabels.get(n.id());
+        if (lbl) {
+          lbl.classList.toggle("search-hit", isHit);
+          lbl.classList.toggle("search-dimmed", !isHit);
+        }
+      });
+      cy.edges().forEach((e) => {
+        const sHit = e.source().hasClass("search-hit");
+        const tHit = e.target().hasClass("search-hit");
+        if (sHit && tHit) {
+          e.removeClass("search-dimmed");
+        } else {
+          e.addClass("search-dimmed");
+        }
+      });
+    });
+
+    if (hits.length > 0) {
+      cy.animate({ center: { eles: hits[0] }, duration: 200 });
+    }
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener("input", (e) => applySearch(e.target.value));
+    searchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        searchInput.value = "";
+        applySearch("");
+        searchInput.blur();
+      }
+    });
+  }
+
+  if (searchClear) {
+    searchClear.addEventListener("click", () => {
+      if (searchInput) {
+        searchInput.value = "";
+        applySearch("");
+        searchInput.focus();
+      }
+    });
+  }
+
+  if (btnZoomIn) {
+    btnZoomIn.addEventListener("click", () => {
+      cy.animate({ zoom: Math.min(cy.zoom() * 1.3, cy.maxZoom()), duration: 150 });
+    });
+  }
+
+  if (btnZoomOut) {
+    btnZoomOut.addEventListener("click", () => {
+      cy.animate({ zoom: Math.max(cy.zoom() / 1.3, cy.minZoom()), duration: 150 });
+    });
+  }
+
+  if (btnFit) {
+    btnFit.addEventListener("click", () => fitView());
+  }
+
+  const btnAddElement = document.getElementById("hud-btn-add-element");
+  if (btnAddElement) {
+    btnAddElement.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const pan = cy.pan();
+      const zoom = cy.zoom();
+      const centerX = (cy.width() / 2 - pan.x) / zoom;
+      const centerY = (cy.height() / 2 - pan.y) / zoom;
+      const rect = btnAddElement.getBoundingClientRect();
+      showAddNodeMenu({ x: centerX, y: centerY }, { x: rect.left, y: rect.bottom + 6 });
+    });
+  }
+
   // ---- Host message dispatch ---------------------------------------
   function dispatch(message) {
     switch (message.type) {
@@ -820,6 +1427,9 @@
         break;
       case "pathsResult":
         renderContextMenu(message.nodeId, message.paths || []);
+        break;
+      case "fitView":
+        fitView();
         break;
       default:
         console.warn("Unknown message from host:", message);

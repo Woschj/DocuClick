@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -60,52 +61,35 @@ public sealed class FlowPreviewOverlay : Window
     // relying on stacking order.
     private const double ResizeGripSize = 16;
 
-    // Two size presets, switched via SetLargeMode: a small, unobtrusive
-    // minimap while a recording is actually running (mustn't cover the
-    // screen being recorded — see the "compact" defaults, unchanged from
-    // before this existed) vs. a much bigger editing window for "Ablauf
-    // öffnen" on an existing file with no recording active, where the
-    // point is to actually *look* at the flow — same-size cards as the
-    // exported/live HTML's own Cytoscape rendering (220x170), so a
-    // screenshot thumbnail is as recognizable here as it is in the
-    // browser instead of shrunk down to a barely-there smudge.
-    private const double CompactPanelWidth = 420;
-    private const double CompactPanelHeight = 320;
-    private const double CompactNodeWidth = 72;
-    private const double CompactNodeHeight = 54;
-    private const double CompactCurrentNodeWidth = 92;
-    private const double CompactCurrentNodeHeight = 70;
-    private const double CompactRowSpacing = 68;
-    private const double CompactColumnSpacing = 130;
+    // One fixed size for the whole editing window — this used to switch
+    // between a small "live minimap" preset and this larger one depending
+    // on whether a recording was running, but that meant a freshly started
+    // session always came up in the small preset, which (a) still used the
+    // broken virtual-host image loading (see BuildImageDataUri's history) and
+    // (b) had none of the editing gestures (drag-move/connect/add-node),
+    // both gated on "large mode" — exactly the "one overview, not two"
+    // complaint this replaces. Same-size cards as the exported/live HTML's
+    // own Cytoscape rendering (220x170), so a screenshot thumbnail is as
+    // recognizable here as it is in the browser instead of shrunk down to
+    // a barely-there smudge.
+    private const double PanelWidth = 1000;
+    private const double PanelHeight = 720;
+    private const double NodeWidth = 200;
+    private const double NodeHeight = 150;
+    private const double CurrentNodeWidth = 220;
+    private const double CurrentNodeHeight = 170;
 
-    private const double LargePanelWidth = 1000;
-    private const double LargePanelHeight = 720;
-    private const double LargeNodeWidth = 200;
-    private const double LargeNodeHeight = 150;
-    private const double LargeCurrentNodeWidth = 220;
-    private const double LargeCurrentNodeHeight = 170;
-    private const double LargeRowSpacing = 190;
-    private const double LargeColumnSpacing = 260;
-
-    // Fixed node sizes and grid spacing for whichever preset is currently
-    // active — still computed here (not in flow.js) and sent to the
-    // WebView as explicit per-node coordinates, so there's exactly one
-    // implementation of "where does a node go" (see BuildPreviewPayload)
-    // instead of duplicating this in two languages. Deliberately NOT
-    // derived from the panel's current size — see the original WPF-
-    // canvas-era doc comment this carries forward: a flow smaller than the
-    // panel leaves the rest empty rather than stretching to fill it, and
-    // one larger pans/zooms (native in the WebView now) rather than
-    // shrinking nodes down to illegibility.
-    private double _panelWidth = CompactPanelWidth;
-    private double _panelHeight = CompactPanelHeight;
-    private double _nodeWidth = CompactNodeWidth;
-    private double _nodeHeight = CompactNodeHeight;
-    private double _currentNodeWidth = CompactCurrentNodeWidth;
-    private double _currentNodeHeight = CompactCurrentNodeHeight;
-    private double _rowSpacing = CompactRowSpacing;
-    private double _columnSpacing = CompactColumnSpacing;
-    private bool _largeMode;
+    // Fixed node sizes — still computed here (not in flow.js) and sent to
+    // the WebView as explicit per-node dimensions, so there's exactly one
+    // implementation of "how big is this card" instead of duplicating this
+    // in two languages. Position itself comes straight from each node's own
+    // real X/Y (see BuildPreviewPayload) — no separate grid layout here.
+    private double _panelWidth = PanelWidth;
+    private double _panelHeight = PanelHeight;
+    private double _nodeWidth = NodeWidth;
+    private double _nodeHeight = NodeHeight;
+    private double _currentNodeWidth = CurrentNodeWidth;
+    private double _currentNodeHeight = CurrentNodeHeight;
 
     // Same accent palette as DrawIoConverter's branch colors, reused here
     // so a branch's minimap dot and its actual card color line up in a
@@ -134,7 +118,6 @@ public sealed class FlowPreviewOverlay : Window
     private bool _collapsed;
     private double _expandedHeight;
     private bool _webViewReady;
-    private string? _mappedOutputPath;
 
     // Keyed by output-relative path, populated lazily — a screenshot file is
     // never modified after AttachmentSaver first writes it, so there is
@@ -171,8 +154,8 @@ public sealed class FlowPreviewOverlay : Window
     /// <summary>Fired when a large-mode drag-to-move gesture completes — (nodeId, x, y), the node's new position in its own real coordinate space. Never fires from the compact live-recording minimap, which has no drag-to-move gesture at all (see flow.js's mousedown handler).</summary>
     public event Action<string, double, double>? MoveRequested;
 
-    /// <summary>Fired after the "+ Neuer Knoten hier" background context menu's naming dialog is confirmed — (label, x, y), where the user right-clicked. Large mode only, same reasoning as <see cref="MoveRequested"/>.</summary>
-    public event Action<string, double, double>? AddNodeRequested;
+    /// <summary>Fired after the "+ Neuer Knoten hier" background context menu's naming dialog is confirmed — (label, x, y, shape, color), where the user right-clicked. Large mode only, same reasoning as <see cref="MoveRequested"/>.</summary>
+    public event Action<string, double, double, string?, string?>? AddNodeRequested;
 
     /// <summary>Fired when the header's close (✕) icon is clicked — App.xaml.cs hides rather than destroys the window, so <see cref="UpdatePreview"/> keeps the state current for whenever the TopBar's reopen button brings it back.</summary>
     public event Action? CloseRequested;
@@ -196,6 +179,15 @@ public sealed class FlowPreviewOverlay : Window
         MinWidth = 160;
         MinHeight = 110;
 
+        // Centered — this is a real editing window the user looks straight
+        // at, not an unobtrusive corner overlay. Clamp dimensions so it
+        // never overflows the monitor work area (e.g. on laptops or scaled displays).
+        var workArea = SystemParameters.WorkArea;
+        Width = Math.Min(Width, Math.Max(MinWidth, workArea.Width - 32));
+        Height = Math.Min(Height, Math.Max(MinHeight, workArea.Height - 32));
+        Left = workArea.Left + (workArea.Width - Width) / 2;
+        Top = workArea.Top + (workArea.Height - Height) / 2;
+
         // Short, single-line title instead of a permanently-wrapped
         // instruction sentence — that sentence used up two lines of
         // vertical space on every redraw even though it only needs to be
@@ -204,12 +196,23 @@ public sealed class FlowPreviewOverlay : Window
         // via the toggle icon when the user doesn't currently need it.
         var titleText = new TextBlock
         {
-            Text = "Ablauf-Übersicht",
+            Text = "DocuClick · Ablauf-Übersicht",
             Foreground = Brushes.White,
             FontSize = 11,
             FontWeight = FontWeights.SemiBold,
-            Opacity = 0.9,
+            Opacity = 0.95,
             VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var fitIcon = CreateHeaderIcon("⛶", "Ansicht zentrieren / einpassen (auch per Doppelklick auf die leere Fläche)");
+        AutomationProperties.SetAutomationId(fitIcon, "FlowPreview.FitViewButton");
+        fitIcon.MouseLeftButtonDown += (_, e) =>
+        {
+            e.Handled = true;
+            if (_webViewReady && _webView?.CoreWebView2 is not null)
+            {
+                _webView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "fitView" }, JsonOptions));
+            }
         };
 
         _collapseIcon = new TextBlock
@@ -222,6 +225,7 @@ public sealed class FlowPreviewOverlay : Window
             VerticalAlignment = VerticalAlignment.Center
         };
         var collapseToggle = WrapHeaderIcon(_collapseIcon, "Ein-/Ausklappen");
+        AutomationProperties.SetAutomationId(collapseToggle, "FlowPreview.CollapseButton");
         collapseToggle.MouseLeftButtonDown += (_, e) =>
         {
             e.Handled = true;
@@ -229,6 +233,7 @@ public sealed class FlowPreviewOverlay : Window
         };
 
         var closeIcon = CreateHeaderIcon("✕", "Schließen (über den Button in der Ablauf-Leiste wieder öffnen)");
+        AutomationProperties.SetAutomationId(closeIcon, "FlowPreview.CloseButton");
         closeIcon.MouseLeftButtonDown += (_, e) =>
         {
             e.Handled = true;
@@ -236,6 +241,7 @@ public sealed class FlowPreviewOverlay : Window
         };
 
         var headerIcons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        headerIcons.Children.Add(fitIcon);
         headerIcons.Children.Add(collapseToggle);
         headerIcons.Children.Add(closeIcon);
 
@@ -318,34 +324,13 @@ public sealed class FlowPreviewOverlay : Window
 
         var border = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb(170, 25, 25, 28)),
-            CornerRadius = new CornerRadius(8),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255)),
+            Background = new SolidColorBrush(Color.FromArgb(220, 11, 15, 25)),
+            CornerRadius = new CornerRadius(10),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(50, 255, 255, 255)),
             BorderThickness = new Thickness(1),
             Child = content
         };
         Content = border;
-
-        var bounds = System.Windows.Forms.Screen.PrimaryScreen!.Bounds;
-        Loaded += (_, _) =>
-        {
-            // SetLargeMode already centered the window if it was called
-            // (with large: true) before this first Show() — don't stomp
-            // that back to the compact HUD's top-left anchor.
-            if (_largeMode)
-            {
-                return;
-            }
-
-            // Left screen edge, same anchor CanvasStatusOverlay/
-            // RecordingIndicatorOverlay use — this panel now covers what
-            // those two used to show (a screenshot thumbnail and a record
-            // indicator), which stopped being useful once this became a
-            // full editing tool, so it deliberately takes over their spot
-            // rather than sitting at the top-right by default.
-            Left = bounds.Left + 8;
-            Top = bounds.Top + TopBarWindow.BarHeight + 16;
-        };
 
         SourceInitialized += (_, _) =>
         {
@@ -421,41 +406,9 @@ public sealed class FlowPreviewOverlay : Window
         _webView.NavigationCompleted += (_, _) =>
         {
             _webViewReady = true;
-            EnsureOutputMapping();
             PostPreview(_lastPreview);
         };
         _webView.CoreWebView2.Navigate("https://docuclick.flowpreview/index.html");
-    }
-
-    /// <summary>
-    /// Exposes the output folder as its own virtual host so node payloads
-    /// can carry a plain image URL (letting the browser load/cache
-    /// screenshots itself) instead of embedding every screenshot's bytes as
-    /// base64 in *every* preview push — that would bloat the WebView
-    /// message on every single click, the same per-click cost problem that
-    /// made the old live draw.io writer too slow to keep as a recording
-    /// mode (see DrawIoConverter's own doc comment). Re-checked on every
-    /// push (cheap: one string compare) rather than once at startup, since
-    /// the output path can change later in Settings while this window is
-    /// still alive.
-    /// </summary>
-    private void EnsureOutputMapping()
-    {
-        if (!_webViewReady)
-        {
-            return;
-        }
-
-        var outputPath = _config.OutputPath;
-        if (string.IsNullOrWhiteSpace(outputPath) || !System.IO.Directory.Exists(outputPath)
-            || string.Equals(_mappedOutputPath, outputPath, StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-            "docuclick.output", outputPath, CoreWebView2HostResourceAccessKind.Allow);
-        _mappedOutputPath = outputPath;
     }
 
     /// <summary>
@@ -533,6 +486,12 @@ public sealed class FlowPreviewOverlay : Window
             case "rename":
             {
                 var nodeId = root.GetProperty("nodeId").GetString()!;
+                if (root.TryGetProperty("newLabel", out var newLabelProp) && newLabelProp.GetString() is { } directLabel)
+                {
+                    RenameRequested?.Invoke(nodeId, directLabel);
+                    break;
+                }
+
                 var node = _lastPreview.Nodes.FirstOrDefault(n => n.Id == nodeId);
                 var initialValue = node?.PathName ?? node?.Label ?? "";
                 var nameWindow = new BranchNameWindow("DocuClick - Umbenennen", "Bezeichnung", initialValue) { Owner = this };
@@ -574,13 +533,17 @@ public sealed class FlowPreviewOverlay : Window
             {
                 var x = root.GetProperty("x").GetDouble();
                 var y = root.GetProperty("y").GetDouble();
-                var nameWindow = new BranchNameWindow("DocuClick - Neuer Knoten", "Bezeichnung", "") { Owner = this };
+                string? shape = root.TryGetProperty("shape", out var sProp) ? sProp.GetString() : null;
+                string? color = root.TryGetProperty("color", out var cProp) ? cProp.GetString() : null;
+                string defaultName = root.TryGetProperty("label", out var lProp) && !string.IsNullOrEmpty(lProp.GetString()) ? lProp.GetString()! : "";
+
+                var nameWindow = new BranchNameWindow("DocuClick - Neuer Knoten", "Bezeichnung", defaultName) { Owner = this };
                 NativeMethods.ModalDialogDepth++;
                 try
                 {
                     if (nameWindow.ShowDialog() == true && nameWindow.BranchName is { } label)
                     {
-                        AddNodeRequested?.Invoke(label, x, y);
+                        AddNodeRequested?.Invoke(label, x, y, shape, color);
                     }
                 }
                 finally
@@ -735,17 +698,17 @@ public sealed class FlowPreviewOverlay : Window
     {
         var icon = new Border
         {
-            Width = 18,
-            Height = 18,
-            CornerRadius = new CornerRadius(9),
-            Background = new SolidColorBrush(Color.FromArgb(45, 255, 255, 255)),
+            Width = 20,
+            Height = 20,
+            CornerRadius = new CornerRadius(10),
+            Background = new SolidColorBrush(Color.FromArgb(35, 255, 255, 255)),
             Margin = new Thickness(4, 0, 0, 0),
             Cursor = Cursors.Hand,
             ToolTip = tooltip,
             Child = content
         };
-        icon.MouseEnter += (_, _) => icon.Background = new SolidColorBrush(Color.FromArgb(90, 255, 255, 255));
-        icon.MouseLeave += (_, _) => icon.Background = new SolidColorBrush(Color.FromArgb(45, 255, 255, 255));
+        icon.MouseEnter += (_, _) => icon.Background = new SolidColorBrush(Color.FromArgb(80, 255, 255, 255));
+        icon.MouseLeave += (_, _) => icon.Background = new SolidColorBrush(Color.FromArgb(35, 255, 255, 255));
         return icon;
     }
 
@@ -793,77 +756,20 @@ public sealed class FlowPreviewOverlay : Window
         return grid;
     }
 
-    /// <summary>
-    /// Switches between the compact live-recording minimap and the much
-    /// bigger "Ablauf öffnen" editing window — see the size presets' own
-    /// doc comment above. Called on every preview push with whether a
-    /// recording is currently running (App.xaml.cs already tracks this via
-    /// <see cref="SessionManager.IsRunning"/>) rather than once at
-    /// construction, since the very same overlay instance is reused across
-    /// however many recording/editing sessions happen while the app stays
-    /// open. A no-op when the mode hasn't actually changed, so it never
-    /// fights a manual resize-grip adjustment on every single click.
-    /// </summary>
-    public void SetLargeMode(bool large)
-    {
-        if (large == _largeMode)
-        {
-            return;
-        }
-
-        _largeMode = large;
-        _panelWidth = large ? LargePanelWidth : CompactPanelWidth;
-        _panelHeight = large ? LargePanelHeight : CompactPanelHeight;
-        _nodeWidth = large ? LargeNodeWidth : CompactNodeWidth;
-        _nodeHeight = large ? LargeNodeHeight : CompactNodeHeight;
-        _currentNodeWidth = large ? LargeCurrentNodeWidth : CompactCurrentNodeWidth;
-        _currentNodeHeight = large ? LargeCurrentNodeHeight : CompactCurrentNodeHeight;
-        _rowSpacing = large ? LargeRowSpacing : CompactRowSpacing;
-        _columnSpacing = large ? LargeColumnSpacing : CompactColumnSpacing;
-
-        var newHeight = _panelHeight + HeaderHeight + PanelPadding;
-        if (_collapsed)
-        {
-            // Collapsed only shows the header row right now — just remember
-            // the new target height for whenever it's expanded again.
-            _expandedHeight = newHeight;
-        }
-        else
-        {
-            Width = _panelWidth + PanelPadding * 2;
-            Height = newHeight;
-        }
-
-        var bounds = System.Windows.Forms.Screen.PrimaryScreen!.Bounds;
-        if (large)
-        {
-            // Centered, not the compact HUD's top-left anchor — this is now
-            // a real editing window the user looks straight at, not an
-            // unobtrusive corner overlay.
-            Left = bounds.Left + (bounds.Width - Width) / 2;
-            Top = bounds.Top + (bounds.Height - Height) / 2;
-        }
-        else
-        {
-            Left = bounds.Left + 8;
-            Top = bounds.Top + TopBarWindow.BarHeight + 16;
-        }
-    }
 
     /// <summary>Stores the latest preview and pushes it to the WebView (once it's ready to receive messages — see <see cref="InitializeWebViewAsync"/>).</summary>
-    public void UpdatePreview(FlowPreview preview)
+    public void UpdatePreview(FlowPreview preview, bool isRecordedClick = false)
     {
         _lastPreview = preview;
         if (_webViewReady)
         {
-            PostPreview(preview);
+            PostPreview(preview, isRecordedClick);
         }
     }
 
-    private void PostPreview(FlowPreview preview)
+    private void PostPreview(FlowPreview preview, bool isRecordedClick = false)
     {
-        EnsureOutputMapping();
-        var payload = BuildPreviewPayload(preview);
+        var payload = BuildPreviewPayload(preview, isRecordedClick);
         _webView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(payload, JsonOptions));
     }
 
@@ -875,51 +781,33 @@ public sealed class FlowPreviewOverlay : Window
     /// schematic (BFS depth + path-first-seen-order), not the real output
     /// file's coordinates.
     /// </summary>
-    private PreviewPayload BuildPreviewPayload(FlowPreview preview)
+    private PreviewPayload BuildPreviewPayload(FlowPreview preview, bool isRecordedClick = false)
     {
         if (preview.Nodes.Count == 0)
         {
-            return new PreviewPayload("preview", _largeMode, new List<NodePayload>(), new List<EdgePayload>());
+            return new PreviewPayload("preview", true, new List<NodePayload>(), new List<EdgePayload>(), false);
         }
 
-        // Row/column grid slot, from graph topology alone (structural edges
-        // only — a manual cross-connect must draw as a single extra line
-        // and never shift where a node "really" belongs; see
-        // FlowPreviewBranching.ComputeGridLayout's own doc comment for the
-        // bug this used to cause). Shared with CanvasFlowWriter's
-        // end-of-session relayout so the live minimap and the persisted
-        // .canvas file's actual node positions can never drift into two
-        // different "clean" arrangements.
-        var slotOf = FlowPreviewBranching.ComputeGridLayout(preview);
         var forward = preview.Edges
             .Where(e => !e.Manual)
             .GroupBy(e => e.FromId)
             .ToDictionary(g => g.Key, g => g.Select(e => e.ToId).ToList());
 
-        var halfExtentX = _currentNodeWidth / 2 + 8;
-        var halfExtentY = _currentNodeHeight / 2 + 8;
-
-        (double X, double Y) GridPosition(string nodeId)
-        {
-            var (row, column) = slotOf[nodeId];
-            return (halfExtentX + column * _columnSpacing + _columnSpacing / 2, halfExtentY + row * _rowSpacing);
-        }
-
         var nodes = preview.Nodes.Select(n =>
         {
-            // Large (editing) mode uses the node's own real, persisted
-            // coordinates instead of the schematic grid slot — the whole
-            // point of drag-to-move (see MoveNode) is overriding the
-            // auto-layout, which only means anything if what's actually on
-            // screen is what's on disk. Compact mode keeps the schematic
-            // layout: it's a tiny live-recording minimap with no dragging,
-            // where a clean fixed grid reads better than the real
-            // (branch-column-spaced, much larger) coordinates would at
-            // that scale.
-            var (x, y) = _largeMode ? (n.X, n.Y) : GridPosition(n.Id);
+            // The node's own real, persisted coordinates — not a schematic
+            // grid slot. The whole point of drag-to-move (see MoveNode) is
+            // overriding the auto-layout, which only means anything if
+            // what's actually on screen is what's on disk.
+            var (x, y) = (n.X, n.Y);
             var isMarker = n.IsDecisionPoint || n.IsPathStart;
-            var width = n.IsCurrent ? _currentNodeWidth : _nodeWidth;
-            var height = n.IsCurrent ? _currentNodeHeight : _nodeHeight;
+            var isFlowchartElement = !string.IsNullOrEmpty(n.Shape) || (n.ImagePath is null && !n.IsCurrent);
+            var width = isFlowchartElement && n.Width > 0
+                ? n.Width
+                : (n.IsCurrent ? _currentNodeWidth : _nodeWidth);
+            var height = isFlowchartElement && n.Height > 0
+                ? n.Height
+                : (n.IsCurrent ? _currentNodeHeight : _nodeHeight);
             var hasChildren = forward.ContainsKey(n.Id);
             var permLabel = n.IsDecisionPoint
                 ? "◆ Abzweigung"
@@ -929,59 +817,39 @@ public sealed class FlowPreviewOverlay : Window
                         ? "● hier"
                         : "";
 
-            // Compact mode only ever shows permLabel (a short marker tag,
-            // blank for an ordinary node — the full description is a hover
-            // tooltip instead, see flow.js) exactly as before this existed.
-            // Large mode shows the actual description right on the card,
-            // matching the exported/live HTML's own always-visible label —
-            // the whole point of this mode being to look like that view.
-            var displayLabel = !_largeMode
-                ? permLabel
-                : isMarker ? permLabel : n.IsCurrent ? $"● {n.Label}" : n.Label;
+            // The actual description right on the card, matching the
+            // exported/live HTML's own always-visible label.
+            var displayLabel = isMarker ? permLabel : n.IsCurrent ? $"● {n.Label}" : n.Label;
 
-            // Large mode embeds the screenshot as a data: URI instead of a
+            // Embeds the screenshot as a data: URI instead of a
             // docuclick.output URL — confirmed via a real run (see
             // LogService's "Bild konnte nicht geladen werden" entries) that
             // a plain <img> pointed at that virtual host still fails to
             // load the file, even though it exists at exactly that path;
             // a data: URI needs no cross-origin/virtual-host resolution of
-            // any kind, so it sidesteps whatever that turns out to be.
-            // Compact mode keeps the URL approach: it re-sends the whole
-            // preview on *every single click* during a live recording, and
-            // base64-embedding every screenshot on every one of those is
-            // the exact per-click cost this design already avoided once
-            // (see BuildImageUrl's own doc comment) — acceptable for large
-            // mode's one-time load, not for that.
-            var imageUrl = _largeMode ? BuildImageDataUri(n.ImagePath) : BuildImageUrl(n.ImagePath);
+            // any kind, so it sidesteps whatever that turns out to be. The
+            // per-screenshot encoding cost this would otherwise add on
+            // every single click is covered by _imageDataUriCache below —
+            // an unchanged screenshot is never re-encoded.
+            var imageUrl = BuildImageDataUri(n.ImagePath);
 
             return new NodePayload(
-                n.Id, n.Label, permLabel, displayLabel, x, y, width, height, ColorToCss(GetNodeColor(n)),
+                n.Id, n.Label, permLabel, displayLabel, x, y, width, height, GetNodeColorCss(n),
                 isMarker, n.IsDecisionPoint, n.IsPathStart, n.IsCurrent, hasChildren, n.PathName,
-                imageUrl);
+                imageUrl, n.Shape);
         }).ToList();
 
         var edges = preview.Edges.Select(e => new EdgePayload(e.FromId, e.ToId, e.Manual)).ToList();
 
-        return new PreviewPayload("preview", _largeMode, nodes, edges);
+        return new PreviewPayload("preview", true, nodes, edges, isRecordedClick);
     }
 
     /// <summary>
-    /// Turns an output-relative screenshot path (as stored on the Canvas
+    /// Reads an output-relative screenshot path (as stored on the Canvas
     /// file's sibling "file" node, e.g. "Attachments/Session/073934_321.png")
-    /// into a URL under the <see cref="EnsureOutputMapping"/> virtual host —
-    /// each path segment is escaped separately (not the whole string, which
-    /// would also escape the "/" separators the mapping needs intact), since
-    /// session/folder names routinely contain spaces or parentheses.
-    /// </summary>
-    private static string? BuildImageUrl(string? outputRelativePath) => outputRelativePath is null
-        ? null
-        : "https://docuclick.output/" + string.Join("/", outputRelativePath.Split('/').Select(Uri.EscapeDataString));
-
-    /// <summary>
-    /// See the large-mode branch in <see cref="BuildPreviewPayload"/> for why
-    /// this exists alongside <see cref="BuildImageUrl"/> instead of replacing
-    /// it outright. Cached by path — see <see cref="_imageDataUriCache"/>'s
-    /// own doc comment.
+    /// off disk and embeds it as a data: URI — see <see cref="BuildPreviewPayload"/>
+    /// for why. Cached by path — see <see cref="_imageDataUriCache"/>'s own
+    /// doc comment.
     /// </summary>
     private string? BuildImageDataUri(string? outputRelativePath)
     {
@@ -1018,11 +886,16 @@ public sealed class FlowPreviewOverlay : Window
         ? $"#{c.R:X2}{c.G:X2}{c.B:X2}"
         : $"rgba({c.R},{c.G},{c.B},{(c.A / 255.0).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)})";
 
-    private static Color GetNodeColor(PreviewNode node)
+    private static string GetNodeColorCss(PreviewNode node)
     {
         if (node.IsCurrent)
         {
-            return Color.FromRgb(0xE6, 0x39, 0x46);
+            return ColorToCss(Color.FromRgb(0xE6, 0x39, 0x46));
+        }
+
+        if (!string.IsNullOrWhiteSpace(node.Color))
+        {
+            return node.Color;
         }
 
         // Decision points are always neutral gray, matching a draw.io
@@ -1031,15 +904,15 @@ public sealed class FlowPreviewOverlay : Window
         // regardless of which path happened to lead into them.
         if (node.IsDecisionPoint)
         {
-            return Color.FromRgb(0x6B, 0x72, 0x80);
+            return ColorToCss(Color.FromRgb(0x6B, 0x72, 0x80));
         }
 
         if (node.PathId is { } pathId)
         {
-            return BranchPalette[StableHash(pathId) % BranchPalette.Length];
+            return ColorToCss(BranchPalette[StableHash(pathId) % BranchPalette.Length]);
         }
 
-        return Color.FromArgb(230, 0x4C, 0xAF, 0xE8);
+        return ColorToCss(Color.FromArgb(230, 0x4C, 0xAF, 0xE8));
     }
 
     private static int StableHash(string value)
@@ -1059,9 +932,9 @@ public sealed class FlowPreviewOverlay : Window
     private sealed record NodePayload(
         string Id, string Label, string PermLabel, string DisplayLabel, double X, double Y, double Width, double Height, string Color,
         bool IsMarker, bool IsDecisionPoint, bool IsPathStart, bool IsCurrent, bool HasChildren, string? PathName,
-        string? ImageUrl);
+        string? ImageUrl, string? Shape);
 
     private sealed record EdgePayload(string Source, string Target, bool Manual);
 
-    private sealed record PreviewPayload(string Type, bool Large, List<NodePayload> Nodes, List<EdgePayload> Edges);
+    private sealed record PreviewPayload(string Type, bool Large, List<NodePayload> Nodes, List<EdgePayload> Edges, bool IsRecordedClick);
 }

@@ -17,13 +17,33 @@ public static class ClickFeedbackService
     // confirmation, so the capture sound is synthesized once at startup:
     // two short exponentially-decaying noise bursts approximating a
     // shutter click.
-    private static readonly byte[] CapturedClickWav = BuildCameraClickWav();
+    private static readonly MemoryStream CapturedClickStream;
+    private static readonly SoundPlayer CapturedClickPlayer;
+
+    static ClickFeedbackService()
+    {
+        CapturedClickStream = new MemoryStream(BuildCameraClickWav());
+        CapturedClickPlayer = new SoundPlayer(CapturedClickStream);
+        try
+        {
+            CapturedClickPlayer.Load();
+        }
+        catch
+        {
+            // Graceful fallback if sound subsystem is unavailable
+        }
+    }
 
     public static void PlayCaptured()
     {
-        using var stream = new MemoryStream(CapturedClickWav);
-        using var player = new SoundPlayer(stream);
-        player.Play();
+        try
+        {
+            CapturedClickPlayer.Play();
+        }
+        catch
+        {
+            SystemSounds.Asterisk.Play();
+        }
     }
 
     public static void PlaySkipped() => SystemSounds.Asterisk.Play();

@@ -196,4 +196,40 @@
         <Setter Property="BorderThickness" Value="1"/>
     </Style>
 
+    <Style x:Key="ModernSliderThumb" TargetType="Thumb">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Border Width="12" Height="12" CornerRadius="6"
+                            Background="White" BorderBrush="#10B981" BorderThickness="1.5">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="4" ShadowDepth="1" Opacity="0.35" Direction="270" Color="Black"/>
+                        </Border.Effect>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="ModernSlider" TargetType="Slider">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Slider">
+                    <Grid Height="20">
+                        <Border Height="4" CornerRadius="2" Background="#40FFFFFF" VerticalAlignment="Center" Margin="4,0"/>
+                        <Track x:Name="PART_Track">
+                            <Track.Thumb>
+                                <Thumb Style="{StaticResource ModernSliderThumb}"/>
+                            </Track.Thumb>
+                        </Track>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>

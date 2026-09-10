@@ -38,6 +38,8 @@ public partial class SettingsWindow : Window
     public SettingsWindow(AppConfig config)
     {
         InitializeComponent();
+        MaxHeight = Math.Max(400, SystemParameters.WorkArea.Height - 40);
+        Height = Math.Min(820, MaxHeight);
         _config = config;
         LoadIntoForm();
     }

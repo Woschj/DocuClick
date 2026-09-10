@@ -9,8 +9,8 @@
                    Text="Jede Aufnahme-Session braucht eine Zieldatei — neue Datei anlegen oder eine bestehende fortsetzen, statt eines generischen Namens."/>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0" DockPanel.Dock="Bottom">
-            <Button Content="Abbrechen" Width="100" Margin="0,0,8,0" Style="{StaticResource ModernButton}" Click="OnCancelClicked"/>
-            <Button Content="Starten" Width="100" Style="{StaticResource PrimaryButton}" Click="OnStartClicked"/>
+            <Button Content="Abbrechen" Width="100" Margin="0,0,8,0" Style="{StaticResource ModernButton}" IsCancel="True" Click="OnCancelClicked"/>
+            <Button Content="Starten" Width="100" Style="{StaticResource PrimaryButton}" IsDefault="True" Click="OnStartClicked"/>
         </StackPanel>
 
         <Border Style="{StaticResource CardBorder}" DockPanel.Dock="Top">
@@ -28,6 +28,6 @@
             </StackPanel>
         </Border>
 
-        <ListBox x:Name="ExistingFilesListBox" Style="{StaticResource ModernListBox}"/>
+        <ListBox x:Name="ExistingFilesListBox" Style="{StaticResource ModernListBox}" MouseDoubleClick="OnExistingFileDoubleClicked"/>
     </DockPanel>
 </Window>

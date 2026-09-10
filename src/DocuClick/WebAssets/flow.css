@@ -1,7 +1,25 @@
-/* Transparent background: the WPF host window is itself semi-transparent
-   (AllowsTransparency) and paints the panel's dark background via its own
-   Border — the WebView2 content only needs to fill the diagram area, not
-   redraw a background behind it. */
+:root {
+  --bg-canvas: #090d16;
+  --surface-glass: rgba(15, 23, 42, 0.85);
+  --surface-glass-hover: rgba(30, 41, 59, 0.92);
+  --border-glass: rgba(255, 255, 255, 0.12);
+  --border-glass-bright: rgba(255, 255, 255, 0.24);
+  --accent-primary: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-glow: rgba(59, 130, 246, 0.35);
+  --accent-emerald: #10b981;
+  --accent-amber: #f59e0b;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-full: 9999px;
+  --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+}
+
+/* Transparent background: the WPF host window is semi-transparent and
+   paints the panel's dark slate acrylic background via its own Border. */
 html, body {
   margin: 0;
   padding: 0;
@@ -9,8 +27,10 @@ html, body {
   height: 100%;
   overflow: hidden;
   background: transparent;
-  font-family: "Segoe UI", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   cursor: default;
+  color: var(--text-primary);
+  user-select: none;
 }
 
 body {
@@ -20,18 +40,175 @@ body {
 
 #cy {
   flex: 1 1 auto;
-  min-height: 0; /* a flex child otherwise refuses to shrink below its content's natural size */
+  min-height: 0;
   width: 100%;
+  background-color: transparent;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1.2px, transparent 1.2px);
+  background-size: 22px 22px;
 }
 
-/* Real <img> elements tracking each image node's on-screen box, NOT
-   Cytoscape's own background-image (see flow.js's render()) — Cytoscape
-   loads that via fetch() internally, and this page (served from the
-   docuclick.flowpreview virtual host) fetching a screenshot from the
-   *separate* docuclick.vault virtual host is a cross-origin request with
-   no CORS headers on the static file mapping, so Chromium silently
-   refuses it — confirmed via a real run showing only the flat node color,
-   never the screenshot. A plain <img src> has no such restriction. */
+/* ---- Floating HUD Dock & Controls --------------------------------- */
+.hud-topbar {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  z-index: 1002;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.hud-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  background: var(--surface-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-lg);
+  pointer-events: auto;
+}
+
+.hud-brand-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #ffffff;
+}
+
+.hud-pill {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.hud-search-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  background: var(--surface-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-lg);
+  pointer-events: auto;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.hud-search-group:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px var(--accent-glow), var(--shadow-lg);
+}
+
+.hud-search-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.hud-search-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 11px;
+  width: 95px;
+  transition: width 0.2s ease;
+}
+
+.hud-search-input:focus {
+  width: 140px;
+}
+
+.hud-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.hud-btn-clear {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.hud-btn-clear:hover {
+  color: #ffffff;
+}
+
+.hud-dock-controls {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 5px;
+  background: var(--surface-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-lg);
+  pointer-events: auto;
+}
+
+.hud-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, transform 0.1s ease;
+}
+
+.hud-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.hud-btn:active {
+  transform: scale(0.92);
+}
+
+.hud-btn-action {
+  width: auto;
+  padding: 0 8px;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-primary);
+  border-radius: var(--radius-full);
+}
+
+.hud-btn-action:hover {
+  background: rgba(56, 189, 248, 0.18);
+  color: #38bdf8;
+}
+
+.hud-dock-separator {
+  width: 1px;
+  height: 14px;
+  background: var(--border-glass);
+  margin: 0 2px;
+}
+
+/* ---- Node Image Overlays ------------------------------------------ */
 #image-overlays {
   position: fixed;
   inset: 0;
@@ -43,10 +220,12 @@ body {
 .hud-node-image {
   position: absolute;
   object-fit: cover;
-  border-radius: 4px;
+  border-radius: 6px;
   pointer-events: none;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
 }
 
+/* ---- Node Connect Handles (Draw.io / Visio Style) ---------------- */
 #node-handles {
   position: fixed;
   inset: 0;
@@ -57,29 +236,175 @@ body {
 
 .hud-node-handle {
   position: absolute;
-  width: 16px;
-  height: 16px;
-  margin: -8px;
+  width: 22px;
+  height: 22px;
+  margin: -11px;
   border-radius: 50%;
-  background: #22C55E;
-  border: 2px solid #ffffff;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: crosshair;
   pointer-events: auto;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
   opacity: 0;
-  transition: opacity 0.1s;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.hud-node-handle::after {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent-emerald);
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.8), 0 2px 4px rgba(0, 0, 0, 0.5);
+  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .hud-node-handle.visible {
   opacity: 1;
 }
 
-.hud-node-handle:hover {
-  background: #16A34A;
+.hud-node-handle:hover::after,
+.hud-node-handle.snapped::after {
+  background: #38bdf8;
+  border-color: #ffffff;
+  transform: scale(1.4);
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.95), 0 2px 6px rgba(0, 0, 0, 0.6);
 }
 
-/* Drag-to-connect gesture: a plain line from the fixed source node to the
-   cursor, drawn over #cy — never actually moves the node underneath. */
+/* ---- Node Text Box Overlays --------------------------------------- */
+#node-labels {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 10;
+}
+
+.hud-node-label {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  transform-origin: center bottom;
+  background: var(--surface-glass);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--border-glass-bright);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  padding: 4px 8px;
+  text-align: center;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  cursor: text;
+  pointer-events: auto;
+  user-select: text;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.hud-node-label:hover {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px var(--accent-glow), 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.hud-node-label.decision-point {
+  cursor: default;
+  border-color: rgba(168, 85, 247, 0.45);
+  color: #d8b4fe;
+}
+
+.hud-node-label.path-start {
+  border-color: rgba(16, 185, 129, 0.45);
+  color: #a7f3d0;
+}
+
+.hud-node-label.editing {
+  padding: 2px;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px var(--accent-glow), 0 4px 14px rgba(0, 0, 0, 0.55);
+  z-index: 1002 !important;
+}
+
+.hud-node-label-input,
+.hud-node-label-textarea {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1.5px solid var(--accent-primary);
+  border-radius: 4px;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  padding: 3px 6px;
+  width: 100%;
+  box-sizing: border-box;
+  outline: none;
+  text-align: center;
+}
+
+.hud-node-label-textarea {
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: block;
+}
+
+.hud-node-label.search-dimmed {
+  opacity: 0.2;
+}
+
+.hud-node-label.search-hit {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.4), 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.hud-node-label.center-inside {
+  transform-origin: center center;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 600;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.hud-node-label.center-inside:hover {
+  background: rgba(15, 23, 42, 0.75);
+  border-color: var(--accent-primary);
+}
+
+.hud-node-label.shape-ellipse {
+  border-radius: var(--radius-full);
+}
+
+.hud-node-label.shape-diamond {
+  border-radius: var(--radius-sm);
+  border-color: rgba(245, 158, 11, 0.5);
+}
+
+.hud-node-label.shape-rectangle {
+  background: rgba(254, 240, 138, 0.88);
+  color: #713f12;
+  border-color: #facc15;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  font-weight: 500;
+}
+
+.hud-node-label.shape-rectangle:hover {
+  background: rgba(254, 240, 138, 0.98);
+  border-color: #eab308;
+}
+
+/* ---- Drag-to-Connect Line ---------------------------------------- */
 .hud-connect-line {
   position: absolute;
   inset: 0;
@@ -90,90 +415,149 @@ body {
 }
 
 .hud-connect-line line {
-  stroke: #22C55E;
-  stroke-width: 2;
+  stroke: var(--accent-emerald);
+  stroke-width: 2.5;
   stroke-dasharray: 6 4;
 }
 
+/* ---- Current-Node Writer Badge ------------------------------------ */
+#current-badge {
+  position: fixed;
+  z-index: 2;
+  transform: translate(-100%, -50%);
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.35), 0 4px 12px rgba(0, 0, 0, 0.5);
+  animation: current-badge-pulse 1.8s ease-in-out infinite;
+}
+
+#current-badge::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -5px;
+  transform: translateY(-50%);
+  border: 5px solid transparent;
+  border-left-color: #d97706;
+}
+
+#current-badge.flip-right {
+  transform: translate(0, -50%);
+}
+
+#current-badge.flip-right::after {
+  left: -5px;
+  right: auto;
+  border-left-color: transparent;
+  border-right-color: #f59e0b;
+}
+
+@keyframes current-badge-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.35), 0 4px 12px rgba(0, 0, 0, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.18), 0 4px 16px rgba(0, 0, 0, 0.6);
+  }
+}
+
+/* ---- Empty Hint --------------------------------------------------- */
 .hud-empty-hint {
   position: absolute;
   inset: 0;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 24px;
   text-align: center;
-  color: #ffffff;
-  opacity: 0.6;
-  font-size: 11px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
   pointer-events: none;
 }
 
-/* display:flex must only apply while visible — putting it on the bare
-   class above would out-rank the UA stylesheet's [hidden]{display:none}
-   (same specificity, author sheet wins), so toggling the `hidden`
-   attribute from JS would silently stop working. */
 .hud-empty-hint:not([hidden]) {
   display: flex;
 }
 
-/* Shared "frosted glass" look for both the hover tooltip and the node
-   popup/context menu — matches the WPF host's own panel chrome
-   (Color.FromArgb(170/235, 25, 25, 28) background, translucent white
-   border) so the WebView content doesn't look like a foreign insert. */
+/* ---- Tooltips & Image Previews ------------------------------------ */
 .hud-tooltip,
 .hud-menu {
   position: absolute;
   z-index: 1000;
-  background: rgba(25, 25, 28, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.31);
-  border-radius: 6px;
-  color: #ffffff;
-  font-size: 11px;
-  pointer-events: none;
+  background: var(--surface-glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border-glass-bright);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 11.5px;
+  box-shadow: var(--shadow-lg);
 }
 
 .hud-tooltip {
-  padding: 4px 7px;
+  padding: 5px 9px;
   white-space: nowrap;
-}
-
-/* Larger screenshot preview shown alongside the tooltip on hover — the
-   in-node thumbnail (see flow.js's node[imageUrl] style) is only ever a few
-   dozen pixels across, nowhere near enough to actually read what's in it. */
-.hud-image-preview {
-  position: absolute;
-  z-index: 1000;
-  max-width: 360px;
-  max-height: 270px;
-  border: 1px solid rgba(255, 255, 255, 0.31);
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   pointer-events: none;
 }
 
+.hud-image-preview {
+  position: absolute;
+  z-index: 1000;
+  max-width: 380px;
+  max-height: 280px;
+  border: 1px solid var(--border-glass-bright);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65);
+  pointer-events: none;
+}
+
+/* ---- Context Menu ------------------------------------------------- */
 .hud-menu {
-  padding: 4px;
+  padding: 5px;
   pointer-events: auto;
-  min-width: 140px;
+  min-width: 155px;
 }
 
 .hud-menu-item {
-  padding: 6px 8px;
-  border-radius: 4px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   white-space: nowrap;
+  color: #f1f5f9;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
 .hud-menu-item:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(59, 130, 246, 0.28);
+  color: #ffffff;
 }
 
 .hud-menu-item.primary {
   font-weight: 700;
+  color: var(--accent-hover);
 }
 
 .hud-menu-separator {
   height: 1px;
-  margin: 4px 2px;
-  background: rgba(255, 255, 255, 0.16);
+  margin: 4px 3px;
+  background: var(--border-glass);
+}
+
+.hud-menu-header {
+  padding: 4px 8px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-glass);
+  margin-bottom: 3px;
 }

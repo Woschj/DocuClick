@@ -74,7 +74,9 @@ public static class DrawIoConverter
             n.Id, n.Text ?? "", n.X, n.Y, n.Width, n.Height,
             IsCurrent: false,
             IsDecisionPoint: n.Text == CanvasFlowWriter.DecisionPointLabel,
-            IsPathStart: n.Text?.StartsWith(CanvasFlowWriter.PathStartPrefix, StringComparison.Ordinal) ?? false)).ToList();
+            IsPathStart: n.Text?.StartsWith(CanvasFlowWriter.PathStartPrefix, StringComparison.Ordinal) ?? false,
+            Shape: n.Shape,
+            Color: n.Color)).ToList();
         var previewEdges = structuralEdges.Select(e => new PreviewEdge(e.FromNode, e.ToNode)).ToList();
         var tagged = FlowPreviewBranching.TagBranches(new FlowPreview(previewNodes, previewEdges));
 
@@ -95,7 +97,12 @@ public static class DrawIoConverter
         foreach (var node in tagged.Nodes)
         {
             var (row, _) = slotOf[node.Id];
-            var height = node.IsDecisionPoint || node.IsPathStart ? MarkerHeight : CardHeightFor(node.Label);
+            var canvasNode = textNodes[node.Id];
+            var hasCustomShape = !string.IsNullOrEmpty(canvasNode.Shape);
+            var hasScreenshot = FindScreenshotPath(canvas, canvasNode, outputPath) is not null;
+            var height = node.IsDecisionPoint || node.IsPathStart || hasCustomShape || !hasScreenshot
+                ? MarkerHeight
+                : CardHeightFor(node.Label);
             rowHeight[row] = Math.Max(rowHeight.GetValueOrDefault(row), height);
         }
 
@@ -129,6 +136,12 @@ public static class DrawIoConverter
             else if (node.IsPathStart)
             {
                 cellId = BuildPathStartMarker(root, x, cellY, canvasNode.Text!, accent);
+            }
+            else if (!string.IsNullOrEmpty(canvasNode.Shape) || FindScreenshotPath(canvas, canvasNode, outputPath) is null)
+            {
+                var shape = canvasNode.Shape ?? "round-rectangle";
+                var color = !string.IsNullOrEmpty(canvasNode.Color) ? canvasNode.Color : accent;
+                cellId = BuildFlowchartShape(root, x, cellY, canvasNode.Text ?? "", shape, color);
             }
             else
             {
@@ -207,6 +220,39 @@ public static class DrawIoConverter
             new XAttribute("style",
                 $"rounded=1;arcSize=30;whiteSpace=wrap;html=1;fillColor=#F0FDF4;strokeColor={color};strokeWidth=2;" +
                 $"fontColor=#14532D;fontStyle=1;fontSize=12;"),
+            new XAttribute("vertex", "1"),
+            new XAttribute("parent", "1"),
+            new XElement("mxGeometry",
+                new XAttribute("x", Fmt(markerX)), new XAttribute("y", Fmt(y)),
+                new XAttribute("width", Fmt(MarkerWidth)), new XAttribute("height", Fmt(MarkerHeight)),
+                new XAttribute("as", "geometry"))));
+        return id;
+    }
+
+    private static string BuildFlowchartShape(XElement root, double x, double y, string label, string shape, string color)
+    {
+        var id = "shape_" + Guid.NewGuid().ToString("N");
+        var markerX = x + (CardWidth - MarkerWidth) / 2;
+        var style = shape.ToLowerInvariant() switch
+        {
+            "ellipse" =>
+                $"ellipse;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor={color};strokeWidth=2;fontColor=#065F46;fontStyle=1;fontSize=12;",
+            "diamond" =>
+                $"rhombus;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor={color};strokeWidth=2;fontColor=#92400E;fontStyle=1;fontSize=12;",
+            "rhomboid" =>
+                $"shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#ECFEFF;strokeColor={color};strokeWidth=2;fontColor=#155E75;fontStyle=1;fontSize=12;",
+            "tag" =>
+                $"shape=document;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#F0FDFA;strokeColor={color};strokeWidth=2;fontColor=#115E59;fontStyle=1;fontSize=12;",
+            "rectangle" =>
+                $"shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#FEFCE8;strokeColor={color};strokeWidth=2;fontColor=#854D0E;fontStyle=0;fontSize=12;",
+            _ =>
+                $"rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor={color};strokeWidth=2;fontColor=#1E40AF;fontStyle=1;fontSize=12;"
+        };
+
+        root.Add(new XElement("mxCell",
+            new XAttribute("id", id),
+            new XAttribute("value", label),
+            new XAttribute("style", style),
             new XAttribute("vertex", "1"),
             new XAttribute("parent", "1"),
             new XElement("mxGeometry",

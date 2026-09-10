@@ -110,7 +110,41 @@ public sealed class CanvasFlowWriter : IFlowWriter
             throw new InvalidOperationException("Kein Ausgabeordner konfiguriert.");
         }
 
-        _canvasPath = Path.Combine(_config.OutputPath, canvasFileName);
+        var fullPath = Path.Combine(_config.OutputPath, canvasFileName);
+        if (_canvasPath == fullPath && _doc is not null && _doc.Nodes.Count > 0)
+        {
+            // Session already open in memory: keep current cursor or apply pending anchor without moving to a new column
+            if (_pendingResumeAnchor is { } anchor && _doc.Nodes.Any(n => n.Id == anchor.NodeId))
+            {
+                _cursorNodeId = anchor.NodeId;
+                _cursorX = anchor.X;
+                _cursorY = anchor.Y;
+                _pendingResumeAnchor = null;
+            }
+            else if (_cursorNodeId is not null && _doc.Nodes.Any(n => n.Id == _cursorNodeId))
+            {
+                // Current cursor is already established and valid — keep it!
+            }
+            else
+            {
+                var targetIds = _doc.Edges.Where(e => !e.Manual).Select(e => e.ToNode).ToHashSet();
+                var root = _doc.Nodes
+                    .Where(n => n.Type == "text" && !targetIds.Contains(n.Id))
+                    .OrderBy(n => n.Y).ThenBy(n => n.X)
+                    .FirstOrDefault();
+
+                if (root is not null)
+                {
+                    var tip = FindBranchTip(root);
+                    _cursorNodeId = tip.Id;
+                    _cursorX = tip.X;
+                    _cursorY = tip.Y;
+                }
+            }
+            return;
+        }
+
+        _canvasPath = fullPath;
         _sessionName = Path.GetFileNameWithoutExtension(canvasFileName);
         _doc = LoadOrCreate(_canvasPath);
         _nextColumnX = _doc.Nodes.Count > 0 ? _doc.Nodes.Max(n => n.X) + NodeWidth + BranchColumnSpacing : 0;
@@ -159,6 +193,14 @@ public sealed class CanvasFlowWriter : IFlowWriter
         _pendingResumeAnchor = null;
     }
 
+    public void Pause()
+    {
+        if (_canvasPath is not null)
+        {
+            Save();
+        }
+    }
+
     public void Stop()
     {
         if (_canvasPath is not null)
@@ -168,6 +210,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
         }
 
         _cursorNodeId = null;
+        _canvasPath = null;
     }
 
     /// <summary>
@@ -476,7 +519,9 @@ public sealed class CanvasFlowWriter : IFlowWriter
                     n.Id, label, n.X, n.Y, n.Width, n.Height,
                     n.Id == _cursorNodeId, isDecisionPoint, isPathStart,
                     PathName: isPathStart ? ExtractPathName(n) : null,
-                    ImagePath: imagePath);
+                    ImagePath: imagePath,
+                    Shape: n.Shape,
+                    Color: n.Color);
             })
             .ToList();
         var edges = _doc.Edges.Select(e => new PreviewEdge(e.FromNode, e.ToNode, e.Manual)).ToList();
@@ -691,13 +736,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
 
         _doc.Edges.Add(new CanvasEdge { Id = Guid.NewGuid().ToString("N"), FromNode = fromNodeId, ToNode = toNodeId, Manual = true });
 
-        // Relayout immediately, not just at Stop(): a cross-connect is
-        // exactly the action whose visual result (does the new line look
-        // clean or does it cross other branches?) the user is checking
-        // right when they make it — waiting until the whole session ends
-        // left every intermediate cross-connect looking exactly as messy
-        // as the still-live-accumulated positions until then.
-        Relayout();
+        // Manual connection added: skip Relayout() so manually arranged node positions are preserved.
         Save();
         return new BranchActionResult(true);
     }
@@ -705,15 +744,8 @@ public sealed class CanvasFlowWriter : IFlowWriter
     /// <summary>
     /// Only ordinary content nodes qualify, on both ends — see
     /// <see cref="IFlowWriter.DisconnectNodes"/>. Removes any edge between
-    /// them, structural or manual: cutting a structural edge just turns
-    /// <paramref name="toNodeId"/>'s node into a new isolated root (or the
-    /// root of whatever subtree still hangs off it) — Relayout()'s grid
-    /// layout already has a fallback for nodes with no incoming edge (used
-    /// for every fresh session start), so no separate stitch-repair is
-    /// needed the way DeleteNode's cascading removal requires. Decision
-    /// points/path-starts stay excluded on both ends — that marker check,
-    /// not the manual/structural distinction, is the actual safety
-    /// boundary here.
+    /// them, structural or manual. Decision points/path-starts stay excluded on both ends.
+    /// Preserves manual node positions by skipping Relayout().
     /// </summary>
     public BranchActionResult DisconnectNodes(string fromNodeId, string toNodeId)
     {
@@ -733,8 +765,6 @@ public sealed class CanvasFlowWriter : IFlowWriter
         }
 
         _doc.Edges.Remove(edge);
-
-        Relayout(); // see ConnectNodes' own comment on relaying out immediately
         Save();
         return new BranchActionResult(true);
     }
@@ -781,12 +811,12 @@ public sealed class CanvasFlowWriter : IFlowWriter
             _cursorY = y;
         }
 
-        Save();
+        ScheduleBackgroundSave();
         return new BranchActionResult(true);
     }
 
     /// <summary>See <see cref="IFlowWriter.AddManualNode"/> — like MoveNode, deliberately skips Relayout().</summary>
-    public BranchActionResult AddManualNode(string label, double x, double y)
+    public BranchActionResult AddManualNode(string label, double x, double y, string? shape = null, string? color = null)
     {
         var node = new CanvasNode
         {
@@ -795,12 +825,30 @@ public sealed class CanvasFlowWriter : IFlowWriter
             Text = label,
             X = x,
             Y = y,
-            Width = NodeWidth,
-            Height = NodeHeight
+            Width = shape switch
+            {
+                "diamond" => 180,
+                "ellipse" => 160,
+                "rhomboid" => 200,
+                "tag" => 200,
+                "rectangle" => 220,
+                _ => NodeWidth
+            },
+            Height = shape switch
+            {
+                "diamond" => 90,
+                "ellipse" => 80,
+                "rhomboid" => 80,
+                "tag" => 100,
+                "rectangle" => 140,
+                _ => TextNodeHeight
+            },
+            Shape = shape,
+            Color = color
         };
         _doc.Nodes.Add(node);
 
-        Save();
+        ScheduleBackgroundSave();
         return new BranchActionResult(true);
     }
 
@@ -896,19 +944,52 @@ public sealed class CanvasFlowWriter : IFlowWriter
 
     private static string BuildLabel(string? text)
     {
-        if (string.IsNullOrEmpty(text))
+        if (string.IsNullOrWhiteSpace(text))
         {
             return "(ohne Beschreibung)";
         }
 
-        var firstLine = text.Split('\n', 2)[0];
-        return firstLine.Length > 70 ? firstLine[..70] + "…" : firstLine;
+        return text.Trim();
     }
 
     private CanvasDocument LoadOrCreate(string path) => CanvasDocumentIo.Load(path);
 
+    private readonly object _saveLock = new();
+    private CancellationTokenSource? _saveCts;
+
+    private void ScheduleBackgroundSave()
+    {
+        lock (_saveLock)
+        {
+            _saveCts?.Cancel();
+            _saveCts = new CancellationTokenSource();
+            var token = _saveCts.Token;
+            Task.Delay(150, token).ContinueWith(t =>
+            {
+                if (!t.IsCanceled && _canvasPath is not null)
+                {
+                    try
+                    {
+                        var html = BuildLiveHtml();
+                        FileSaveRetry.Save(_canvasPath!, () => File.WriteAllText(_canvasPath!, html));
+                    }
+                    catch (Exception ex)
+                    {
+                        LogService.Log($"CanvasFlowWriter background save failed: {ex.Message}");
+                    }
+                }
+            }, TaskScheduler.Default);
+        }
+    }
+
     private void Save()
     {
+        lock (_saveLock)
+        {
+            _saveCts?.Cancel();
+            _saveCts = null;
+        }
+
         var html = BuildLiveHtml();
         FileSaveRetry.Save(_canvasPath!, () => File.WriteAllText(_canvasPath!, html));
     }

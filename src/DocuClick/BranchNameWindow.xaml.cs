@@ -35,6 +35,15 @@ public partial class BranchNameWindow : Window
             BranchNameBox.Focus();
             BranchNameBox.SelectAll();
         };
+
+        BranchNameBox.PreviewKeyDown += (s, e) =>
+        {
+            if (e.Key == System.Windows.Input.Key.Enter && (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) == System.Windows.Input.ModifierKeys.Control)
+            {
+                e.Handled = true;
+                OnSetClicked(s, e);
+            }
+        };
     }
 
     private void OnSetClicked(object sender, RoutedEventArgs e)

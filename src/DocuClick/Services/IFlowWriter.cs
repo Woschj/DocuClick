@@ -17,7 +17,8 @@ namespace DocuClick.Services;
 public sealed record PreviewNode(
     string Id, string Label, double X, double Y, double Width, double Height,
     bool IsCurrent, bool IsDecisionPoint, bool IsPathStart,
-    string? PathId = null, string? PathName = null, string? ImagePath = null);
+    string? PathId = null, string? PathName = null, string? ImagePath = null,
+    string? Shape = null, string? Color = null);
 
 /// <summary>One connector line between two nodes, for the tree-preview overlay.</summary>
 public sealed record PreviewEdge(string FromId, string ToId, bool Manual = false);
@@ -328,6 +329,7 @@ public readonly record struct PathInfo(string PathStartNodeId, string Name, int 
 public interface IFlowWriter
 {
     void StartSession(string fileName);
+    void Pause();
     void Stop();
     void AddClickNode(string description, Bitmap screenshot, DateTime timestamp);
 
@@ -451,5 +453,5 @@ public interface IFlowWriter
     /// *not* re-run the auto-layout — the whole point is placing it exactly
     /// where the user right-clicked.
     /// </summary>
-    BranchActionResult AddManualNode(string label, double x, double y);
+    BranchActionResult AddManualNode(string label, double x, double y, string? shape = null, string? color = null);
 }

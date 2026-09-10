@@ -76,18 +76,7 @@ public static class ScreenshotService
     private static Rectangle? GetForegroundWindowBounds()
     {
         var hwnd = ForegroundWindowService.GetHandle();
-        if (hwnd == 0)
-        {
-            return null;
-        }
-
-        if (!NativeMethods.GetWindowRect(hwnd, out var rect))
-        {
-            return null;
-        }
-
-        var bounds = new Rectangle(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top);
-        return bounds.Width >= MinimumWindowDimension && bounds.Height >= MinimumWindowDimension ? bounds : null;
+        return GetVisibleWindowBounds(hwnd);
     }
 
     public static Point ToLocal(Point screenPoint, Rectangle referenceBounds) =>
@@ -113,7 +102,32 @@ public static class ScreenshotService
             root = hwnd;
         }
 
-        if (!NativeMethods.GetWindowRect(root, out var rect))
+        return GetVisibleWindowBounds(root);
+    }
+
+    private static Rectangle? GetVisibleWindowBounds(nint hwnd)
+    {
+        if (hwnd == 0)
+        {
+            return null;
+        }
+
+        // On Windows 10/11, GetWindowRect includes the invisible 7-8px drop-shadow
+        // and resize margins around windows. DwmGetWindowAttribute with
+        // DWMWA_EXTENDED_FRAME_BOUNDS returns the actual visible window frame,
+        // avoiding ugly desktop-background artifacts around captured windows.
+        NativeMethods.RECT rect;
+        var hr = NativeMethods.DwmGetWindowAttribute(
+            hwnd,
+            NativeMethods.DWMWA_EXTENDED_FRAME_BOUNDS,
+            out var dwmRect,
+            System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.RECT>());
+
+        if (hr == 0 && dwmRect.Right > dwmRect.Left && dwmRect.Bottom > dwmRect.Top)
+        {
+            rect = dwmRect;
+        }
+        else if (!NativeMethods.GetWindowRect(hwnd, out rect))
         {
             return null;
         }

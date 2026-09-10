@@ -7,8 +7,8 @@
 
     <DockPanel Margin="20">
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0" DockPanel.Dock="Bottom">
-            <Button Content="Abbrechen" Width="100" Margin="0,0,8,0" Style="{StaticResource ModernButton}" Click="OnCancelClicked"/>
-            <Button Content="Speichern" Width="100" Style="{StaticResource PrimaryButton}" Click="OnSaveClicked"/>
+            <Button Content="Abbrechen" Width="100" Margin="0,0,8,0" Style="{StaticResource ModernButton}" IsCancel="True" Click="OnCancelClicked"/>
+            <Button Content="Speichern" Width="100" Style="{StaticResource PrimaryButton}" IsDefault="True" Click="OnSaveClicked"/>
         </StackPanel>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto">

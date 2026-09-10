@@ -124,6 +124,11 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetWindowRect(nint hWnd, out RECT lpRect);
 
+    internal const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
+
+    [LibraryImport("dwmapi.dll")]
+    internal static partial int DwmGetWindowAttribute(nint hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct NOTIFYICONIDENTIFIER
     {
