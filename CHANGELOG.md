@@ -7,11 +7,16 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
-## [1.12.1] - 2026-09-11
+## [1.12.2] - 2026-09-11
 
-### 📚 Dokumentation
-- **README ergänzt**: SOP-Guide, Kanten-Farbpalette/Linienstil-Menü, manuelles Bild-Einfügen und ein neuer Abschnitt ["In Obsidian einbinden"](README.md#in-obsidian-einbinden) waren in v1.12.0 im Code fertig, aber nicht dokumentiert — nachgeholt, inkl. Schritt-für-Schritt-Anleitung zur Installation des dafür nötigen Obsidian-Plugins (*HTML Embed* oder *Local HTML Embed*).
-- **Changelog korrigiert**: der in v1.11.1 dokumentierte Obsidian-Einbindungscode entsprach nicht der tatsächlich kopierten Syntax (`file:`/`height:`-Schlüssel statt der echten schlüssellosen Zeilen); ein dort ebenfalls erwähntes Obsidian-Modal im Standalone-HTML-Viewer existiert noch nicht — beides richtiggestellt.
+### 📑 Vorkonfigurierte Obsidian-Vault-Integration & Plugin-Bundle
+- **Vorkonfiguriertes Obsidian-Plugin (`obsidian-html-plugin`)**:
+  - `OutputTemplate` enthält nun den Ordner `.obsidian/plugins/obsidian-html-plugin` **bereits vollständig vorkonfiguriert und gepatcht**.
+  - Der Script-Sandbox-Patch (`allow-scripts allow-same-origin`) und der Vault-Save-Listener (`docuclick-save`) sind bereits integriert — beim Öffnen des Ausgabeordners als Obsidian-Vault funktioniert alles direkt ohne manuelles Frickeln am Code!
+  - `OutputTemplate/.obsidian/app.json` aktiviert `"showUnsupportedFiles": true`, sodass `.html`-Abläufe sofort im Obsidian-Dateibaum sichtbar sind.
+  - Das vorkonfigurierte Plugin wird bei jedem Release als separates `obsidian-html-plugin.zip` bereitgestellt, um es einfach in bestehende Vaults entpacken zu können.
+- **Umfassende Anleitung in `README.md` und `OutputTemplate/README.md`**:
+  - Schritt-für-Schritt-Anleitung für Out-of-the-Box Zero-Setup, Reinkopieren in bestehende Vaults sowie alternative manuelle Installation aus dem Obsidian Community Store.
 
 ## [1.12.0] - 2026-09-11
 

@@ -66,6 +66,66 @@ Alltags-Workflow:
   Ablauf-Übersicht einen Abzweigungspunkt setzen und benannte Pfade
   anlegen (siehe [Abzweigungen im Ablauf](#abzweigungen-im-ablauf)).
 
+## Obsidian-Integration (Direkte Nutzung im Vault)
+
+DocuClick erzeugt vollkommen autarke `.html`-Abläufe (inklusive eingebetteter Screenshots und Canvas-Daten). In Obsidian können diese Abläufe mit dem angepassten Plugin **HTML Reader** (`obsidian-html-plugin`) direkt per Klick im Dateibaum als interaktiver Tab geöffnet und vollumfänglich bearbeitet werden — inklusive Zoom, Suche, Schritt-für-Schritt-Anleitung (SOP Guide) und automatischer Rückspeicherung in den Vault!
+
+### Liefern wir alles mit? (Out-of-the-Box / Zero-Setup)
+**Ja!** Es muss nichts am Plugin-Code per Hand angepasst werden:
+* Im vorkonfigurierten [OutputTemplate/](OutputTemplate/) (bzw. `OutputTemplate.zip` auf der [Release-Seite](../../releases)) ist der Ordner `.obsidian/plugins/obsidian-html-plugin` **bereits vollständig gepatcht und vorinstalliert**.
+* **Schnellstart**:
+  1. `OutputTemplate.zip` von den Releases herunterladen und an den gewünschten Speicherort entpacken.
+  2. In Obsidian auf **"Open folder as vault"** klicken und diesen Ordner auswählen.
+  3. In Obsidian: *Settings* → *Community plugins* → *Restricted mode* deaktivieren (*Turn off safe mode*).
+  4. Fertig! Ein Klick auf eine beliebige `.html`-Datei öffnet sofort den interaktiven Ablauf-Viewer direkt in Obsidian.
+
+---
+
+### Integration in einen bestehenden Obsidian-Vault
+
+Falls du DocuClick in deinen bereits bestehenden Vault integrieren möchtest:
+
+#### Variante A: Fertiges Plugin reinkopieren (Empfohlen)
+1. Lade `obsidian-html-plugin.zip` von den [Releases](../../releases) herunter (oder nimm den Ordner `OutputTemplate/.obsidian/plugins/obsidian-html-plugin`).
+2. Entpacke den Ordner `obsidian-html-plugin` direkt in deinen Vault unter `.obsidian/plugins/`.
+3. In Obsidian: *Settings* → *Community plugins* → Aktualisieren-Symbol (Reload) klicken → **HTML Reader** aktivieren.
+4. In Obsidian: *Settings* → *Files and links* → Option **"Detect all file extensions"** aktivieren (damit `.html`-Dateien im Dateibaum angezeigt werden).
+
+#### Variante B: Manuelle Installation & Patching aus dem Obsidian Community Store
+Falls du das Original-Plugin *"HTML Reader"* (von Nuthrash) aus dem Obsidian Community Plugin Store installieren möchtest:
+1. In Obsidian: *Settings* → *Community plugins* → Nach **"HTML Reader"** suchen und installieren/aktivieren.
+2. In den Plugin-Einstellungen: **Operation Mode** auf **"Unrestricted"** stellen.
+3. Da Electron/Obsidian aus Sicherheitsgründen standardmäßig Scriptausführung in iframes blockiert und keine Schreibrechte aus dem iframe heraus gewährt, sind zwei kleine Anpassungen in `.obsidian/plugins/obsidian-html-plugin/main.js` nötig:
+   * **1. Sandbox / Script-Rechte (ab Zeile ~23420):**
+     Suche nach `switch (this.settings.opMode) {` und füge vor `iframe.srcdoc = ...` ein:
+     ```javascript
+     try { iframe.removeAttribute("csp"); } catch(e){}
+     try { iframe.sandbox = "allow-scripts allow-same-origin allow-forms allow-popups allow-modals"; } catch(e){}
+     ```
+   * **2. Vault-Speicher-Listener (in `async onload()`, ab Zeile ~23760):**
+     Füge vor `await this.loadSettings();` den Event-Listener ein:
+     ```javascript
+     window.addEventListener("message", async (event) => {
+       if (event.data && event.data.type === "docuclick-save") {
+         const { fileName, htmlContent, canvasDoc } = event.data;
+         if (!fileName || !htmlContent) return;
+         try {
+           const adapter = this.app.vault.adapter;
+           const files = this.app.vault.getFiles();
+           const targetFile = files.find((f) => f.name === fileName || f.path.endsWith("/" + fileName));
+           const targetPath = targetFile ? targetFile.path : fileName;
+           await adapter.write(targetPath, htmlContent);
+           if (canvasDoc) {
+             const canvasPath = targetPath.replace(/\.html$/i, ".canvas");
+             await adapter.write(canvasPath, JSON.stringify(canvasDoc, null, 2));
+           }
+           new Notice("DocuClick: " + fileName + " gespeichert");
+         } catch (err) { console.error("DocuClick save failed:", err); }
+       }
+     });
+     ```
+   *(Tipp: Deshalb empfehlen wir Variante A — dort ist dieser Patch bereits fertig enthalten!)*
+
 ## Funktionsumfang
 
 Tray-Icon-Bedienung: **Linksklick öffnet die Einstellungen** (ein versehentlicher

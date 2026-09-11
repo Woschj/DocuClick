@@ -46,6 +46,10 @@ jobs:
         run: Compress-Archive -Path OutputTemplate/* -DestinationPath OutputTemplate.zip
         shell: pwsh
 
+      - name: Zip Obsidian plugin
+        run: Compress-Archive -Path OutputTemplate/.obsidian/plugins/obsidian-html-plugin -DestinationPath obsidian-html-plugin.zip
+        shell: pwsh
+
       - name: Upload build artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -57,6 +61,12 @@ jobs:
         with:
           name: OutputTemplate
           path: OutputTemplate.zip
+
+      - name: Upload obsidian plugin artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: obsidian-html-plugin
+          path: obsidian-html-plugin.zip
 
   release:
     needs: build
@@ -75,10 +85,16 @@ jobs:
           name: OutputTemplate
           path: publish
 
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: obsidian-html-plugin
+          path: publish
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
             publish/DocuClick-win-x64.zip
             publish/OutputTemplate.zip
+            publish/obsidian-html-plugin.zip
           generate_release_notes: true
