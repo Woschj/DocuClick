@@ -7,6 +7,12 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [1.12.1] - 2026-09-11
+
+### 📚 Dokumentation
+- **README ergänzt**: SOP-Guide, Kanten-Farbpalette/Linienstil-Menü, manuelles Bild-Einfügen und ein neuer Abschnitt ["In Obsidian einbinden"](README.md#in-obsidian-einbinden) waren in v1.12.0 im Code fertig, aber nicht dokumentiert — nachgeholt, inkl. Schritt-für-Schritt-Anleitung zur Installation des dafür nötigen Obsidian-Plugins (*HTML Embed* oder *Local HTML Embed*).
+- **Changelog korrigiert**: der in v1.11.1 dokumentierte Obsidian-Einbindungscode entsprach nicht der tatsächlich kopierten Syntax (`file:`/`height:`-Schlüssel statt der echten schlüssellosen Zeilen); ein dort ebenfalls erwähntes Obsidian-Modal im Standalone-HTML-Viewer existiert noch nicht — beides richtiggestellt.
+
 ## [1.12.0] - 2026-09-11
 
 ### 📖 Schritt-für-Schritt-Anleitung (SOP Guide) mit Multi-Ablauf-Unterstützung
@@ -29,11 +35,11 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 - **Persistenz im Canvas-Modell**:
   - `Color` und `LineStyle` werden dauerhaft in `CanvasEdge` und dem Canvas-JSON gespeichert.
 
-### 📷 Manuelle Bildelemente & 100% App-Parität
+### 📷 Manuelle Bildelemente & App-Parität
 - **Bilder ohne Screenshot einfügen**:
-  - Neue Option *"Schritt mit Bild einfügen..."* im Canvas-Rechtsklick-Menü erlaubt das direkte Auswählen lokaler Bilddateien über den nativen Dateidialog.
-- **100% Feature-Parität**:
-  - Alle Interaktionen, Stile, Menüs und Anleitungsfeatures verhalten sich in der Desktop-App und im autarken HTML-Viewer zu 100 % identisch.
+  - Neue Option *"📷 Bild einfügen..."* im Canvas-Rechtsklick-Menü erlaubt das Auswählen lokaler Bilddateien (PNG/JPG/JPEG/WEBP/BMP) — in der Desktop-App über den nativen Windows-Dateidialog, im Standalone-HTML-Viewer über den Datei-Auswahldialog des Browsers.
+- **Feature-Parität**:
+  - SOP-Guide, Kanten-Kontextmenü und Flowchart-Elemente-Palette funktionieren in der Desktop-App und im autarken HTML-Viewer funktional identisch (unabhängige Implementierungen, kleinere Wortlaut-Unterschiede möglich).
 
 ## [1.11.1] - 2026-09-11
 
@@ -42,9 +48,8 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
   - Alle Screenshots werden während der Aufnahme direkt im Arbeitsspeicher Base64-codiert und gecacht (`_base64Cache`).
   - Der Live-`.html`-Ablauf speichert die Bilder als eingebettete `data:image/png;base64,...`-URIs. Dadurch sind die erzeugten HTML-Abläufe 100% autark und funktionieren in Obsidian (unter iframes / Plugins) ohne gebrochene relative Pfade oder Dateisystem-Blockaden.
 - **Neuer "Obsidian"-Button in der Top-Leiste**:
-  - Kopiert mit einem Klick den fertigen Einbindungscode (` ```html-embed\nfile: <filename>.html\nheight: 700\n``` `) für die aktuelle Session in die Zwischenablage und zeigt einen erklärenden Hinweis.
-- **Obsidian-Modal im Standalone-HTML-Viewer**:
-  - Neuer "Obsidian"-Button im schwebenden Action-Dock. Öffnet einen übersichtlichen Dialog mit Einbindungscodes sowohl für das empfohlene Plugin *Local HTML Embed* / *HTML Embed* als auch für *Embed HTML* (`![[...]]`) mit 1-Click-Kopier-Buttons.
+  - Kopiert mit einem Klick den fertigen Einbindungscode (` ```html-embed\n<filename>.html\n750\n``` `, kompatibel mit dem Plugin *Local HTML Embed*) für die aktuelle Session in die Zwischenablage. Liegt der konfigurierte Ausgabeordner selbst in einem Obsidian-Vault, öffnet der Button die Datei stattdessen direkt in Obsidian statt nur zu kopieren.
+  - Ein eigenes Obsidian-Modal im Standalone-HTML-Viewer (analog zum App-Button) ist noch nicht umgesetzt — siehe README für die manuelle Anpassung des Codeblocks, falls stattdessen das Plugin *HTML Embed* (`file:`/`height:`-Syntax) genutzt wird.
 - **Iframe- & Einbettungs-Anpassung**:
   - Erkennt automatisch (`body.embedded-in-iframe`), wenn der Ablauf in einem Obsidian-Iframe gerendert wird, blendet ungeeignete Desktop-File-Picker aus und optimiert die Abstände des Docks und der Titelleiste.
 

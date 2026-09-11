@@ -8,7 +8,8 @@ einzelne, interaktive `.html`-Datei schreibt — der **Ablauf**. Die Datei
 Ablauf-Übersicht bearbeiten, ganz ohne zusätzliche Software. Aus einer
 solchen Ablauf-Session lässt sich jederzeit zusätzlich ein voll
 editierbares draw.io-Flowchart oder eine einzelne, komplett eigenständige
-HTML-Kopie zum Weitergeben exportieren. Details zum Aufnahme-Format und
+HTML-Kopie zum Weitergeben exportieren — oder sich per Community-Plugin
+direkt in eine Obsidian-Notiz einbetten. Details zum Aufnahme-Format und
 den Exporten weiter unten.
 
 App-Icon: [Assets/app.ico](src/DocuClick/Assets/app.ico) (im selben
@@ -168,6 +169,13 @@ enthält vier Bereiche:
   ganzen Fensters, direkt hier pro Screenshot umschaltbar statt nur global
   über die Einstellungen; der Regler passt die Größe dieses Bereichs live
   an (mit Vorschau-Rahmen um den Cursor).
+- **Obsidian**: kopiert einen Einbindungs-Codeblock für die aktuelle
+  Session in die Zwischenablage (siehe [In Obsidian
+  einbinden](#in-obsidian-einbinden) für Details und die dafür nötige
+  Plugin-Installation). Liegt der konfigurierte Ausgabeordner selbst in
+  einem Obsidian-Vault (erkannt am `.obsidian`-Unterordner), öffnet der
+  Button stattdessen direkt die aktuelle Datei in Obsidian, statt nur zu
+  kopieren.
 
 Zusätzlich öffnet sich automatisch die
 **Ablauf-Übersicht** — ein frei verschiebbares, größenveränderliches
@@ -195,14 +203,18 @@ Ablauf direkt bearbeiten:
   Mauszeigers vier kleine Ziehpunkte (oben/rechts/unten/links) — von einem
   davon auf eine andere Karte ziehen erstellt eine manuelle Querverbindung
   (großzügiger Einrast-Radius, fühlt sich an wie in draw.io/Visio). Rein
-  additiv (verändert nichts an der bestehenden Struktur). Per Rechtsklick
-  auf die Verbindungslinie ("Verbindung löschen") oder <kbd>Entf</kbd>/
-  <kbd>Rücktaste</kbd> bei ausgewählter Verbindung wieder entfernbar — das
-  gilt für **jede** Verbindung, nicht nur manuell hinzugefügte: auch eine
-  strukturelle Kante aus der eigentlichen Aufnahme lässt sich so auftrennen
-  (der abgetrennte Knoten wird dadurch zu einer neuen, eigenständigen
-  Wurzel im Baum statt gelöscht zu werden), nur die Kanten rund um
-  Abzweigungspunkte/Pfad-Anfänge bleiben geschützt.
+  additiv (verändert nichts an der bestehenden Struktur), standardmäßig
+  durchgezogen und in der Akzentfarbe des Ausgangsknotens statt gestrichelt
+  grau. Per Rechtsklick auf die Verbindungslinie öffnet sich ein Menü mit
+  9 Akzentfarben, "Linienstil: Durchgezogen/Gestrichelt" zum Umschalten,
+  "⇄ Richtung umkehren" und "Verbindung löschen" — Farbe/Linienstil bleiben
+  dauerhaft in der Datei gespeichert. Löschen geht auch per <kbd>Entf</kbd>/
+  <kbd>Rücktaste</kbd> bei ausgewählter Verbindung — das gilt für **jede**
+  Verbindung, nicht nur manuell hinzugefügte: auch eine strukturelle Kante
+  aus der eigentlichen Aufnahme lässt sich so auftrennen (der abgetrennte
+  Knoten wird dadurch zu einer neuen, eigenständigen Wurzel im Baum statt
+  gelöscht zu werden), nur die Kanten rund um Abzweigungspunkte/Pfad-Anfänge
+  bleiben geschützt.
 - **Rechtsklick auf die leere Fläche** oder der **"+ Element"-Button** in
   der Werkzeugleiste (nur im großen Editier-Fenster): fügt eines von sechs
   Flowchart-Elementen an dieser Stelle ein — 🟢 Start/Ende, 🟦 Prozessschritt,
@@ -211,6 +223,11 @@ Ablauf direkt bearbeiten:
   Verbindungen angelegt, danach ganz normal umbenennbar, verschiebbar und
   verbindbar wie jeder aufgezeichnete Knoten auch; erscheinen auch im
   draw.io-Export als passende Vektorform.
+- **"📷 Bild einfügen..."** im selben Rechtsklick-Menü: fügt statt eines
+  leeren Flowchart-Elements einen Schritt mit einem selbst gewählten
+  Bild ein (öffnet einen Datei-Dialog für PNG/JPG/JPEG/WEBP/BMP) — nützlich
+  für Screenshots, die nicht live mit DocuClick aufgenommen wurden, oder
+  Diagramme/Fotos, die einen Schritt illustrieren sollen.
 - **Umschalt+Ziehen** wählt mehrere Knoten per Rahmen aus — Ziehen an
   irgendeiner der ausgewählten Karten verschiebt danach alle gemeinsam.
   <kbd>Entf</kbd>/<kbd>Rücktaste</kbd> löscht die Auswahl (Knoten wie
@@ -306,6 +323,32 @@ Aufnahme (auf derselben Datei) — DocuClick liest sie beim nächsten Start
 einfach wieder aus der Datei ein, ohne dass ein separater Speicherzustand
 nötig wäre.
 
+### Schritt-für-Schritt-Anleitung (SOP Guide)
+
+Der **"Anleitung"**-Button in der Werkzeugleiste (App wie auch der
+exportierten/geöffneten `.html`-Datei im Browser — funktioniert identisch
+ohne laufende DocuClick-Instanz) blendet eine Seitenleiste ein, die den
+Ablauf als lineare, lesbare Schritt-für-Schritt-Anleitung statt als
+Diagramm aufbereitet:
+
+- **Pfad-Filter** (Dropdown oben): "🌐 Gesamter Ablauf" zeigt alle
+  Schritte; ein einzelner Pfad zeigt nur dessen Schritte und hebt sie im
+  Diagramm hervor (`path-highlighted`), während der Rest abgeblendet wird
+  — die Ansicht zentriert sich automatisch auf den gewählten Pfad.
+- **Entscheidungskarten**: Ein Abzweigungspunkt erscheint als eigene
+  Bernstein-Karte mit einem Direkt-Button pro abgehendem Pfad (z. B.
+  "↳ Login-Fehler") — anklicken springt zum ersten Schritt dieses Pfads
+  und stellt den Filter automatisch darauf um.
+- **Pfad-Banner & Zusammenführungen**: farbige Trenner markieren, wo ein
+  neuer Pfad beginnt; ein "⇄ Zusammenführung"-Abzeichen markiert Knoten,
+  in denen mehrere Pfade wieder zusammenlaufen.
+- **Filter-Tabs**: "Alle Schritte" vs. "Nur Screenshots" (blendet reine
+  Flowchart-/Text-Knoten ohne Bild aus).
+
+Gedacht als druckbare/vorlesbare Kurzanleitung für jemanden, der den
+aufgezeichneten Ablauf einfach nachvollziehen will, ohne selbst im
+Diagramm herumzuklicken.
+
 Änderungen an den Hotkeys gelten sofort nach "Speichern" in den
 Einstellungen (kein Neustart nötig).
 
@@ -323,6 +366,73 @@ ohne laufende Aufnahme. Eine eigene "Ansatzpunkt für die nächste Session"-
 Markierung ist dafür nicht mehr nötig — praktisch bedeutet das: zum
 gezielten Fortsetzen einfach pausieren statt stoppen, den gewünschten
 Knoten anklicken und mit "Fortsetzen" weiteraufnehmen.
+
+## In Obsidian einbinden
+
+Da ein Ablauf eine ganz normale, eigenständige `.html`-Datei ist (Screenshots
+werden während der Aufnahme direkt Base64-eingebettet, keine externen
+Bild-Dateien nötig — siehe [Der Ablauf](#der-ablauf-interaktive-html-datei-drawio-als-export)),
+lässt er sich direkt in eine Obsidian-Notiz einbetten und bleibt darin voll
+interaktiv (zoombar, Anleitung, Klick auf Screenshot für Vollbild). Obsidian
+kann von Haus aus aber keine beliebigen `.html`-Dateien einbetten (nur
+Notizen, Bilder, Audio/Video/PDF) — dafür ist einmalig eines von zwei
+kostenlosen Community-Plugins nötig.
+
+### Plugin installieren
+
+1. In Obsidian: **Einstellungen → Community-Plugins** → falls noch nie
+   benutzt, Community-Plugins aktivieren.
+2. **Durchsuchen** anklicken und nach **"HTML Embed"** suchen (Autor "The
+   Pieza") → **Installieren** → **Aktivieren**.
+
+   Alternative: **"Local HTML Embed"** — einfachere Codeblock-Syntax (siehe
+   unten), zum Zeitpunkt dieser Anleitung aber ggf. noch nicht über die
+   Plugin-Suche auffindbar; falls nicht gelistet, das jeweils neueste
+   Release manuell von der Plugin-Seite auf GitHub in
+   `<Vault>/.obsidian/plugins/` entpacken und in den Community-Plugins
+   aktivieren.
+
+### Einbindungscode einfügen
+
+Der **"Obsidian"**-Button in DocuClicks Top-Leiste (siehe
+[oben](#top-leiste-ablauf-übersicht-und-neue-session)) kopiert für die
+aktuelle Session einen fertigen Codeblock in die Zwischenablage:
+
+````
+```html-embed
+Mein-Ablauf.html
+750
+```
+````
+
+Das entspricht direkt der Syntax von **"Local HTML Embed"** (Dateiname,
+optional Höhe in Pixeln in der zweiten Zeile). Diesen Block einfach in eine
+Obsidian-Notiz einfügen — fertig.
+
+Bei **"HTML Embed"** stattdessen dieses Format verwenden (`file:`/`height:`-
+Schlüssel):
+
+````
+```html-embed
+file: Mein-Ablauf.html
+height: 750
+```
+````
+
+In beiden Fällen ist der Dateiname **relativ zum Vault-Root** anzugeben —
+liegt die Datei in einem Unterordner (z. B. weil beim Session-Start ein
+Zielordner gewählt wurde, siehe [Zieldatei bei jedem
+Session-Start](#start-vs-neue-session-zieldatei)), den Unterordner-Pfad vor
+den Dateinamen ergänzen (z. B. `Prozesse/IT-Support/Mein-Ablauf.html`) — der
+von DocuClick kopierte Codeblock enthält nur den reinen Dateinamen.
+
+### Komfort: direkt aus DocuClick öffnen
+
+Ist der in den DocuClick-Einstellungen konfigurierte Ausgabeordner selbst
+das Root eines Obsidian-Vaults (erkannt am `.obsidian`-Unterordner darin),
+öffnet der "Obsidian"-Button die aktuelle Datei stattdessen direkt in
+Obsidian, statt nur den Codeblock zu kopieren — praktisch, wenn Ausgabe- und
+Vault-Ordner ohnehin derselbe sind.
 
 ## Start/Stopp per Hotkey
 
@@ -429,8 +539,8 @@ Neues Release erstellen (baut automatisch und hängt das Zip an ein neues
 GitHub Release):
 
 ```bash
-git tag v1.11.1
-git push origin v1.11.1
+git tag v1.12.1
+git push origin v1.12.1
 ```
 
 Offene Punkte: Feinschliff bei Multi-Monitor/DPI-Kantenfällen, robustere
@@ -445,7 +555,12 @@ flüssiger bei langen Sessions. Verschieben und neue Elemente platzieren
 speichert zusätzlich leicht entprellt (150 ms) im Hintergrund statt
 synchron bei jedem einzelnen Zwischenschritt, damit Ziehen nicht ruckelt;
 "Pausieren"/"Neue Session"/App-Ende erzwingen weiterhin einen sofortigen,
-vollständigen Speichervorgang.
+vollständigen Speichervorgang. Alle Bild-/Beschriftungs-/Ziehpunkt-Overlays
+laufen zusätzlich über einen gemeinsamen `requestAnimationFrame`-Takt statt
+unabhängig voneinander, und Overlays außerhalb des sichtbaren Bereichs
+werden bei schnellem Pan/Zoom übersprungen (Viewport-Culling); das
+Verschieben mehrerer ausgewählter Knoten sendet dafür nur eine einzige
+Nachricht statt einer pro Knoten.
 
 ### `tools/`
 
