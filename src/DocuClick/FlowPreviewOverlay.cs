@@ -151,11 +151,21 @@ public sealed class FlowPreviewOverlay : Window
     /// <summary>Fired when a connector's right-click menu confirms "Verbindung löschen" — (fromNodeId, toNodeId). The undo counterpart to <see cref="ConnectRequested"/>.</summary>
     public event Action<string, string>? DisconnectRequested;
 
+    /// <summary>Fired when an edge's color or line style is updated — (fromId, toId, color, lineStyle).</summary>
+    public event Action<string, string, string?, string?>? SetEdgeStyleRequested;
+
+    /// <summary>Fired when an edge's direction is reversed — (fromId, toId).</summary>
+    public event Action<string, string>? ReverseEdgeRequested;
+
     /// <summary>Fired when a large-mode drag-to-move gesture completes — (nodeId, x, y), the node's new position in its own real coordinate space. Never fires from the compact live-recording minimap, which has no drag-to-move gesture at all (see flow.js's mousedown handler).</summary>
     public event Action<string, double, double>? MoveRequested;
+    public event Action<IReadOnlyList<(string NodeId, double X, double Y)>>? BatchMoveRequested;
 
     /// <summary>Fired after the "+ Neuer Knoten hier" background context menu's naming dialog is confirmed — (label, x, y, shape, color), where the user right-clicked. Large mode only, same reasoning as <see cref="MoveRequested"/>.</summary>
     public event Action<string, double, double, string?, string?>? AddNodeRequested;
+
+    /// <summary>Fired after the "+ Bild einfügen" file dialog and naming dialog are confirmed — (label, imagePath, x, y).</summary>
+    public event Action<string, string, double, double>? AddImageNodeRequested;
 
     /// <summary>Fired when the header's close (✕) icon is clicked — App.xaml.cs hides rather than destroys the window, so <see cref="UpdatePreview"/> keeps the state current for whenever the TopBar's reopen button brings it back.</summary>
     public event Action? CloseRequested;
@@ -522,12 +532,50 @@ public sealed class FlowPreviewOverlay : Window
                 DisconnectRequested?.Invoke(root.GetProperty("fromId").GetString()!, root.GetProperty("toId").GetString()!);
                 break;
 
+            case "setEdgeStyle":
+            {
+                var fromId = root.GetProperty("fromId").GetString()!;
+                var toId = root.GetProperty("toId").GetString()!;
+                string? color = root.TryGetProperty("color", out var cProp) ? cProp.GetString() : null;
+                string? lineStyle = root.TryGetProperty("lineStyle", out var lsProp) ? lsProp.GetString() : null;
+                SetEdgeStyleRequested?.Invoke(fromId, toId, color, lineStyle);
+                break;
+            }
+
+            case "reverseEdge":
+            {
+                var fromId = root.GetProperty("fromId").GetString()!;
+                var toId = root.GetProperty("toId").GetString()!;
+                ReverseEdgeRequested?.Invoke(fromId, toId);
+                break;
+            }
+
             case "move":
                 MoveRequested?.Invoke(
                     root.GetProperty("nodeId").GetString()!,
                     root.GetProperty("x").GetDouble(),
                     root.GetProperty("y").GetDouble());
                 break;
+
+            case "moveBatch":
+            {
+                var list = new List<(string NodeId, double X, double Y)>();
+                if (root.TryGetProperty("moves", out var movesElem) && movesElem.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var m in movesElem.EnumerateArray())
+                    {
+                        var nid = m.GetProperty("nodeId").GetString()!;
+                        var mx = m.GetProperty("x").GetDouble();
+                        var my = m.GetProperty("y").GetDouble();
+                        list.Add((nid, mx, my));
+                    }
+                }
+                if (list.Count > 0)
+                {
+                    BatchMoveRequested?.Invoke(list);
+                }
+                break;
+            }
 
             case "addNode":
             {
@@ -544,6 +592,37 @@ public sealed class FlowPreviewOverlay : Window
                     if (nameWindow.ShowDialog() == true && nameWindow.BranchName is { } label)
                     {
                         AddNodeRequested?.Invoke(label, x, y, shape, color);
+                    }
+                }
+                finally
+                {
+                    NativeMethods.ModalDialogDepth--;
+                }
+                break;
+            }
+
+            case "addImageNode":
+            {
+                var x = root.GetProperty("x").GetDouble();
+                var y = root.GetProperty("y").GetDouble();
+
+                var dlg = new Microsoft.Win32.OpenFileDialog
+                {
+                    Title = "DocuClick - Bild auswählen",
+                    Filter = "Bilder (*.png;*.jpg;*.jpeg;*.webp;*.bmp)|*.png;*.jpg;*.jpeg;*.webp;*.bmp|Alle Dateien (*.*)|*.*"
+                };
+
+                NativeMethods.ModalDialogDepth++;
+                try
+                {
+                    if (dlg.ShowDialog(this) == true && System.IO.File.Exists(dlg.FileName))
+                    {
+                        var defaultLabel = System.IO.Path.GetFileNameWithoutExtension(dlg.FileName);
+                        var nameWindow = new BranchNameWindow("DocuClick - Neues Bild-Element", "Bezeichnung", defaultLabel) { Owner = this };
+                        if (nameWindow.ShowDialog() == true && nameWindow.BranchName is { } label)
+                        {
+                            AddImageNodeRequested?.Invoke(label, dlg.FileName, x, y);
+                        }
                     }
                 }
                 finally
@@ -839,7 +918,14 @@ public sealed class FlowPreviewOverlay : Window
                 imageUrl, n.Shape);
         }).ToList();
 
-        var edges = preview.Edges.Select(e => new EdgePayload(e.FromId, e.ToId, e.Manual)).ToList();
+        var nodeColorMap = nodes.ToDictionary(n => n.Id, n => n.Color);
+        var edges = preview.Edges.Select(e =>
+        {
+            var edgeColor = !string.IsNullOrEmpty(e.Color)
+                ? e.Color
+                : (nodeColorMap.TryGetValue(e.FromId, out var srcColor) && !string.IsNullOrEmpty(srcColor) ? srcColor : "#3b82f6");
+            return new EdgePayload(e.FromId, e.ToId, e.Manual, edgeColor, string.IsNullOrEmpty(e.LineStyle) ? "solid" : e.LineStyle);
+        }).ToList();
 
         return new PreviewPayload("preview", true, nodes, edges, isRecordedClick);
     }
@@ -934,7 +1020,7 @@ public sealed class FlowPreviewOverlay : Window
         bool IsMarker, bool IsDecisionPoint, bool IsPathStart, bool IsCurrent, bool HasChildren, string? PathName,
         string? ImageUrl, string? Shape);
 
-    private sealed record EdgePayload(string Source, string Target, bool Manual);
+    private sealed record EdgePayload(string Source, string Target, bool Manual, string? Color = null, string? LineStyle = "solid");
 
     private sealed record PreviewPayload(string Type, bool Large, List<NodePayload> Nodes, List<EdgePayload> Edges, bool IsRecordedClick);
 }

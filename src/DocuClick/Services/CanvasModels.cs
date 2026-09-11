@@ -45,6 +45,14 @@ public sealed class CanvasEdge
     [JsonPropertyName("docuClickManual")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool Manual { get; set; }
+
+    [JsonPropertyName("color")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Color { get; set; }
+
+    [JsonPropertyName("lineStyle")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LineStyle { get; set; }
 }
 
 /// <summary>Mirrors the plain-JSON shape of an Obsidian .canvas file.</summary>

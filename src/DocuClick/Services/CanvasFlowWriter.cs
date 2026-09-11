@@ -65,6 +65,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
     private double _cursorY;
     private double _nextColumnX;
     private (string NodeId, double X, double Y)? _pendingResumeAnchor;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _base64Cache = new();
 
     public CanvasFlowWriter(AppConfig config)
     {
@@ -321,8 +322,18 @@ public sealed class CanvasFlowWriter : IFlowWriter
 
         // Screenshots land in Attachments/<session>/ instead of flat in
         // Attachments/.
-        var imageRelativeToAttachments = AttachmentSaver.SaveScreenshot(_config, screenshot, timestamp, _sessionName);
+        var (imageRelativeToAttachments, imageBytes) = AttachmentSaver.SaveScreenshot(_config, screenshot, timestamp, _sessionName);
         var imageOutputRelativePath = Path.Combine(_config.AttachmentsFolder, imageRelativeToAttachments).Replace('\\', '/');
+
+        // Immediately cache the screenshot in memory as base64 data URI (zero disk re-read cost later)
+        try
+        {
+            _base64Cache[imageOutputRelativePath] = "data:image/png;base64," + Convert.ToBase64String(imageBytes);
+        }
+        catch
+        {
+            // Ignore - fallback file read will load it if needed
+        }
 
         var newY = _cursorNodeId is null ? _cursorY : _cursorY + NodeHeight + SequentialSpacing;
 
@@ -524,7 +535,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
                     Color: n.Color);
             })
             .ToList();
-        var edges = _doc.Edges.Select(e => new PreviewEdge(e.FromNode, e.ToNode, e.Manual)).ToList();
+        var edges = _doc.Edges.Select(e => new PreviewEdge(e.FromNode, e.ToNode, e.Manual, e.Color, e.LineStyle)).ToList();
         return FlowPreviewBranching.TagBranches(new FlowPreview(nodes, edges));
     }
 
@@ -734,7 +745,16 @@ public sealed class CanvasFlowWriter : IFlowWriter
             return new BranchActionResult(false);
         }
 
-        _doc.Edges.Add(new CanvasEdge { Id = Guid.NewGuid().ToString("N"), FromNode = fromNodeId, ToNode = toNodeId, Manual = true });
+        var fromNode = _doc.Nodes.FirstOrDefault(n => n.Id == fromNodeId);
+        _doc.Edges.Add(new CanvasEdge
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            FromNode = fromNodeId,
+            ToNode = toNodeId,
+            Manual = true,
+            Color = fromNode?.Color,
+            LineStyle = "solid"
+        });
 
         // Manual connection added: skip Relayout() so manually arranged node positions are preserved.
         Save();
@@ -765,6 +785,37 @@ public sealed class CanvasFlowWriter : IFlowWriter
         }
 
         _doc.Edges.Remove(edge);
+        Save();
+        return new BranchActionResult(true);
+    }
+
+    /// <summary>Updates color and line style of an edge.</summary>
+    public BranchActionResult SetEdgeStyle(string fromNodeId, string toNodeId, string? color, string? lineStyle)
+    {
+        var edge = _doc.Edges.FirstOrDefault(e => e.FromNode == fromNodeId && e.ToNode == toNodeId);
+        if (edge is null)
+        {
+            return new BranchActionResult(false);
+        }
+
+        edge.Color = color;
+        edge.LineStyle = lineStyle;
+        Save();
+        return new BranchActionResult(true);
+    }
+
+    /// <summary>Reverses direction of an edge.</summary>
+    public BranchActionResult ReverseEdge(string fromNodeId, string toNodeId)
+    {
+        var edge = _doc.Edges.FirstOrDefault(e => e.FromNode == fromNodeId && e.ToNode == toNodeId);
+        if (edge is null)
+        {
+            return new BranchActionResult(false);
+        }
+
+        edge.FromNode = toNodeId;
+        edge.ToNode = fromNodeId;
+        edge.Manual = true;
         Save();
         return new BranchActionResult(true);
     }
@@ -815,6 +866,51 @@ public sealed class CanvasFlowWriter : IFlowWriter
         return new BranchActionResult(true);
     }
 
+    /// <summary>Batch move for multiple nodes dragged together — performs all position updates in memory and schedules a single background save.</summary>
+    public BranchActionResult MoveNodes(IReadOnlyList<(string NodeId, double X, double Y)> moves)
+    {
+        bool anyMoved = false;
+        foreach (var (nodeId, x, y) in moves)
+        {
+            var node = _doc.Nodes.FirstOrDefault(n => n.Id == nodeId && n.Type == "text");
+            if (node is null) continue;
+
+            var image = FindImageSibling(node);
+            var group = FindGroupSibling(node);
+            var dx = x - node.X;
+            var dy = y - node.Y;
+
+            node.X = x;
+            node.Y = y;
+            if (image is not null)
+            {
+                image.X += dx;
+                image.Y += dy;
+            }
+
+            if (group is not null)
+            {
+                group.X += dx;
+                group.Y += dy;
+            }
+
+            if (_cursorNodeId == nodeId)
+            {
+                _cursorX = x;
+                _cursorY = y;
+            }
+
+            anyMoved = true;
+        }
+
+        if (anyMoved)
+        {
+            ScheduleBackgroundSave();
+        }
+
+        return new BranchActionResult(anyMoved);
+    }
+
     /// <summary>See <see cref="IFlowWriter.AddManualNode"/> — like MoveNode, deliberately skips Relayout().</summary>
     public BranchActionResult AddManualNode(string label, double x, double y, string? shape = null, string? color = null)
     {
@@ -847,6 +943,65 @@ public sealed class CanvasFlowWriter : IFlowWriter
             Color = color
         };
         _doc.Nodes.Add(node);
+
+        ScheduleBackgroundSave();
+        return new BranchActionResult(true);
+    }
+
+    /// <summary>Creates a brand-new node with an attached external image at an explicit position.</summary>
+    public BranchActionResult AddManualImageNode(string label, string imageSourcePath, double x, double y)
+    {
+        if (_canvasPath is null)
+        {
+            throw new InvalidOperationException("Canvas-Session wurde nicht gestartet.");
+        }
+
+        var (imageRelativeToAttachments, imageBytes) = AttachmentSaver.SaveImage(_config, imageSourcePath, _sessionName);
+        var imageOutputRelativePath = Path.Combine(_config.AttachmentsFolder, imageRelativeToAttachments).Replace('\\', '/');
+
+        try
+        {
+            _base64Cache[imageOutputRelativePath] = "data:image/png;base64," + Convert.ToBase64String(imageBytes);
+        }
+        catch
+        {
+            // Ignore - fallback file read will load it if needed
+        }
+
+        var groupNode = new CanvasNode
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Type = "group",
+            X = x - GroupPadding,
+            Y = y - GroupPadding,
+            Width = NodeWidth + GroupPadding * 2,
+            Height = TextNodeHeight + TextToImageGap + ImageNodeHeight + GroupPadding * 2
+        };
+        _doc.Nodes.Add(groupNode);
+
+        var textNode = new CanvasNode
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Type = "text",
+            Text = label,
+            X = x,
+            Y = y,
+            Width = NodeWidth,
+            Height = TextNodeHeight
+        };
+        _doc.Nodes.Add(textNode);
+
+        var imageNode = new CanvasNode
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Type = "file",
+            File = imageOutputRelativePath,
+            X = x,
+            Y = y + TextNodeHeight + TextToImageGap,
+            Width = NodeWidth,
+            Height = ImageNodeHeight
+        };
+        _doc.Nodes.Add(imageNode);
 
         ScheduleBackgroundSave();
         return new BranchActionResult(true);
@@ -972,6 +1127,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
                     {
                         var html = BuildLiveHtml();
                         FileSaveRetry.Save(_canvasPath!, () => File.WriteAllText(_canvasPath!, html));
+                        SaveCompanionFiles();
                     }
                     catch (Exception ex)
                     {
@@ -992,6 +1148,104 @@ public sealed class CanvasFlowWriter : IFlowWriter
 
         var html = BuildLiveHtml();
         FileSaveRetry.Save(_canvasPath!, () => File.WriteAllText(_canvasPath!, html));
+        SaveCompanionFiles();
+    }
+
+    private void SaveCompanionFiles()
+    {
+        if (_canvasPath is null || _doc is null) return;
+
+        try
+        {
+            // 1. Companion native Obsidian Canvas file (.canvas) — opens directly in Obsidian with zero plugins
+            var canvasPath = Path.ChangeExtension(_canvasPath, ".canvas");
+            var canvasJson = JsonSerializer.Serialize(_doc, _jsonOptions);
+            FileSaveRetry.Save(canvasPath, () => File.WriteAllText(canvasPath, canvasJson));
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"Fehler beim Speichern der Begleit-.canvas-Datei: {ex.Message}");
+        }
+
+        try
+        {
+            // 2. Companion native Obsidian Markdown note (.md) — opens directly in Obsidian note list
+            var mdPath = Path.ChangeExtension(_canvasPath, ".md");
+            var mdContent = BuildCompanionMarkdown();
+            FileSaveRetry.Save(mdPath, () => File.WriteAllText(mdPath, mdContent));
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"Fehler beim Speichern der Begleit-.md-Datei: {ex.Message}");
+        }
+    }
+
+    private string BuildCompanionMarkdown()
+    {
+        var sb = new System.Text.StringBuilder();
+        var sessionName = string.IsNullOrWhiteSpace(_sessionName)
+            ? Path.GetFileNameWithoutExtension(_canvasPath)
+            : _sessionName;
+        var htmlFileName = Path.GetFileName(_canvasPath);
+        var canvasFileName = Path.ChangeExtension(htmlFileName, ".canvas");
+
+        sb.AppendLine("---");
+        sb.AppendLine($"title: \"{sessionName}\"");
+        sb.AppendLine($"date: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        sb.AppendLine("tags:");
+        sb.AppendLine("  - docuclick");
+        sb.AppendLine("  - prozess");
+        sb.AppendLine("---");
+        sb.AppendLine();
+        sb.AppendLine($"# {sessionName}");
+        sb.AppendLine();
+        sb.AppendLine("> [!TIP] Ablauf visualisieren");
+        sb.AppendLine($"> 🌐 [Interaktiven HTML-Ablauf öffnen]({htmlFileName}) · 📊 [Canvas-Board öffnen]({canvasFileName})");
+        sb.AppendLine();
+        sb.AppendLine("```html-embed");
+        sb.AppendLine("auto");
+        sb.AppendLine("750");
+        sb.AppendLine("```");
+        sb.AppendLine();
+        sb.AppendLine("## Schritte");
+        sb.AppendLine();
+
+        var preview = GetPreview();
+        var (imageIndex, _) = BuildSiblingIndex();
+        var textNodesById = _doc.Nodes.Where(n => n.Type == "text").ToDictionary(n => n.Id);
+
+        int stepNum = 1;
+        foreach (var node in preview.Nodes)
+        {
+            if (node.IsDecisionPoint)
+            {
+                sb.AppendLine("### ◆ Abzweigung");
+                sb.AppendLine();
+                continue;
+            }
+            if (node.IsPathStart)
+            {
+                sb.AppendLine($"### ↳ Pfad: {node.PathName ?? node.Label}");
+                sb.AppendLine();
+                continue;
+            }
+
+            if (textNodesById.TryGetValue(node.Id, out var canvasNode))
+            {
+                var label = BuildLabel(canvasNode.Text);
+                sb.AppendLine($"### Schritt {stepNum++}: {label}");
+                sb.AppendLine();
+
+                var imageSibling = FindImageSibling(canvasNode, imageIndex);
+                if (imageSibling?.File is { } relImage)
+                {
+                    sb.AppendLine($"![[{relImage}]]");
+                    sb.AppendLine();
+                }
+            }
+        }
+
+        return sb.ToString();
     }
 
     // Hex colors for the live Ablauf-Übersicht-in-a-browser viewer's own
@@ -1065,12 +1319,12 @@ public sealed class CanvasFlowWriter : IFlowWriter
             }
             else
             {
-                color = accent;
+                color = !string.IsNullOrEmpty(canvasNode.Color) ? canvasNode.Color : accent;
+                shape = !string.IsNullOrEmpty(canvasNode.Shape) ? canvasNode.Shape : "round-rectangle";
                 label = BuildLabel(canvasNode.Text);
                 if (FindImageSibling(canvasNode, imageIndex)?.File is { } relativeToOutput)
                 {
-                    var fullImagePath = Path.Combine(_config.OutputPath, relativeToOutput);
-                    imageSrc = ToRelativeUrl(htmlDir, fullImagePath);
+                    imageSrc = ResolveImageSrc(relativeToOutput);
                 }
             }
 
@@ -1078,20 +1332,75 @@ public sealed class CanvasFlowWriter : IFlowWriter
         }
 
         var edgeSpecs = new List<HtmlViewerBuilder.EdgeSpec>();
+        var canvasEdgesByFromTo = _doc.Edges
+            .GroupBy(e => $"{e.FromNode}->{e.ToNode}")
+            .ToDictionary(g => g.Key, g => g.First());
+
         foreach (var edge in preview.Edges)
         {
+            var key = $"{edge.FromId}->{edge.ToId}";
+            canvasEdgesByFromTo.TryGetValue(key, out var canvasEdge);
+            var customColor = canvasEdge?.Color;
+            var lineStyle = !string.IsNullOrEmpty(canvasEdge?.LineStyle) ? canvasEdge.LineStyle : "solid";
+
             if (edge.Manual)
             {
-                edgeSpecs.Add(new HtmlViewerBuilder.EdgeSpec(edge.FromId, edge.ToId, HtmlDecisionPointColor, Manual: true));
+                var manualColor = !string.IsNullOrEmpty(customColor) ? customColor : HtmlMainColor;
+                edgeSpecs.Add(new HtmlViewerBuilder.EdgeSpec(edge.FromId, edge.ToId, manualColor, Manual: true, LineStyle: lineStyle));
                 continue;
             }
 
             var targetIsDecisionPoint = previewNodesById[edge.ToId].IsDecisionPoint;
             var (_, targetColumn) = slotOf[edge.ToId];
-            edgeSpecs.Add(new HtmlViewerBuilder.EdgeSpec(edge.FromId, edge.ToId, targetIsDecisionPoint ? HtmlDecisionPointColor : AccentFor(targetColumn), Manual: false));
+            var defaultColor = targetIsDecisionPoint ? HtmlDecisionPointColor : AccentFor(targetColumn);
+            var edgeColor = !string.IsNullOrEmpty(customColor) ? customColor : defaultColor;
+            edgeSpecs.Add(new HtmlViewerBuilder.EdgeSpec(edge.FromId, edge.ToId, edgeColor, Manual: false, LineStyle: lineStyle));
         }
 
         return HtmlViewerBuilder.BuildPage(_sessionName, nodeSpecs, edgeSpecs, dataJson);
+    }
+
+    /// <summary>
+    /// Resolves a screenshot into a 100% self-contained data:image/png;base64 URL,
+    /// using the in-memory cache for instant zero-I/O performance. This guarantees that
+    /// the generated .html file can be embedded in Obsidian notes (iframes, local-html-embed,
+    /// embed-html) without broken relative image paths.
+    /// </summary>
+    private string? ResolveImageSrc(string relativeToOutput)
+    {
+        if (string.IsNullOrWhiteSpace(relativeToOutput))
+        {
+            return null;
+        }
+
+        if (relativeToOutput.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            return relativeToOutput;
+        }
+
+        if (_base64Cache.TryGetValue(relativeToOutput, out var cachedDataUri))
+        {
+            return cachedDataUri;
+        }
+
+        var fullImagePath = Path.Combine(_config.OutputPath, relativeToOutput);
+        if (File.Exists(fullImagePath))
+        {
+            try
+            {
+                var bytes = File.ReadAllBytes(fullImagePath);
+                var dataUri = "data:image/png;base64," + Convert.ToBase64String(bytes);
+                _base64Cache[relativeToOutput] = dataUri;
+                return dataUri;
+            }
+            catch
+            {
+                // Fallback to relative URL if file read fails
+            }
+        }
+
+        var htmlDir = Path.GetDirectoryName(_canvasPath!) ?? _config.OutputPath;
+        return ToRelativeUrl(htmlDir, fullImagePath);
     }
 
     /// <summary>

@@ -71,28 +71,28 @@
         selector: "edge",
         style: {
           width: 2.5,
-          "line-color": "rgba(148, 163, 184, 0.65)",
-          "curve-style": "bezier",
-          "target-arrow-shape": "none",
-          "mid-target-arrow-shape": "triangle",
-          "mid-target-arrow-color": "rgba(148, 163, 184, 0.85)",
-          "arrow-scale": 1.15,
+          "line-color": "data(color)",
+          "curve-style": "straight",
+          "target-arrow-shape": "triangle",
+          "target-arrow-color": "data(color)",
+          "arrow-scale": 1.1,
+          "line-style": "solid",
           "underlay-color": "#38bdf8",
           "underlay-padding": 8,
           "underlay-opacity": 0,
         },
       },
       {
-        selector: "edge[?manual]",
+        selector: "edge[lineStyle = 'dashed']",
         style: {
-          width: 2.5,
-          "line-color": "#38bdf8",
           "line-style": "dashed",
           "line-dash-pattern": [6, 4],
-          "mid-target-arrow-color": "#38bdf8",
-          "underlay-color": "#38bdf8",
-          "underlay-padding": 8,
-          "underlay-opacity": 0,
+        },
+      },
+      {
+        selector: "edge[lineStyle = 'dotted']",
+        style: {
+          "line-style": "dotted",
         },
       },
       {
@@ -100,7 +100,7 @@
         style: {
           width: 4.5,
           "line-color": "#38bdf8",
-          "mid-target-arrow-color": "#38bdf8",
+          "target-arrow-color": "#38bdf8",
           opacity: 1,
           "z-index": 999,
           "underlay-opacity": 0.15,
@@ -127,9 +127,24 @@
         },
       },
       {
-        selector: "node.search-dimmed",
+        selector: "node.search-dimmed, node.path-dimmed, edge.path-dimmed",
         style: {
-          opacity: 0.2,
+          opacity: 0.18,
+        },
+      },
+      {
+        selector: "node.path-highlighted",
+        style: {
+          "border-color": "#38bdf8",
+          "border-width": 4,
+          opacity: 1,
+        },
+      },
+      {
+        selector: "edge.path-highlighted",
+        style: {
+          width: 4.5,
+          opacity: 1,
         },
       },
       {
@@ -210,15 +225,22 @@
         }
       }
 
-      // Add missing edges
+      // Add or update edges
       for (let i = 0; i < edges.length; i++) {
         const e = edges[i];
         const edgeId = `${e.source}->${e.target}`;
-        if (cy.getElementById(edgeId).length === 0) {
+        const cyEdge = cy.getElementById(edgeId);
+        const color = e.color || "#3b82f6";
+        const lineStyle = e.lineStyle || "solid";
+        if (cyEdge.length === 0) {
           toAdd.push({
             group: "edges",
-            data: { id: edgeId, source: e.source, target: e.target, manual: e.manual },
+            data: { id: edgeId, source: e.source, target: e.target, manual: e.manual, color: color, lineStyle: lineStyle },
           });
+        } else {
+          cyEdge.data("color", color);
+          cyEdge.data("lineStyle", lineStyle);
+          cyEdge.data("manual", e.manual);
         }
       }
 
@@ -241,6 +263,10 @@
     if (statsPill) {
       const count = nodes.length;
       statsPill.textContent = count === 1 ? "1 Schritt" : `${count} Schritte`;
+    }
+
+    if (typeof buildGuideList === "function") {
+      buildGuideList();
     }
 
     if (searchInput && searchInput.value.trim().length > 0) {
@@ -274,6 +300,7 @@
       isDecisionPoint: n.isDecisionPoint,
       isPathStart: n.isPathStart,
       isCurrent: n.isCurrent,
+      pathName: n.pathName || undefined,
       tooltip: n.pathName ? `${n.label} · Pfad: ${n.pathName}` : n.label,
       imageUrl: n.imageUrl || undefined,
     };
@@ -327,28 +354,45 @@
     if (!imageOverlayContainer) return;
     imageOverlayContainer.innerHTML = "";
     imageOverlays.clear();
-    syncImageOverlays();
+  }
+
+  // Centralized requestAnimationFrame scheduler to batch all DOM overlay updates
+  // strictly to the screen refresh rate (60/120/144 FPS) without DOM thrashing
+  let rafId = null;
+  function scheduleRafUpdate() {
+    if (rafId !== null) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      updateImageOverlays();
+      updateNodeLabels();
+      updateConnectHandles();
+      updateCurrentBadge();
+    });
   }
 
   function updateImageOverlays() {
+    const w = cy.width();
+    const h = cy.height();
+    const pad = 120;
     imageOverlays.forEach((img, id) => {
       const node = cy.getElementById(id);
       if (node.empty()) {
         return;
       }
-      // includeLabels: false — text-valign:"top" draws the label *above*
-      // (external to) the node, so the default bounding box is taller than
-      // the card and would let the image cover the label and bleed into
-      // whatever sits above it (the exact bug already found and fixed once
-      // for the exported/live HTML's own version of this same overlay).
       const box = node.renderedBoundingBox({ includeLabels: false });
+      // Viewport culling: offscreen images are hidden and skipped
+      if (box.x2 < -pad || box.x1 > w + pad || box.y2 < -pad || box.y1 > h + pad) {
+        img.style.display = "none";
+        return;
+      }
+      img.style.display = "";
       img.style.left = `${box.x1}px`;
       img.style.top = `${box.y1}px`;
       img.style.width = `${box.x2 - box.x1}px`;
       img.style.height = `${box.y2 - box.y1}px`;
     });
   }
-  cy.on("pan zoom position", updateImageOverlays);
+  cy.on("pan zoom position", scheduleRafUpdate);
 
   // ---- Node Text Box Overlays (crisp HTML typography, word-wrap, click-to-edit) ----
   // Rendered as real DOM elements in #node-labels instead of Cytoscape
@@ -376,6 +420,17 @@
 
     labelEl.textContent = text;
     labelEl.title = data.isDecisionPoint ? text : "Klicken zum Bearbeiten (oder Rechtsklick für Menü)";
+
+    labelEl.addEventListener("mouseenter", () => {
+      if (handleHoverTimeout) {
+        clearTimeout(handleHoverTimeout);
+        handleHoverTimeout = null;
+      }
+      showHandlesForNode(data.id);
+    });
+    labelEl.addEventListener("mouseleave", () => {
+      hideHandlesWithDelay();
+    });
 
     // Right-click opens context menu just like clicking the node
     labelEl.addEventListener("contextmenu", (e) => {
@@ -572,16 +627,8 @@
       labelEl.style.maxWidth = `${Math.max(modelWidth * 1.5, 260)}px`;
     });
   }
-  cy.on("pan zoom position", updateNodeLabels);
 
   // ---- Current-node badge -------------------------------------------
-  // A small floating tag pointing at the writer's cursor node — where the
-  // *next* screenshot attaches (PreviewNode.IsCurrent) — positioned as a
-  // plain DOM element rather than a Cytoscape style so its size stays fixed
-  // and legible regardless of zoom (a border/color on the node itself
-  // shrinks into an unnoticeable sliver once a longer flow is zoomed out to
-  // fit; see the CSS pulse animation for why this alone is easy to miss on
-  // a stationary badge too).
   const currentBadge = document.getElementById("current-badge");
 
   function updateCurrentBadge() {
@@ -607,21 +654,38 @@
     currentBadge.style.left = placeLeft ? `${box.x1 - 6}px` : `${box.x2 + 6}px`;
     currentBadge.style.top = `${(box.y1 + box.y2) / 2}px`;
   }
-  cy.on("pan zoom position", updateCurrentBadge);
 
   // ---- Connection handles (large/editing mode only) ----------------------
-  // A small dot on each of the 4 sides of every connectable card, dragged
-  // to another card to connect them — replaces compact mode's plain-drag-
-  // to-connect gesture in large mode now that plain drag moves the card
-  // instead (see the mousedown handler above). Hidden until the cursor is
-  // actually near their card (a permanent ring of dots around every single
-  // card read as visual clutter) — tracked by cursor proximity rather than
-  // Cytoscape's own node mouseover/mouseout, which only hit-tests the
-  // card's own shape and would hide a handle the instant the cursor
-  // reaches it (half of every handle sits *outside* its card by design, so
-  // it's reachable at all).
   const handlesContainer = document.getElementById("node-handles");
   let handlesByNode = new Map();
+  let activeHoverNodeId = null;
+  let handleHoverTimeout = null;
+
+  function showHandlesForNode(id) {
+    if (handleHoverTimeout) {
+      clearTimeout(handleHoverTimeout);
+      handleHoverTimeout = null;
+    }
+    if (activeHoverNodeId === id) return;
+    if (activeHoverNodeId && handlesByNode.has(activeHoverNodeId)) {
+      handlesByNode.get(activeHoverNodeId).forEach((d) => d.classList.remove("visible"));
+    }
+    activeHoverNodeId = id;
+    if (id && handlesByNode.has(id)) {
+      handlesByNode.get(id).forEach((d) => d.classList.add("visible"));
+    }
+  }
+
+  function hideHandlesWithDelay() {
+    if (handleHoverTimeout) clearTimeout(handleHoverTimeout);
+    handleHoverTimeout = setTimeout(() => {
+      if (activeHoverNodeId && handlesByNode.has(activeHoverNodeId)) {
+        handlesByNode.get(activeHoverNodeId).forEach((d) => d.classList.remove("visible"));
+      }
+      activeHoverNodeId = null;
+      handleHoverTimeout = null;
+    }, 200);
+  }
 
   function createConnectHandleDots(node) {
     const sides = ["top", "right", "bottom", "left"];
@@ -630,6 +694,18 @@
       dot.className = "hud-node-handle";
       dot.dataset.side = side;
       handlesContainer.appendChild(dot);
+
+      dot.addEventListener("mouseenter", () => {
+        if (handleHoverTimeout) {
+          clearTimeout(handleHoverTimeout);
+          handleHoverTimeout = null;
+        }
+        showHandlesForNode(node.id());
+      });
+      dot.addEventListener("mouseleave", () => {
+        hideHandlesWithDelay();
+      });
+
       dot.addEventListener("mousedown", (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -681,8 +757,20 @@
   }
 
   function updateConnectHandles() {
+    const w = cy.width();
+    const h = cy.height();
+    const pad = 80;
     handlesByNode.forEach((dots, id) => {
-      const box = cy.getElementById(id).renderedBoundingBox({ includeLabels: false });
+      const node = cy.getElementById(id);
+      if (node.empty()) {
+        return;
+      }
+      const box = node.renderedBoundingBox({ includeLabels: false });
+      // Viewport culling: offscreen handles are hidden and skipped
+      if (box.x2 < -pad || box.x1 > w + pad || box.y2 < -pad || box.y1 > h + pad) {
+        dots.forEach((dot) => { dot.style.display = "none"; });
+        return;
+      }
       const midX = (box.x1 + box.x2) / 2;
       const midY = (box.y1 + box.y2) / 2;
       const points = [
@@ -692,32 +780,27 @@
         { x: box.x1, y: midY },
       ];
       dots.forEach((dot, i) => {
+        dot.style.display = "";
         dot.style.left = `${points[i].x}px`;
         dot.style.top = `${points[i].y}px`;
       });
     });
   }
-  cy.on("pan zoom position", updateConnectHandles);
 
   window.addEventListener("resize", () => {
     cy.resize();
-    updateImageOverlays();
-    updateConnectHandles();
-    updateCurrentBadge();
+    scheduleRafUpdate();
   });
 
-  const HANDLE_REVEAL_PADDING = 24;
-  document.addEventListener("mousemove", (e) => {
-    if (moveNodeId !== null || connectFromId !== null || handlesByNode.size === 0) {
-      return;
-    }
-    const pos = modelPositionFromClient(e.clientX, e.clientY);
-    const pad = HANDLE_REVEAL_PADDING / cy.zoom();
-    handlesByNode.forEach((dots, id) => {
-      const box = cy.getElementById(id).boundingBox({ includeLabels: false });
-      const near = pos.x >= box.x1 - pad && pos.x <= box.x2 + pad && pos.y >= box.y1 - pad && pos.y <= box.y2 + pad;
-      dots.forEach((d) => d.classList.toggle("visible", near));
-    });
+  // Zero-overhead event-driven handle reveal instead of 1000Hz mousemove bounding box loops
+  cy.on("mouseover", "node", (evt) => {
+    if (moveNodeId !== null || connectFromId !== null) return;
+    showHandlesForNode(evt.target.id());
+  });
+
+  cy.on("mouseout", "node", () => {
+    if (moveNodeId !== null || connectFromId !== null) return;
+    hideHandlesWithDelay();
   });
 
   // ---- Tooltip (hover) for regular nodes -------------------------------
@@ -833,7 +916,11 @@
     edge.select();
   });
 
-  // ---- Right-click on a connector: delete it ------------------------
+  const COLOR_PRESETS = [
+    "#10b981", "#3b82f6", "#f59e0b", "#06b6d4", "#0d9488", "#eab308", "#8b5cf6", "#ef4444", "#64748b"
+  ];
+
+  // ---- Right-click on a connector: edit style / reverse / delete ----
   cy.on("cxttap", "edge", (evt) => {
     const edge = evt.target;
     const source = edge.source();
@@ -846,13 +933,85 @@
     cy.edges().unselect();
     edge.select();
 
+    const currentColor = edge.data("color") || "#3b82f6";
+    const currentLineStyle = edge.data("lineStyle") || "solid";
+    const fromLabel = source.data("label") || "Knoten";
+    const toLabel = target.data("label") || "Knoten";
+    const headerTitle = `Verbindung: ${fromLabel.slice(0, 10)} → ${toLabel.slice(0, 10)}`;
+
     menu.innerHTML = "";
+
+    const hdr = document.createElement("div");
+    hdr.className = "hud-menu-header";
+    hdr.textContent = headerTitle;
+    menu.appendChild(hdr);
+
+    const colorHdr = document.createElement("div");
+    colorHdr.className = "hud-menu-header";
+    colorHdr.textContent = "🎨 Farbe wählen";
+    menu.appendChild(colorHdr);
+
+    const colorRow = document.createElement("div");
+    colorRow.className = "hud-menu-color-row";
+    COLOR_PRESETS.forEach((c) => {
+      const dot = document.createElement("button");
+      dot.type = "button";
+      dot.className = "hud-color-dot" + (currentColor.toLowerCase() === c.toLowerCase() ? " active" : "");
+      dot.style.backgroundColor = c;
+      dot.title = c;
+      dot.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeMenu();
+        edge.data("color", c);
+        sendToHost({
+          type: "setEdgeStyle",
+          fromId: source.id(),
+          toId: target.id(),
+          color: c,
+          lineStyle: edge.data("lineStyle") || "solid"
+        });
+      });
+      colorRow.appendChild(dot);
+    });
+    menu.appendChild(colorRow);
+
+    const sep1 = document.createElement("div");
+    sep1.className = "hud-menu-separator";
+    menu.appendChild(sep1);
+
+    menu.appendChild(
+      menuItem(currentLineStyle === "dashed" ? "Linienstil: Durchgezogen" : "Linienstil: Gestrichelt", false, () => {
+        closeMenu();
+        const nextStyle = currentLineStyle === "dashed" ? "solid" : "dashed";
+        edge.data("lineStyle", nextStyle);
+        sendToHost({
+          type: "setEdgeStyle",
+          fromId: source.id(),
+          toId: target.id(),
+          color: edge.data("color") || "#3b82f6",
+          lineStyle: nextStyle
+        });
+      })
+    );
+
+    menu.appendChild(
+      menuItem("⇄ Richtung umkehren", false, () => {
+        closeMenu();
+        sendToHost({ type: "reverseEdge", fromId: source.id(), toId: target.id() });
+      })
+    );
+
+    const sep2 = document.createElement("div");
+    sep2.className = "hud-menu-separator";
+    menu.appendChild(sep2);
+
     menu.appendChild(
       menuItem("Verbindung löschen", false, () => {
         closeMenu();
         sendToHost({ type: "disconnect", fromId: source.id(), toId: target.id() });
-      })
+      }, true)
     );
+
     positionNear(menu, evt.renderedPosition || renderedFromModel(edge.midpoint()));
     menu.hidden = false;
   });
@@ -891,6 +1050,28 @@
         })
       );
     });
+
+    menu.appendChild(
+      menuItem("📷 Bild einfügen...", false, () => {
+        closeMenu();
+        sendToHost({
+          type: "addImageNode",
+          x: posModel.x,
+          y: posModel.y,
+        });
+      })
+    );
+
+    const bgSep = document.createElement("div");
+    bgSep.className = "hud-menu-separator";
+    menu.appendChild(bgSep);
+
+    menu.appendChild(
+      menuItem("📖 Anleitung ein-/ausblenden", false, () => {
+        closeMenu();
+        toggleGuide();
+      })
+    );
 
     positionNear(menu, posScreen);
     menu.hidden = false;
@@ -964,11 +1145,19 @@
         })
       );
     }
+
+    menu.appendChild(
+      menuItem("📖 In Anleitung anzeigen", false, () => {
+        closeMenu();
+        highlightGuideItem(nodeId);
+      })
+    );
+
     menu.appendChild(
       menuItem("Löschen", false, () => {
         closeMenu();
         sendToHost({ type: "delete", nodeId });
-      })
+      }, true)
     );
 
     positionNear(menu, pendingMenuPos || screenPositionOf(node));
@@ -979,9 +1168,9 @@
     menu.hidden = true;
   }
 
-  function menuItem(text, primary, onClick) {
+  function menuItem(text, primary, onClick, danger = false) {
     const div = document.createElement("div");
-    div.className = "hud-menu-item" + (primary ? " primary" : "");
+    div.className = "hud-menu-item" + (primary ? " primary" : "") + (danger ? " danger" : "");
     div.textContent = text;
     div.addEventListener("click", onClick);
     return div;
@@ -1126,14 +1315,13 @@
       const dx = (e.clientX - moveStartClient.x) / zoom;
       const dy = (e.clientY - moveStartClient.y) / zoom;
 
-      for (const item of moveMultiNodes) {
-        cy.getElementById(item.id).position({ x: item.startPos.x + dx, y: item.startPos.y + dy });
-      }
+      cy.batch(() => {
+        for (const item of moveMultiNodes) {
+          cy.getElementById(item.id).position({ x: item.startPos.x + dx, y: item.startPos.y + dy });
+        }
+      });
 
-      updateImageOverlays();
-      updateNodeLabels(); // Keep text boxes locked to moving nodes!
-      updateConnectHandles();
-      updateCurrentBadge();
+      scheduleRafUpdate();
       return;
     }
 
@@ -1179,9 +1367,15 @@
   document.addEventListener("mouseup", (e) => {
     if (moveNodeId !== null) {
       if (moveArmed) {
-        for (const item of moveMultiNodes) {
-          const pos = cy.getElementById(item.id).position();
-          sendToHost({ type: "move", nodeId: item.id, x: pos.x, y: pos.y });
+        if (moveMultiNodes.length > 1) {
+          const moves = moveMultiNodes.map((item) => {
+            const pos = cy.getElementById(item.id).position();
+            return { nodeId: item.id, x: pos.x, y: pos.y };
+          });
+          sendToHost({ type: "moveBatch", moves });
+        } else {
+          const pos = cy.getElementById(moveNodeId).position();
+          sendToHost({ type: "move", nodeId: moveNodeId, x: pos.x, y: pos.y });
         }
       }
       moveNodeId = null;
@@ -1417,6 +1611,353 @@
       const rect = btnAddElement.getBoundingClientRect();
       showAddNodeMenu({ x: centerX, y: centerY }, { x: rect.left, y: rect.bottom + 6 });
     });
+  }
+
+  // ---- SOP Guide Drawer ---------------------------------------------
+  const guideDrawer = document.getElementById("guide-drawer");
+  const guideToggleBtn = document.getElementById("hud-btn-guide");
+  const guideCloseBtn = document.getElementById("guide-close-btn");
+  const guideList = document.getElementById("guide-list");
+  const guidePathSelect = document.getElementById("guide-path-select");
+  const guideTabAll = document.getElementById("guide-tab-all");
+  const guideTabImages = document.getElementById("guide-tab-images");
+
+  let guideCurrentPathId = "all";
+  let guideShowOnlyImages = false;
+
+  function toggleGuide(show) {
+    if (!guideDrawer) return;
+    const willShow = show !== undefined ? show : !guideDrawer.classList.contains("open");
+    guideDrawer.classList.toggle("open", willShow);
+  }
+  guideToggleBtn?.addEventListener("click", () => toggleGuide());
+  guideCloseBtn?.addEventListener("click", () => toggleGuide(false));
+
+  function escapeHtml(str) {
+    if (!str) return "";
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function getGraphPaths() {
+    const allNodes = cy.nodes();
+    if (allNodes.empty()) return [];
+
+    const branchTargets = new Map();
+    const decisionNodes = allNodes.filter(
+      (n) => n.data("shape") === "diamond" ||
+             (n.data("label") || "").includes("Abzweigung") ||
+             !!n.data("isDecisionPoint") ||
+             n.outgoers("edge").length > 1
+    );
+
+    decisionNodes.forEach((dec) => {
+      dec.outgoers("edge").forEach((e) => {
+        const tgt = e.target();
+        if (!branchTargets.has(tgt.id())) {
+          const rawLabel = tgt.data("label") || "Zweig";
+          const name = rawLabel.startsWith("↳ Pfad: ") ? rawLabel.slice(8) : (tgt.data("pathName") || rawLabel);
+          branchTargets.set(tgt.id(), {
+            name: name,
+            color: tgt.data("color") || e.data("color") || "#3b82f6",
+            originId: dec.id(),
+          });
+        }
+      });
+    });
+
+    allNodes
+      .filter((n) => (n.data("label") || "").startsWith("↳ Pfad: ") || !!n.data("isPathStart"))
+      .forEach((n) => {
+        if (!branchTargets.has(n.id())) {
+          const rawLabel = n.data("label") || "";
+          const name = rawLabel.startsWith("↳ Pfad: ") ? rawLabel.slice(8) : (n.data("pathName") || rawLabel || "Pfad");
+          branchTargets.set(n.id(), {
+            name: name,
+            color: n.data("color") || "#3b82f6",
+            originId: null,
+          });
+        }
+      });
+
+    function tracePath(startNodeId) {
+      const nodeSet = new Set();
+      const queue = [startNodeId];
+      while (queue.length > 0) {
+        const id = queue.shift();
+        if (nodeSet.has(id)) continue;
+        nodeSet.add(id);
+        const node = cy.getElementById(id);
+        if (!node.empty()) {
+          node.outgoers("edge").forEach((edge) => {
+            const tgt = edge.target();
+            if (!nodeSet.has(tgt.id())) {
+              queue.push(tgt.id());
+            }
+          });
+        }
+      }
+      return nodeSet;
+    }
+
+    const paths = [];
+
+    let roots = allNodes.filter((n) => n.incomers("edge").filter((e) => !e.data("manual")).length === 0);
+    if (roots.empty()) roots = allNodes.filter((n) => n.incomers("edge").length === 0);
+    if (!roots.empty()) {
+      const mainRoot = roots.toArray().sort((a, b) => (a.position().y - b.position().y) || (a.position().x - b.position().x))[0];
+      const mainNodeSet = new Set();
+      const queue = [mainRoot.id()];
+      while (queue.length > 0) {
+        const id = queue.shift();
+        if (mainNodeSet.has(id)) continue;
+        mainNodeSet.add(id);
+        const node = cy.getElementById(id);
+        if (!node.empty() && node.data("shape") !== "diamond" && !node.data("isDecisionPoint")) {
+          node.outgoers("edge").filter((e) => !e.data("manual")).forEach((edge) => {
+            const tgt = edge.target();
+            if (!mainNodeSet.has(tgt.id()) && !branchTargets.has(tgt.id())) {
+              queue.push(tgt.id());
+            }
+          });
+        }
+      }
+      if (branchTargets.size > 0) {
+        paths.push({
+          id: "main",
+          name: "Hauptablauf",
+          color: "#2563eb",
+          nodeIds: mainNodeSet,
+          startNodeId: mainRoot.id(),
+        });
+      }
+    }
+
+    branchTargets.forEach((info, startId) => {
+      const nodeIds = tracePath(startId);
+      paths.push({
+        id: startId,
+        name: info.name,
+        color: info.color,
+        nodeIds: nodeIds,
+        startNodeId: startId,
+      });
+    });
+
+    return paths;
+  }
+
+  function updatePathSelectOptions(paths) {
+    if (!guidePathSelect) return;
+    const currentVal = guidePathSelect.value;
+    guidePathSelect.innerHTML = `<option value="all">🌐 Gesamter Ablauf (${cy.nodes().length} Schritte)</option>`;
+    paths.forEach((p) => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = `↳ ${p.name} (${p.nodeIds.size} Schritte)`;
+      guidePathSelect.appendChild(opt);
+    });
+    if (paths.some((p) => p.id === currentVal)) {
+      guidePathSelect.value = currentVal;
+    } else {
+      guidePathSelect.value = "all";
+      guideCurrentPathId = "all";
+    }
+  }
+
+  guidePathSelect?.addEventListener("change", () => {
+    guideCurrentPathId = guidePathSelect.value;
+    const paths = getGraphPaths();
+    const selectedPath = paths.find((p) => p.id === guideCurrentPathId);
+
+    if (guideCurrentPathId === "all" || !selectedPath) {
+      cy.elements().removeClass("path-highlighted path-dimmed");
+      cy.animate({ fit: { eles: cy.elements(), padding: 40 }, duration: 250 });
+    } else {
+      cy.elements().removeClass("path-highlighted").addClass("path-dimmed");
+      const activeNodes = cy.collection(Array.from(selectedPath.nodeIds).map((id) => cy.getElementById(id)));
+      const activeEdges = activeNodes.edgesWith(activeNodes);
+      activeNodes.removeClass("path-dimmed").addClass("path-highlighted");
+      activeEdges.removeClass("path-dimmed").addClass("path-highlighted");
+      if (!activeNodes.empty()) {
+        cy.animate({ fit: { eles: activeNodes, padding: 50 }, duration: 250 });
+      }
+    }
+    buildGuideList();
+  });
+
+  guideTabAll?.addEventListener("click", () => {
+    guideShowOnlyImages = false;
+    guideTabAll.classList.add("active");
+    guideTabImages?.classList.remove("active");
+    buildGuideList();
+  });
+
+  guideTabImages?.addEventListener("click", () => {
+    guideShowOnlyImages = true;
+    guideTabImages.classList.add("active");
+    guideTabAll?.classList.remove("active");
+    buildGuideList();
+  });
+
+  function buildGuideList() {
+    if (!guideList) return;
+    guideList.innerHTML = "";
+
+    const paths = getGraphPaths();
+    updatePathSelectOptions(paths);
+
+    const selectedPath = paths.find((p) => p.id === guideCurrentPathId);
+    const allowedNodeIds = (selectedPath && guideCurrentPathId !== "all") ? selectedPath.nodeIds : null;
+
+    const allNodes = cy.nodes().toArray().sort((a, b) => {
+      const posA = a.position();
+      const posB = b.position();
+      const rowDiff = Math.round(posA.y / 50) - Math.round(posB.y / 50);
+      if (rowDiff !== 0) return rowDiff;
+      return posA.x - posB.x;
+    });
+
+    const filteredNodes = allNodes.filter((node) => {
+      if (allowedNodeIds && !allowedNodeIds.has(node.id())) return false;
+      if (guideShowOnlyImages && !node.data("imageUrl")) return false;
+      return true;
+    });
+
+    if (filteredNodes.length === 0) {
+      const emptyMsg = document.createElement("div");
+      emptyMsg.style.cssText = "padding: 24px; text-align: center; color: var(--text-muted); font-size: 12px;";
+      emptyMsg.textContent = guideShowOnlyImages ? "Keine Screenshots in dieser Ansicht vorhanden." : "Keine Schritte vorhanden.";
+      guideList.appendChild(emptyMsg);
+      return;
+    }
+
+    let stepCounter = 1;
+    filteredNodes.forEach((node) => {
+      const nodeId = node.id();
+      const rawLabel = node.data("label") || "";
+      const shape = node.data("shape") || "round-rectangle";
+      const color = node.data("color") || "#3b82f6";
+      const imageUrl = node.data("imageUrl");
+      const isDecision = shape === "diamond" || rawLabel.includes("Abzweigung") || !!node.data("isDecisionPoint");
+      const isPathStart = rawLabel.startsWith("↳ Pfad: ") || !!node.data("isPathStart");
+      const incomers = node.incomers("edge");
+      const isMerge = incomers.length > 1;
+
+      if (isPathStart && guideCurrentPathId === "all") {
+        const divider = document.createElement("div");
+        divider.className = "guide-path-divider";
+        divider.style.borderLeft = `3px solid ${color}`;
+        divider.innerHTML = `<span class="guide-path-badge" style="background:${color};"></span><span>${escapeHtml(rawLabel)}</span>`;
+        guideList.appendChild(divider);
+      }
+
+      const card = document.createElement("div");
+      card.className = "guide-card" + (isDecision ? " guide-card-decision" : "");
+      card.setAttribute("data-node-id", nodeId);
+
+      const badgeHtml = isDecision
+        ? `<span class="guide-card-num guide-badge-decision" title="Entscheidung / Verzweigung">◆</span>`
+        : `<span class="guide-card-num" style="background:${color};">${stepCounter++}</span>`;
+
+      let displayTitle = rawLabel;
+      if (isDecision) {
+        displayTitle = rawLabel || "Entscheidung treffen";
+      } else if (isPathStart) {
+        displayTitle = rawLabel.startsWith("↳ Pfad: ") ? rawLabel.slice(8) : (node.data("pathName") || rawLabel);
+      } else if (!displayTitle) {
+        displayTitle = `Schritt ${stepCounter}`;
+      }
+
+      const mergeHtml = isMerge ? `<span class="guide-badge-merge" title="Mehrere Abläufe laufen hier zusammen">⇄ Zusammenführung</span>` : "";
+
+      let branchButtonsHtml = "";
+      if (isDecision) {
+        const outEdges = node.outgoers("edge");
+        if (outEdges.length > 0) {
+          branchButtonsHtml = `
+            <div class="guide-branch-buttons">
+              ${outEdges.toArray().map((e) => {
+                const tgt = e.target();
+                const tgtLabel = tgt.data("label") || "Folgeschritt";
+                const clean = tgtLabel.startsWith("↳ Pfad: ") ? tgtLabel.slice(8) : tgtLabel;
+                return `<button type="button" class="guide-branch-btn" data-target-id="${tgt.id()}">↳ ${escapeHtml(clean)}</button>`;
+              }).join("")}
+            </div>
+          `;
+        }
+      }
+
+      let thumbHtml = "";
+      if (imageUrl) {
+        thumbHtml = `<img class="guide-card-thumb" src="${imageUrl}" alt="" loading="lazy" title="Klicken für Fokus">`;
+      } else if (!isDecision) {
+        const shapeIcon = shape === "ellipse" ? "🟢" : shape === "rhomboid" ? "🔷" : shape === "tag" ? "📑" : shape === "rectangle" ? "📝" : "🟦";
+        thumbHtml = `<div class="guide-shape-badge" style="background:${color}22; border: 1px solid ${color}44; color:${color};" title="${shape}">${shapeIcon}</div>`;
+      }
+
+      card.innerHTML = `
+        <div class="guide-card-head">
+          ${badgeHtml}
+          <div style="flex:1; min-width:0;">
+            <div class="guide-card-text">${escapeHtml(displayTitle)}</div>
+            ${mergeHtml}
+            ${branchButtonsHtml}
+          </div>
+        </div>
+        ${thumbHtml}
+      `;
+
+      const thumbEl = card.querySelector(".guide-card-thumb");
+      if (thumbEl) {
+        thumbEl.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const cyNode = cy.getElementById(nodeId);
+          if (!cyNode.empty()) {
+            cy.animate({ center: { eles: cyNode }, zoom: Math.max(cy.zoom(), 0.8), duration: 250 });
+          }
+        });
+      }
+
+      card.querySelectorAll(".guide-branch-btn").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const targetId = btn.getAttribute("data-target-id");
+          if (targetId) {
+            const matchingPath = paths.find((p) => p.id === targetId || p.startNodeId === targetId);
+            if (matchingPath && guidePathSelect) {
+              guidePathSelect.value = matchingPath.id;
+              guidePathSelect.dispatchEvent(new Event("change"));
+            }
+            const tgtNode = cy.getElementById(targetId);
+            if (!tgtNode.empty()) {
+              cy.animate({ center: { eles: tgtNode }, zoom: Math.max(cy.zoom(), 0.75), duration: 250 });
+            }
+            highlightGuideItem(targetId);
+          }
+        });
+      });
+
+      card.addEventListener("click", () => {
+        const cyNode = cy.getElementById(nodeId);
+        if (!cyNode.empty()) {
+          cy.animate({ center: { eles: cyNode }, zoom: Math.max(cy.zoom(), 0.75), duration: 250 });
+        }
+      });
+
+      guideList.appendChild(card);
+    });
+  }
+
+  function highlightGuideItem(nodeId) {
+    toggleGuide(true);
+    const card = guideList?.querySelector(`[data-node-id="${nodeId}"]`);
+    if (card) {
+      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      card.classList.add("highlight");
+      setTimeout(() => card.classList.remove("highlight"), 1600);
+    }
   }
 
   // ---- Host message dispatch ---------------------------------------

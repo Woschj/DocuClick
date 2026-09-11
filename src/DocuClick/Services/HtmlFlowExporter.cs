@@ -131,7 +131,9 @@ public static class HtmlFlowExporter
         // sequence" the same way as in the Ablauf-Übersicht/draw.io export.
         foreach (var edge in manualEdges)
         {
-            edgeSpecs.Add(new HtmlViewerBuilder.EdgeSpec(edge.FromNode, edge.ToNode, DecisionPointColor, Manual: true));
+            var customColor = !string.IsNullOrEmpty(edge.Color) ? edge.Color : "#2563EB";
+            var lineStyle = !string.IsNullOrEmpty(edge.LineStyle) ? edge.LineStyle : "solid";
+            edgeSpecs.Add(new HtmlViewerBuilder.EdgeSpec(edge.FromNode, edge.ToNode, customColor, Manual: true, LineStyle: lineStyle));
         }
 
         var title = Path.GetFileNameWithoutExtension(sourceFilePath);

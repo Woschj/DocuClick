@@ -49,6 +49,21 @@ public static class LogService
         }
     }
 
+    public static void Flush()
+    {
+        while (Queue.TryTake(out var line))
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
+                File.AppendAllText(LogPath, line + Environment.NewLine);
+            }
+            catch
+            {
+            }
+        }
+    }
+
     private static void RunQueue()
     {
         foreach (var line in Queue.GetConsumingEnumerable())

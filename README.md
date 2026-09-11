@@ -149,8 +149,13 @@ blockieren) ist sichtbar, solange die App läuft, und zeigt auf einen Blick
 den Aufnahmestatus. Frei verschiebbar per Ziehen an der Kopfzeile. Sie
 enthält vier Bereiche:
 
-- **Start/Stop**: entspricht dem Tray-Menüpunkt bzw. dem Start/Stop-Hotkey
-  — setzt die zuletzt verwendete Datei ohne Rückfrage fort.
+- **Aufnahme / Stopp / Fortsetzen**: entspricht dem Tray-Menüpunkt bzw. dem
+  Start/Stop-Hotkey. Wichtig: Ein Klick auf "Stopp" während der Aufnahme
+  **pausiert** sie tatsächlich nur (Button wird zu orangem "Fortsetzen") —
+  Zieldatei, geladener Ablauf und Cursor-Position bleiben erhalten, damit
+  sich direkt im pausierten Zustand gefahrlos im Canvas weiterbearbeiten
+  lässt (siehe unten). Ein echtes Beenden der Session (Zieldatei wird
+  vergessen) passiert nur über "Neue Session".
 - **Übersicht**: öffnet die Ablauf-Übersicht wieder, falls sie über ihr
   eigenes ✕ geschlossen wurde (siehe unten).
 - **Neue Session**: immer klickbar, fragt **immer** nach der Zieldatei
@@ -167,37 +172,55 @@ enthält vier Bereiche:
 Zusätzlich öffnet sich automatisch die
 **Ablauf-Übersicht** — ein frei verschiebbares, größenveränderliches
 Panel mit einer Miniaturkarte des gesamten Ablaufs (per Maus frei
-zoom-/schwenkbar): der aktuelle Knoten ist rot hervorgehoben, jeder Pfad
-bekommt seine eigene Farbe aus einer festen Palette. Darüber lässt sich
-der Ablauf direkt bearbeiten:
+zoom-/schwenkbar): der aktuelle Knoten ist rot hervorgehoben und trägt ein
+gelbes, leicht pulsierendes "Nächster Klick hier ▶"-Schild, jeder Pfad
+bekommt seine eigene Farbe aus einer festen Palette. Im großen
+Editier-Fenster sitzt oben zusätzlich eine eigene Werkzeugleiste
+(Schrittzähler, Suchfeld zum Hervorheben/Ausgrauen von Knoten nach
+Text, "+ Element"-Button, Zoom-Buttons). Darüber/darin lässt sich der
+Ablauf direkt bearbeiten:
 
+- **Klick auf die Beschriftung eines Knotens**: öffnet sofort ein
+  mehrzeiliges Textfeld direkt an der Karte — <kbd>Shift</kbd>+<kbd>Enter</kbd>
+  fügt einen Zeilenumbruch ein, <kbd>Enter</kbd> oder ein Klick daneben
+  speichert. **Doppelklick auf den ganzen Knoten** öffnet stattdessen den
+  klassischen Umbenennen-Dialog (auch dieser jetzt mehrzeilig,
+  <kbd>Strg</kbd>+<kbd>Enter</kbd> zum Bestätigen).
 - **Rechtsklick auf einen Knoten**: Kontextmenü mit "→ Weiter" (Aufnahme
   dorthin springen), "+ Neuer Pfad ab hier" (neuen benannten Pfad
   abzweigen), allen bereits vorhandenen Pfaden ab diesem Punkt,
   "Umbenennen" und "Löschen" (löscht bei mehreren abzweigenden Pfaden
   nach Rückfrage den gesamten nachfolgenden Ast).
-- **Doppelklick auf einen Knoten**: direkt umbenennen.
-- **Ziehen von einem Knoten auf einen anderen**: manuelle Querverbindung
-  ("Verbinden") — für Rücksprünge/Referenzen, die der lineare Ablauf sonst
-  nicht abbilden kann. Rein additiv (verändert nichts an der bestehenden
-  Struktur). Per Rechtsklick auf die Verbindungslinie wieder entfernbar —
-  das gilt für **jede** Verbindung, nicht nur manuell hinzugefügte: auch
-  eine strukturelle Kante aus der eigentlichen Aufnahme lässt sich so
-  auftrennen (der abgetrennte Knoten wird dadurch zu einer neuen,
-  eigenständigen Wurzel im Baum statt gelöscht zu werden), nur die
-  Kanten rund um Abzweigungspunkte/Pfad-Anfänge bleiben geschützt.
-- **Rechtsklick auf die leere Fläche** (nur im großen Editier-Fenster, siehe
-  "Ablauf öffnen..." unten): "+ Neuer Knoten hier" legt einen komplett
-  neuen, freien Knoten genau an dieser Stelle an — UML-Diagramm-Stil, ohne
-  Screenshot und ohne Verbindungen, danach ganz normal umbenennbar,
-  verschiebbar und verbindbar wie jeder aufgezeichnete Knoten auch.
-- **Umschalt+Ziehen** wählt mehrere Knoten per Rahmen aus, **Entf** löscht
-  die Auswahl gesammelt.
+- **Verbinden per Ziehpunkt**: jede Karte zeigt beim Herannähern des
+  Mauszeigers vier kleine Ziehpunkte (oben/rechts/unten/links) — von einem
+  davon auf eine andere Karte ziehen erstellt eine manuelle Querverbindung
+  (großzügiger Einrast-Radius, fühlt sich an wie in draw.io/Visio). Rein
+  additiv (verändert nichts an der bestehenden Struktur). Per Rechtsklick
+  auf die Verbindungslinie ("Verbindung löschen") oder <kbd>Entf</kbd>/
+  <kbd>Rücktaste</kbd> bei ausgewählter Verbindung wieder entfernbar — das
+  gilt für **jede** Verbindung, nicht nur manuell hinzugefügte: auch eine
+  strukturelle Kante aus der eigentlichen Aufnahme lässt sich so auftrennen
+  (der abgetrennte Knoten wird dadurch zu einer neuen, eigenständigen
+  Wurzel im Baum statt gelöscht zu werden), nur die Kanten rund um
+  Abzweigungspunkte/Pfad-Anfänge bleiben geschützt.
+- **Rechtsklick auf die leere Fläche** oder der **"+ Element"-Button** in
+  der Werkzeugleiste (nur im großen Editier-Fenster): fügt eines von sechs
+  Flowchart-Elementen an dieser Stelle ein — 🟢 Start/Ende, 🟦 Prozessschritt,
+  🔶 Entscheidung (Raute), 🔷 Eingabe/Ausgabe (Parallelogramm), 📑 Dokument,
+  📝 Notiz — jeweils mit eigener Akzentfarbe. Ganz ohne Screenshot und ohne
+  Verbindungen angelegt, danach ganz normal umbenennbar, verschiebbar und
+  verbindbar wie jeder aufgezeichnete Knoten auch; erscheinen auch im
+  draw.io-Export als passende Vektorform.
+- **Umschalt+Ziehen** wählt mehrere Knoten per Rahmen aus — Ziehen an
+  irgendeiner der ausgewählten Karten verschiebt danach alle gemeinsam.
+  <kbd>Entf</kbd>/<kbd>Rücktaste</kbd> löscht die Auswahl (Knoten wie
+  Verbindungen) gesammelt.
 
-Ein Klick auf einen Knoten in der Ablauf-Übersicht bei **gestoppter**
-Aufnahme markiert diesen Knoten stattdessen als Ansatzpunkt für die
-*nächste* Session (siehe [Ablauf nachträglich
-fortsetzen](#ablauf-nachträglich-fortsetzen-an-einem-bestimmten-punkt-statt-am-dateiende)).
+Ein Klick auf einen Knoten in der Ablauf-Übersicht springt sofort dorthin
+— egal ob gerade aufgezeichnet wird oder die Session nur **pausiert** ist
+(siehe [Ablauf nachträglich
+fortsetzen](#ablauf-nachträglich-fortsetzen-an-einem-bestimmten-punkt-statt-am-dateiende)):
+der nächste Klick knüpft danach genau dort an, statt am Dateiende.
 
 Anders als die Ablauf-Übersicht ist die Top-Leiste **nicht**
 klick-durchlässig, da sie echte Buttons hostet — deshalb ist sie bewusst
@@ -240,7 +263,10 @@ verschiedene Exporte erzeugen:
   Screenshot als eine zusammen verschiebbare Einheit), jeder Pfad bekommt
   eine eigene Akzentfarbe (Rahmen, Nummer-Badge und Pfeile),
   Abzweigungspunkte werden als Raute markiert, manuelle Querverbindungen
-  als graue Linie. Screenshots werden direkt als Base64 eingebettet und im
+  als graue Linie. Manuell per "+ Element" eingefügte Flowchart-Elemente
+  (siehe oben) landen jeweils als passende native draw.io-Vektorform
+  (Ellipse, Raute, Parallelogramm, Dokument-/Notiz-Symbol) mit ihrer
+  eigenen Akzentfarbe. Screenshots werden direkt als Base64 eingebettet und im
   Kartenlayout klein dargestellt — **einfach mit der Maus über den
   Screenshot fahren**, um ihn sofort deutlich größer als Vorschau angezeigt
   zu bekommen (kein Klick nötig); für die volle Original-Auflösung
@@ -285,14 +311,18 @@ Einstellungen (kein Neustart nötig).
 
 ### Ablauf nachträglich fortsetzen (an einem bestimmten Punkt statt am Dateiende)
 
-Bei **gestoppter** Aufnahme zeigt die Ablauf-Übersicht
-weiterhin die zuletzt bearbeitete Datei — ein Klick auf einen beliebigen
-Knoten dort markiert ihn als Ansatzpunkt für die *nächste* Aufnahme-Session
-(Balloon-Tip bestätigt die Auswahl). Neue Klicks werden dann als neue
-Spalte mit genau diesem Punkt verbunden statt an das Dateiende angehängt,
-unabhängig davon, wie lange die ursprüngliche Aufzeichnung schon
-zurückliegt. Der nächste Session-Start-Dialog wählt danach automatisch
-dieselbe Datei vor.
+Ein Klick auf einen beliebigen Knoten in der Ablauf-Übersicht springt
+sofort dorthin — der nächste aufgezeichnete Klick knüpft danach genau an
+diesem Punkt an statt am Dateiende, unabhängig davon, wie viele andere
+Klicks zwischenzeitlich woanders aufgezeichnet wurden. Das funktioniert
+jederzeit, solange irgendein Ablauf aktiv geladen ist: während einer
+laufenden Aufnahme, bei **pausierter** Aufnahme (siehe
+["Aufnahme/Stopp/Fortsetzen" oben](#top-leiste-ablauf-übersicht-und-neue-session))
+oder in einer per Tray-Menü **"Ablauf öffnen..."** geladenen Datei ganz
+ohne laufende Aufnahme. Eine eigene "Ansatzpunkt für die nächste Session"-
+Markierung ist dafür nicht mehr nötig — praktisch bedeutet das: zum
+gezielten Fortsetzen einfach pausieren statt stoppen, den gewünschten
+Knoten anklicken und mit "Fortsetzen" weiteraufnehmen.
 
 ## Start/Stopp per Hotkey
 
@@ -399,9 +429,27 @@ Neues Release erstellen (baut automatisch und hängt das Zip an ein neues
 GitHub Release):
 
 ```bash
-git tag v1.11.0
-git push origin v1.11.0
+git tag v1.11.1
+git push origin v1.11.1
 ```
 
 Offene Punkte: Feinschliff bei Multi-Monitor/DPI-Kantenfällen, robustere
 Fehlerbehandlung in Randfällen.
+
+### Ablauf-Übersicht: Performance
+
+Die Ablauf-Übersicht (WebView2 + Cytoscape.js) aktualisiert bei jeder
+Aktion nur noch die tatsächlich geänderten Knoten/Kanten/DOM-Overlays
+statt bei jedem Klick den kompletten Graphen neu aufzubauen — merklich
+flüssiger bei langen Sessions. Verschieben und neue Elemente platzieren
+speichert zusätzlich leicht entprellt (150 ms) im Hintergrund statt
+synchron bei jedem einzelnen Zwischenschritt, damit Ziehen nicht ruckelt;
+"Pausieren"/"Neue Session"/App-Ende erzwingen weiterhin einen sofortigen,
+vollständigen Speichervorgang.
+
+### `tools/`
+
+[tools/local-agent-loop/](tools/local-agent-loop/) ist internes
+Entwickler-Tooling (PowerShell-Skripte, die ein lokal gehostetes LLM
+autonom an DocuClicks eigener Testinfrastruktur arbeiten lassen) — kein
+Teil der App selbst, siehe die Datei-eigene README für Details.

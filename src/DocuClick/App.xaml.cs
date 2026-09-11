@@ -89,6 +89,7 @@ public partial class App : Application
             _zoomCursorBox.Preview(radius);
         };
         _topBar.ZoomRadiusCommitted += () => ConfigService.Save(_config);
+        _topBar.CopyObsidianEmbedRequested += OnCopyObsidianEmbedRequested;
         _topBar.Show();
 
         _sessionManager.ZoomToCursorChanged += active => Dispatcher.BeginInvoke(() =>
@@ -178,6 +179,7 @@ public partial class App : Application
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         LogService.Log($"Unbehandelte Ausnahme (UI-Thread): {e.Exception}");
+        LogService.Flush();
         e.Handled = true;
     }
 
@@ -191,6 +193,7 @@ public partial class App : Application
     private void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
     {
         LogService.Log($"Unbehandelte Ausnahme (Prozessende, IsTerminating={e.IsTerminating}): {e.ExceptionObject}");
+        LogService.Flush();
     }
 
     /// <summary>
@@ -332,8 +335,12 @@ public partial class App : Application
                 _flowPreviewOverlay.DeleteRequested += nodeId => _sessionManager?.DeleteNode(nodeId);
                 _flowPreviewOverlay.ConnectRequested += (fromId, toId) => _sessionManager?.ConnectNodes(fromId, toId);
                 _flowPreviewOverlay.DisconnectRequested += (fromId, toId) => _sessionManager?.DisconnectNodes(fromId, toId);
+                _flowPreviewOverlay.SetEdgeStyleRequested += (fromId, toId, color, lineStyle) => _sessionManager?.SetEdgeStyle(fromId, toId, color, lineStyle);
+                _flowPreviewOverlay.ReverseEdgeRequested += (fromId, toId) => _sessionManager?.ReverseEdge(fromId, toId);
                 _flowPreviewOverlay.MoveRequested += (nodeId, x, y) => _sessionManager?.MoveNode(nodeId, x, y);
+                _flowPreviewOverlay.BatchMoveRequested += moves => _sessionManager?.MoveNodes(moves);
                 _flowPreviewOverlay.AddNodeRequested += (label, x, y, shape, color) => _sessionManager?.AddManualNode(label, x, y, shape, color);
+                _flowPreviewOverlay.AddImageNodeRequested += (label, imagePath, x, y) => _sessionManager?.AddManualImageNode(label, imagePath, x, y);
                 _flowPreviewOverlay.CloseRequested += () =>
                 {
                     _flowPreviewManuallyHidden = true;
@@ -386,6 +393,53 @@ public partial class App : Application
         }
 
         OnOpenFlowRequested();
+    }
+
+    private void OnCopyObsidianEmbedRequested()
+    {
+        var targetFile = _sessionManager?.CurrentTargetFileName ?? _config?.LastSessionFileName;
+        if (string.IsNullOrWhiteSpace(targetFile))
+        {
+            _trayApp?.ShowInfo("Keine aktive Session für Obsidian gefunden.");
+            return;
+        }
+
+        var baseFileName = Path.GetFileNameWithoutExtension(targetFile);
+        var htmlFileName = Path.ChangeExtension(Path.GetFileName(targetFile), ".html");
+        var snippet = $"```html-embed\n{htmlFileName}\n750\n```";
+
+        try
+        {
+            System.Windows.Clipboard.SetText(snippet);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"Clipboard-Kopieren für Obsidian fehlgeschlagen: {ex.Message}");
+        }
+
+        // Directly open the flow in Obsidian if OutputPath is a vault!
+        if (!string.IsNullOrWhiteSpace(_config?.OutputPath))
+        {
+            var vaultName = Path.GetFileName(_config.OutputPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            var isVault = Directory.Exists(Path.Combine(_config.OutputPath, ".obsidian"));
+            if (isVault)
+            {
+                try
+                {
+                    // Open the companion markdown note or html directly in Obsidian
+                    var uri = $"obsidian://open?vault={Uri.EscapeDataString(vaultName)}&file={Uri.EscapeDataString(htmlFileName)}";
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri) { UseShellExecute = true });
+                    _trayApp?.ShowInfo($"In Obsidian geöffnet: {htmlFileName}");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    LogService.Log($"Öffnen in Obsidian fehlgeschlagen: {ex.Message}");
+                }
+            }
+        }
+
+        _trayApp?.ShowInfo($"Obsidian-Codeblock für '{htmlFileName}' in Zwischenablage kopiert!");
     }
 
     /// <summary>
@@ -714,6 +768,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        LogService.Log($"DocuClick OnExit aufgerufen (ExitCode={e.ApplicationExitCode}).");
         _hotkeyService?.Dispose();
         _sessionManager?.Dispose();
         _trayApp?.Dispose();
@@ -722,6 +777,7 @@ public partial class App : Application
         _zoomCursorBox?.Close();
         _singleInstanceMutex?.ReleaseMutex();
         _singleInstanceMutex?.Dispose();
+        LogService.Flush();
         base.OnExit(e);
     }
 }

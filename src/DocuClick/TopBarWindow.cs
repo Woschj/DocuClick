@@ -38,6 +38,7 @@ public sealed class TopBarWindow : Window
     private static readonly Geometry FlowIconGeo = Geometry.Parse("M 2 8 H 5.5 M 5.5 8 L 9.5 4 M 5.5 8 L 9.5 12 M 9.5 4 H 13.5 M 9.5 12 H 13.5");
     private static readonly Geometry PlusIconGeo = Geometry.Parse("M 8 2.5 V 13.5 M 2.5 8 H 13.5");
     private static readonly Geometry ZoomIconGeo = Geometry.Parse("M 6.5 2 A 4.5 4.5 0 1 1 2 6.5 A 4.5 4.5 0 0 1 6.5 2 M 10 10 L 14 14");
+    private static readonly Geometry ObsidianIconGeo = Geometry.Parse("M 8 2 L 13.5 6.5 L 8 14.5 L 2.5 6.5 Z M 2.5 6.5 H 13.5 M 8 2 V 14.5");
 
     private readonly Ellipse _statusDot;
     private readonly TextBlock _statusText;
@@ -46,6 +47,7 @@ public sealed class TopBarWindow : Window
     private readonly Button _toggleRecordingButton;
     private readonly Button _showFlowPreviewButton;
     private readonly Button _newSessionButton;
+    private readonly Button _copyObsidianButton;
     private readonly Path _zoomIcon;
     private readonly TextBlock _zoomText;
     private readonly Button _zoomToCursorButton;
@@ -54,6 +56,7 @@ public sealed class TopBarWindow : Window
     public event Action? ToggleRecordingRequested;
     public event Action? ShowFlowPreviewRequested;
     public event Action? NewSessionRequested;
+    public event Action? CopyObsidianEmbedRequested;
     public event Action? ZoomToCursorToggleRequested;
 
     /// <summary>Fired live while the zoom-radius slider is being dragged/adjusted — the new radius in pixels. Not persisted to disk yet, see <see cref="ZoomRadiusCommitted"/>.</summary>
@@ -134,13 +137,19 @@ public sealed class TopBarWindow : Window
         AutomationProperties.SetAutomationId(_newSessionButton, "TopBar.NewSession");
         _newSessionButton.Click += (_, _) => NewSessionRequested?.Invoke();
 
-        // 4. Zoom button
+        // 4. Obsidian button
+        _copyObsidianButton = CreateIconButton(buttonStyle, ObsidianIconGeo, out _, out _, "Obsidian",
+            "Kopiert den interaktiven HTML-Einbindungscode für Obsidian in die Zwischenablage.");
+        AutomationProperties.SetAutomationId(_copyObsidianButton, "TopBar.CopyObsidian");
+        _copyObsidianButton.Click += (_, _) => CopyObsidianEmbedRequested?.Invoke();
+
+        // 5. Zoom button
         _zoomToCursorButton = CreateIconButton(buttonStyle, ZoomIconGeo, out _zoomIcon, out _zoomText, "Zoom",
             "Zoom-auf-Cursor umschalten: die nächsten Screenshots erfassen nur den Bereich um den Mauszeiger statt des ganzen Fensters.");
         AutomationProperties.SetAutomationId(_zoomToCursorButton, "TopBar.ZoomToggle");
         _zoomToCursorButton.Click += (_, _) => ZoomToCursorToggleRequested?.Invoke();
 
-        // 5. Custom-templated modern slider for zoom
+        // 6. Custom-templated modern slider for zoom
         _zoomRadiusSlider = new Slider
         {
             Minimum = ZoomRadiusMin,
@@ -171,6 +180,8 @@ public sealed class TopBarWindow : Window
         panel.Children.Add(_showFlowPreviewButton);
         panel.Children.Add(CreateSeparator());
         panel.Children.Add(_newSessionButton);
+        panel.Children.Add(CreateSeparator());
+        panel.Children.Add(_copyObsidianButton);
         panel.Children.Add(CreateSeparator());
         panel.Children.Add(_zoomToCursorButton);
         panel.Children.Add(_zoomRadiusSlider);
@@ -256,9 +267,9 @@ public sealed class TopBarWindow : Window
         iconPath = new Path
         {
             Data = iconGeo,
-            Fill = iconFill ?? Brushes.White,
-            Stroke = iconGeo == FlowIconGeo || iconGeo == PlusIconGeo || iconGeo == ZoomIconGeo ? (iconFill ?? Brushes.White) : null,
-            StrokeThickness = iconGeo == FlowIconGeo || iconGeo == PlusIconGeo || iconGeo == ZoomIconGeo ? 1.6 : 0,
+            Fill = iconGeo == FlowIconGeo || iconGeo == PlusIconGeo || iconGeo == ZoomIconGeo || iconGeo == ObsidianIconGeo ? Brushes.Transparent : (iconFill ?? Brushes.White),
+            Stroke = iconGeo == FlowIconGeo || iconGeo == PlusIconGeo || iconGeo == ZoomIconGeo || iconGeo == ObsidianIconGeo ? (iconFill ?? Brushes.White) : null,
+            StrokeThickness = iconGeo == FlowIconGeo || iconGeo == PlusIconGeo || iconGeo == ZoomIconGeo || iconGeo == ObsidianIconGeo ? 1.4 : 0,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round,
             Width = 11,

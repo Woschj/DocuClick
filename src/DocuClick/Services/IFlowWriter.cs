@@ -21,7 +21,7 @@ public sealed record PreviewNode(
     string? Shape = null, string? Color = null);
 
 /// <summary>One connector line between two nodes, for the tree-preview overlay.</summary>
-public sealed record PreviewEdge(string FromId, string ToId, bool Manual = false);
+public sealed record PreviewEdge(string FromId, string ToId, bool Manual = false, string? Color = null, string? LineStyle = "solid");
 
 /// <summary>Full snapshot of a flow's nodes and connectors, as returned by <see cref="IFlowWriter.GetPreview"/>.</summary>
 public sealed record FlowPreview(List<PreviewNode> Nodes, List<PreviewEdge> Edges);
@@ -443,6 +443,9 @@ public interface IFlowWriter
     /// </summary>
     BranchActionResult MoveNode(string nodeId, double x, double y);
 
+    /// <summary>Batch move for multiple nodes dragged together.</summary>
+    BranchActionResult MoveNodes(IReadOnlyList<(string NodeId, double X, double Y)> moves);
+
     /// <summary>
     /// Creates a brand-new, isolated content node at an explicit position —
     /// the Ablauf-Übersicht's UML-style "+ Neuer Knoten hier" gesture on the
@@ -454,4 +457,19 @@ public interface IFlowWriter
     /// where the user right-clicked.
     /// </summary>
     BranchActionResult AddManualNode(string label, double x, double y, string? shape = null, string? color = null);
+
+    /// <summary>
+    /// Creates a brand-new node with an attached external image at an explicit position.
+    /// </summary>
+    BranchActionResult AddManualImageNode(string label, string imageSourcePath, double x, double y);
+
+    /// <summary>
+    /// Updates the color and line style of an existing edge between two nodes.
+    /// </summary>
+    BranchActionResult SetEdgeStyle(string fromNodeId, string toNodeId, string? color, string? lineStyle);
+
+    /// <summary>
+    /// Reverses the direction of an existing edge between two nodes.
+    /// </summary>
+    BranchActionResult ReverseEdge(string fromNodeId, string toNodeId);
 }

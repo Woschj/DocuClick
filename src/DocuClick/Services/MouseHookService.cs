@@ -70,12 +70,16 @@ public sealed class MouseHookService : IDisposable
         _proc = HookCallback;
     }
 
+    private SynchronizationContext? _syncContext;
+
     public void Start()
     {
         if (IsEnabled)
         {
             return;
         }
+
+        _syncContext = SynchronizationContext.Current;
 
         using var curProcess = System.Diagnostics.Process.GetCurrentProcess();
         using var curModule = curProcess.MainModule!;
@@ -100,6 +104,7 @@ public sealed class MouseHookService : IDisposable
         UnhookWindowsHookEx(_hookHandle);
         _hookHandle = 0;
         IsEnabled = false;
+        _syncContext = null;
     }
 
     private nint HookCallback(int nCode, nint wParam, nint lParam)
@@ -116,16 +121,32 @@ public sealed class MouseHookService : IDisposable
                 AltDown = ModifierKeyState.AltDown
             };
 
-            // Handlers must return fast: a low-level hook that blocks the
-            // message queue for too long gets silently unhooked by Windows,
-            // which would kill click detection for the rest of the session.
+            // Handlers must return immediately: WH_MOUSE_LL is a blocking
+            // hook in Windows kernel. If we block or do heavy work here,
+            // Windows halts physical mouse cursor movement system-wide.
+            // We dispatch asynchronously so CallNextHookEx returns in <0.01ms.
+            var syncContext = _syncContext;
             if (wParam == WM_LBUTTONDOWN)
             {
-                LeftButtonDown?.Invoke(this, args);
+                if (syncContext is not null)
+                {
+                    syncContext.Post(_ => LeftButtonDown?.Invoke(this, args), null);
+                }
+                else
+                {
+                    ThreadPool.QueueUserWorkItem(_ => LeftButtonDown?.Invoke(this, args));
+                }
             }
             else
             {
-                RightButtonDown?.Invoke(this, args);
+                if (syncContext is not null)
+                {
+                    syncContext.Post(_ => RightButtonDown?.Invoke(this, args), null);
+                }
+                else
+                {
+                    ThreadPool.QueueUserWorkItem(_ => RightButtonDown?.Invoke(this, args));
+                }
             }
         }
 

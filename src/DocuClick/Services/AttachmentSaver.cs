@@ -13,8 +13,8 @@ public static class AttachmentSaver
     /// don't all pile up flat in one folder. <paramref name="sessionName"/>
     /// is normally the target file's name without extension.
     /// </summary>
-    /// <returns>The saved file's path relative to the Attachments folder (e.g. "MySession/073934_321.png").</returns>
-    public static string SaveScreenshot(AppConfig config, Bitmap screenshot, DateTime timestamp, string sessionName)
+    /// <returns>A tuple of the saved file's path relative to Attachments and the raw PNG bytes.</returns>
+    public static (string RelativePath, byte[] PngBytes) SaveScreenshot(AppConfig config, Bitmap screenshot, DateTime timestamp, string sessionName)
     {
         if (string.IsNullOrWhiteSpace(config.OutputPath))
         {
@@ -31,8 +31,40 @@ public static class AttachmentSaver
         // filename was pure redundancy. Time-of-day + milliseconds is still
         // enough to stay unique within one session's folder.
         var imageFileName = $"{timestamp:HHmmss_fff}.png";
-        screenshot.Save(Path.Combine(attachmentsDir, imageFileName), ImageFormat.Png);
-        return Path.Combine(subfolder, imageFileName);
+        var fullPath = Path.Combine(attachmentsDir, imageFileName);
+
+        using var ms = new MemoryStream();
+        screenshot.Save(ms, ImageFormat.Png);
+        var bytes = ms.ToArray();
+        File.WriteAllBytes(fullPath, bytes);
+
+        return (Path.Combine(subfolder, imageFileName), bytes);
+    }
+
+    /// <summary>
+    /// Copies an external image file to Attachments/&lt;sessionName&gt;/ and returns its relative path and bytes.
+    /// </summary>
+    public static (string RelativePath, byte[] ImageBytes) SaveImage(AppConfig config, string sourceFilePath, string sessionName)
+    {
+        if (string.IsNullOrWhiteSpace(config.OutputPath))
+        {
+            throw new InvalidOperationException("Kein Ausgabeordner konfiguriert.");
+        }
+
+        var subfolder = SanitizeSessionName(sessionName);
+        var attachmentsDir = Path.Combine(config.OutputPath, config.AttachmentsFolder, subfolder);
+        Directory.CreateDirectory(attachmentsDir);
+
+        var ext = Path.GetExtension(sourceFilePath);
+        if (string.IsNullOrEmpty(ext)) ext = ".png";
+        var fileNameWithoutExt = Path.GetFileNameWithoutExtension(sourceFilePath);
+        var imageFileName = $"{DateTime.Now:HHmmss_fff}_{SanitizeSessionName(fileNameWithoutExt)}{ext}";
+        var fullPath = Path.Combine(attachmentsDir, imageFileName);
+
+        var bytes = File.ReadAllBytes(sourceFilePath);
+        File.WriteAllBytes(fullPath, bytes);
+
+        return (Path.Combine(subfolder, imageFileName), bytes);
     }
 
     // Beyond filesystem-invalid characters, this subfolder name ends up

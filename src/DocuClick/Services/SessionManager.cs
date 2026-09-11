@@ -602,6 +602,56 @@ public sealed class SessionManager : IDisposable
         }
     }
 
+    /// <summary>Ablauf-Übersicht: updates an edge's color and line style.</summary>
+    public void SetEdgeStyle(string fromNodeId, string toNodeId, string? color, string? lineStyle)
+    {
+        var (result, snapshot) = RunOnWriterQueue(() =>
+        {
+            var actionResult = _writer.SetEdgeStyle(fromNodeId, toNodeId, color, lineStyle);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), _writer.GetPreview()) : default;
+            return (actionResult, statusSnapshot);
+        });
+
+        if (result.Success)
+        {
+            if (_isRunning)
+            {
+                CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            }
+
+            FlowPreviewChanged?.Invoke(snapshot.Preview, false);
+        }
+        else
+        {
+            InfoOccurred?.Invoke("Verbindungsstil konnte nicht geändert werden.");
+        }
+    }
+
+    /// <summary>Ablauf-Übersicht: reverses an edge's direction.</summary>
+    public void ReverseEdge(string fromNodeId, string toNodeId)
+    {
+        var (result, snapshot) = RunOnWriterQueue(() =>
+        {
+            var actionResult = _writer.ReverseEdge(fromNodeId, toNodeId);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), _writer.GetPreview()) : default;
+            return (actionResult, statusSnapshot);
+        });
+
+        if (result.Success)
+        {
+            if (_isRunning)
+            {
+                CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            }
+
+            FlowPreviewChanged?.Invoke(snapshot.Preview, false);
+        }
+        else
+        {
+            InfoOccurred?.Invoke("Richtung konnte nicht umgekehrt werden.");
+        }
+    }
+
     /// <summary>Ablauf-Übersicht: drag-to-move a card to an explicit position (see IFlowWriter.MoveNode — no auto-layout re-run, so it isn't undone by the very drag that just set it). Not gated on <see cref="_isRunning"/> — see <see cref="RenameNode"/>.</summary>
     public void MoveNode(string nodeId, double x, double y)
     {
@@ -623,12 +673,56 @@ public sealed class SessionManager : IDisposable
         }
     }
 
+    /// <summary>Batch move for multiple nodes dragged simultaneously.</summary>
+    public void MoveNodes(IReadOnlyList<(string NodeId, double X, double Y)> moves)
+    {
+        if (moves.Count == 0) return;
+
+        var (result, snapshot) = RunOnWriterQueue(() =>
+        {
+            var actionResult = _writer.MoveNodes(moves);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), _writer.GetPreview()) : default;
+            return (actionResult, statusSnapshot);
+        });
+
+        if (result.Success)
+        {
+            if (_isRunning)
+            {
+                CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            }
+
+            FlowPreviewChanged?.Invoke(snapshot.Preview, false);
+        }
+    }
+
     /// <summary>Ablauf-Übersicht: creates a brand-new, isolated node at an explicit position (see IFlowWriter.AddManualNode — UML-style "+ Neuer Knoten hier" on the empty canvas). Not gated on <see cref="_isRunning"/> — see <see cref="RenameNode"/>.</summary>
     public void AddManualNode(string label, double x, double y, string? shape = null, string? color = null)
     {
         var (result, snapshot) = RunOnWriterQueue(() =>
         {
             var actionResult = _writer.AddManualNode(label, x, y, shape, color);
+            var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), _writer.GetPreview()) : default;
+            return (actionResult, statusSnapshot);
+        });
+
+        if (result.Success)
+        {
+            if (_isRunning)
+            {
+                CanvasStatusChanged?.Invoke(snapshot.StatusText);
+            }
+
+            FlowPreviewChanged?.Invoke(snapshot.Preview, false);
+        }
+    }
+
+    /// <summary>Ablauf-Übersicht: creates a brand-new node with an attached image at an explicit position.</summary>
+    public void AddManualImageNode(string label, string imageSourcePath, double x, double y)
+    {
+        var (result, snapshot) = RunOnWriterQueue(() =>
+        {
+            var actionResult = _writer.AddManualImageNode(label, imageSourcePath, x, y);
             var statusSnapshot = actionResult.Success ? new StatusSnapshot(BuildStatusText(), _writer.GetPreview()) : default;
             return (actionResult, statusSnapshot);
         });

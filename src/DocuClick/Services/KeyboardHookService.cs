@@ -64,12 +64,16 @@ public sealed class KeyboardHookService : IDisposable
         _proc = HookCallback;
     }
 
+    private SynchronizationContext? _syncContext;
+
     public void Start()
     {
         if (IsEnabled)
         {
             return;
         }
+
+        _syncContext = SynchronizationContext.Current;
 
         using var curProcess = System.Diagnostics.Process.GetCurrentProcess();
         using var curModule = curProcess.MainModule!;
@@ -94,6 +98,7 @@ public sealed class KeyboardHookService : IDisposable
         UnhookWindowsHookEx(_hookHandle);
         _hookHandle = 0;
         IsEnabled = false;
+        _syncContext = null;
     }
 
     private nint HookCallback(int nCode, nint wParam, nint lParam)
@@ -106,13 +111,23 @@ public sealed class KeyboardHookService : IDisposable
             // falls straight through to CallNextHookEx below, unexamined.
             if (hookStruct.vkCode == VK_RETURN)
             {
-                EnterPressed?.Invoke(this, new EnterKeyEventArgs
+                var args = new EnterKeyEventArgs
                 {
                     Timestamp = DateTime.Now,
                     ShiftDown = ModifierKeyState.ShiftDown,
                     ControlDown = ModifierKeyState.ControlDown,
                     AltDown = ModifierKeyState.AltDown
-                });
+                };
+
+                var syncContext = _syncContext;
+                if (syncContext is not null)
+                {
+                    syncContext.Post(_ => EnterPressed?.Invoke(this, args), null);
+                }
+                else
+                {
+                    ThreadPool.QueueUserWorkItem(_ => EnterPressed?.Invoke(this, args));
+                }
             }
         }
 

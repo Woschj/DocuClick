@@ -33,6 +33,10 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       <span>+ Element</span>
     </button>
+    <button id="hud-btn-guide" class="hud-btn" title="Schritt-für-Schritt-Guide ein-/ausblenden">
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      <span>Anleitung</span>
+    </button>
     <div class="hud-dock-separator"></div>
     <button id="hud-btn-zoom-out" class="hud-btn" title="Verkleinern">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -45,6 +49,30 @@
     </button>
   </div>
 </header>
+
+<!-- SOP Guide Drawer -->
+<aside id="guide-drawer" class="guide-drawer">
+  <div class="guide-header">
+    <div class="guide-title-box">
+      <span class="guide-badge">SOP Guide</span>
+      <h3 class="guide-title">Schritt-für-Schritt</h3>
+    </div>
+    <button id="guide-close-btn" class="icon-btn" title="Schließen">✕</button>
+  </div>
+  <div class="guide-controls">
+    <div class="guide-path-bar">
+      <span class="guide-control-label">Ablauf:</span>
+      <select id="guide-path-select" class="guide-select" title="Zwischen Gesamtablauf und Pfaden filtern">
+        <option value="all">🌐 Gesamter Ablauf</option>
+      </select>
+    </div>
+    <div class="guide-filter-tabs">
+      <button type="button" id="guide-tab-all" class="guide-tab active">Alle Schritte</button>
+      <button type="button" id="guide-tab-images" class="guide-tab">Nur Screenshots</button>
+    </div>
+  </div>
+  <div id="guide-list" class="guide-list"></div>
+</aside>
 
 <script src="vendor/cytoscape.min.js"></script>
 <script src="flow.js"></script>
