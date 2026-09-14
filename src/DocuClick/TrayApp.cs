@@ -6,8 +6,8 @@ namespace DocuClick;
 
 /// <summary>
 /// Owns the tray icon, its context menu, and the recording on/off state.
-/// Later steps (mouse hook, screenshot, Obsidian writer) subscribe to
-/// <see cref="RecordingStateChanged"/> instead of touching the tray directly.
+/// Later steps (mouse hook, screenshot, <see cref="DocuClick.Services.CanvasFlowWriter"/>)
+/// subscribe to <see cref="RecordingStateChanged"/> instead of touching the tray directly.
 /// </summary>
 public sealed class TrayApp : IDisposable
 {

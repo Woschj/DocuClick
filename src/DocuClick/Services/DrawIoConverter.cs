@@ -16,9 +16,9 @@ namespace DocuClick.Services;
 /// embedded screenshot, gray rhombus decision points, colored path-start
 /// markers, accent-colored edges per path).
 ///
-/// draw.io is no longer a *live* recording mode (see IFlowWriter's
-/// implementers: Canvas and the plain Note writer only) — draw.io mode
-/// embeds every screenshot as inline base64 and rewrites the whole file on
+/// draw.io is no longer a *live* recording mode — <see cref="CanvasFlowWriter"/>
+/// is the sole live writer now — draw.io mode used to embed every
+/// screenshot as inline base64 and rewrite the whole file on
 /// every single click, which measurably slows down (confirmed via harness:
 /// ~127ms/click at a 47MB session) as a recording grows, and that per-click
 /// cost is also what any branch action blocks the UI thread on. Canvas mode
@@ -66,7 +66,7 @@ public static class DrawIoConverter
         var structuralEdges = canvas.Edges.Where(e => !e.Manual && textNodes.ContainsKey(e.FromNode) && textNodes.ContainsKey(e.ToNode)).ToList();
         var manualEdges = canvas.Edges.Where(e => e.Manual && textNodes.ContainsKey(e.FromNode) && textNodes.ContainsKey(e.ToNode)).ToList();
 
-        // Same grouping IFlowWriter.GetPreview() already uses for the
+        // Same grouping CanvasFlowWriter.GetPreview() already uses for the
         // Ablauf-Übersicht minimap — propagates each path-start's identity
         // forward through everything reachable from it, so this converter
         // doesn't need its own separate branch-walking logic.
@@ -168,7 +168,7 @@ public static class DrawIoConverter
         }
 
         // Manual cross-connects last, once every card/marker has a cell —
-        // same neutral gray IFlowWriter.ConnectNodes already uses live, to
+        // same neutral gray CanvasFlowWriter.ConnectNodes already uses live, to
         // visually read as "not part of the recorded sequence" the same way.
         foreach (var edge in manualEdges)
         {

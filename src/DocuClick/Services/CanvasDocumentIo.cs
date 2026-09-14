@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace DocuClick.Services;
@@ -23,27 +24,86 @@ public static class CanvasDocumentIo
     internal const string DataMarkerStart = "<script id=\"docuclick-data\" type=\"application/json\">";
     internal const string DataMarkerEnd = "</script>";
 
+    /// <summary>
+    /// A missing file (first-ever session on this name) is a normal, silent
+    /// "start empty" case. A file that *exists* but fails to read/parse is
+    /// not — silently falling back to an empty document there used to mean
+    /// the very next Save() would overwrite the original, still-mostly-
+    /// intact file with that empty state and whatever gets recorded after
+    /// it, destroying it for good with no visible error anywhere. Callers
+    /// (see <see cref="CanvasFlowWriter.StartSession"/>) already run inside
+    /// paths that surface an exception here as a real error message instead
+    /// of swallowing it.
+    /// </summary>
     public static CanvasDocument Load(string path)
     {
+        if (!File.Exists(path))
+        {
+            return new CanvasDocument();
+        }
+
+        string content;
         try
         {
-            if (File.Exists(path))
-            {
-                var content = File.ReadAllText(path);
-                var json = ExtractEmbeddedJson(content) ?? content;
-                var doc = JsonSerializer.Deserialize<CanvasDocument>(json);
-                if (doc is not null)
-                {
-                    return doc;
-                }
-            }
+            content = File.ReadAllText(path);
         }
         catch (Exception ex)
         {
-            LogService.Log($"Datei konnte nicht gelesen werden, beginne neu: {ex.Message}");
+            throw new InvalidOperationException($"Datei \"{Path.GetFileName(path)}\" konnte nicht gelesen werden: {ex.Message}", ex);
         }
 
-        return new CanvasDocument();
+        var json = ExtractEmbeddedJson(content) ?? content;
+        CanvasDocument? doc;
+        try
+        {
+            doc = JsonSerializer.Deserialize<CanvasDocument>(json);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Datei \"{Path.GetFileName(path)}\" ist beschädigt und konnte nicht gelesen werden: {ex.Message}", ex);
+        }
+
+        if (doc is null)
+        {
+            throw new InvalidOperationException($"Datei \"{Path.GetFileName(path)}\" enthält kein gültiges Ablauf-Dokument.");
+        }
+
+        SanitizeFilePaths(doc, path);
+        return doc;
+    }
+
+    /// <summary>
+    /// Defense against a crafted/shared session file: <see cref="CanvasNode.File"/>
+    /// (a screenshot's on-disk location) is attacker-controlled data once a
+    /// `.html` "Ablauf" could have come from anyone — every consumer
+    /// resolves it via <c>Path.Combine(outputPath, relativePath)</c>, which
+    /// in .NET silently discards the output path entirely if
+    /// the second argument is rooted (an absolute path or a UNC share), and
+    /// a relative value with ".." segments walks out of it just as normally.
+    /// Either way that turns "open a shared Ablauf" / "export it" into
+    /// reading and re-embedding an arbitrary local file. Rejecting anything
+    /// rooted or containing ".." here — the same rule
+    /// <see cref="SessionStartWindow"/>'s own folder sanitizer already
+    /// applies to user-typed paths — means every downstream consumer is
+    /// safe without needing its own copy of this check.
+    /// </summary>
+    private static void SanitizeFilePaths(CanvasDocument doc, string sourcePath)
+    {
+        foreach (var node in doc.Nodes)
+        {
+            if (node.File is not { Length: > 0 } file)
+            {
+                continue;
+            }
+
+            var isSafe = !Path.IsPathRooted(file)
+                && !file.Split('/', '\\').Any(segment => segment == "..");
+            if (!isSafe)
+            {
+                LogService.Log($"Unsicherer Bild-Pfad \"{file}\" in \"{Path.GetFileName(sourcePath)}\" ignoriert (absoluter Pfad oder \"..\" verweist außerhalb des Ausgabeordners).");
+                node.File = null;
+            }
+        }
     }
 
     private static string? ExtractEmbeddedJson(string htmlContent)

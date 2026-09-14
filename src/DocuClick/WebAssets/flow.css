@@ -186,14 +186,22 @@ body {
   transform: scale(0.92);
 }
 
-.hud-btn-action {
+/* Any .hud-btn that carries a text <span> alongside its icon (not just an
+   icon-only square like zoom in/out/fit) needs this — .hud-btn's own fixed
+   24x24px box has no overflow clipping, so a label without this just
+   renders past the box's right edge and visually collides with whatever
+   sits next in the dock instead of actually growing the button. */
+.hud-btn-labeled {
   width: auto;
   padding: 0 8px;
   gap: 4px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--accent-primary);
   border-radius: var(--radius-full);
+}
+
+.hud-btn-action {
+  color: var(--accent-primary);
 }
 
 .hud-btn-action:hover {

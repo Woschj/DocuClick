@@ -7,7 +7,7 @@ namespace DocuClick.Services;
 /// <see cref="PathId"/>/<see cref="PathName"/> are filled in after the fact
 /// by <see cref="FlowPreviewBranching.TagBranches"/>, which propagates them
 /// forward from whichever <see cref="IsPathStart"/> node reaches a given
-/// node first — not by the individual writers.
+/// node first — not by <see cref="CanvasFlowWriter"/> itself.
 /// </summary>
 /// <param name="ImagePath">
 /// Output-relative path to this node's screenshot (forward slashes), or null
@@ -23,12 +23,12 @@ public sealed record PreviewNode(
 /// <summary>One connector line between two nodes, for the tree-preview overlay.</summary>
 public sealed record PreviewEdge(string FromId, string ToId, bool Manual = false, string? Color = null, string? LineStyle = "solid");
 
-/// <summary>Full snapshot of a flow's nodes and connectors, as returned by <see cref="IFlowWriter.GetPreview"/>.</summary>
+/// <summary>Full snapshot of a flow's nodes and connectors, as returned by <see cref="CanvasFlowWriter.GetPreview"/>.</summary>
 public sealed record FlowPreview(List<PreviewNode> Nodes, List<PreviewEdge> Edges);
 
 /// <summary>
-/// Shared post-processing for every <see cref="IFlowWriter.GetPreview"/>
-/// implementation: propagates each path-start node's identity (its own id,
+/// Shared post-processing for <see cref="CanvasFlowWriter.GetPreview"/>:
+/// propagates each path-start node's identity (its own id,
 /// used as <see cref="PreviewNode.PathId"/>) and display name forward
 /// through everything reachable from it, so the tree-preview overlay's
 /// minimap can give each path its own color/label instead of only
@@ -303,169 +303,3 @@ public readonly record struct BranchActionResult(bool Success);
 
 /// <summary>One path forking from a decision point — for the Ablauf-Übersicht's "bestehenden Pfad fortsetzen" popup.</summary>
 public readonly record struct PathInfo(string PathStartNodeId, string Name, int StepCount);
-
-/// <summary>
-/// Common contract for the branching flow writer, implemented solely by
-/// CanvasFlowWriter — there is no other output mode (a separate, non-
-/// branching plain-note writer existed once and was removed once the HTML
-/// flow format no longer needed Obsidian). draw.io is not a live-recording
-/// target either (see DrawIoConverter) — it converts an existing session
-/// into a .drawio file in one pass instead of implementing this interface.
-///
-/// Branching model: <see cref="MarkDecisionPoint"/> turns the current node
-/// into a small diamond — a decision point — and immediately forks the
-/// first named path from it, jumping the cursor onto that path (there is
-/// deliberately no unnamed/implicit "default continuation": every path
-/// leaving a decision point is a real, selectable, named node from the
-/// moment it exists — otherwise it could never appear in
-/// <see cref="ListPaths"/>, making it impossible to ever resume). From a
-/// decision point (found by clicking its diamond in the Ablauf-Übersicht),
-/// the user picks <see cref="StartNewPath"/> to fork another new named
-/// path, or <see cref="ContinuePath"/> to resume one started earlier —
-/// mirroring a UML activity diagram's decision nodes and their outgoing
-/// flows, screenshots instead of activity labels.
-/// </summary>
-public interface IFlowWriter
-{
-    void StartSession(string fileName);
-    void Pause();
-    void Stop();
-    void AddClickNode(string description, Bitmap screenshot, DateTime timestamp);
-
-    /// <summary>Marks the current node as a decision point (a small diamond marker) and immediately forks+jumps onto its first named path — see the type's own doc comment for why there's no unnamed default continuation.</summary>
-    BranchActionResult MarkDecisionPoint(string firstPathName);
-
-    /// <summary>Every path already forking directly from a given node (decision point or otherwise), for the Ablauf-Übersicht's per-node popup.</summary>
-    List<PathInfo> ListPaths(string originNodeId);
-
-    /// <summary>
-    /// Starts a brand-new named path from an existing node, in its own
-    /// column, and jumps the cursor onto it. The origin doesn't have to be
-    /// a decision point — any node can be the retroactive start of an
-    /// alternate branch (see <see cref="JumpToNode"/>'s doc comment for why
-    /// this is the only way to branch from a node that already has
-    /// downstream content).
-    /// </summary>
-    BranchActionResult StartNewPath(string originNodeId, string pathName);
-
-    /// <summary>Resumes an existing path at wherever it currently ends (not necessarily where it started).</summary>
-    BranchActionResult ContinuePath(string pathStartNodeId);
-
-    /// <summary>Snapshot of every node currently in the flow (position + size + which one the cursor is on) for the live tree-preview overlay.</summary>
-    FlowPreview GetPreview();
-
-    /// <summary>
-    /// Moves the cursor to an arbitrary existing node — always resolved
-    /// forward to that node's branch's current tip and resumed exactly
-    /// there (never opens a new column, never risks a second, untracked
-    /// outgoing edge from a node that already has one). The Ablauf-
-    /// Übersicht's click-to-navigate for a node that's already a tip (no
-    /// downstream content); for a node with existing children it instead
-    /// shows a popup offering this ("→ Weiter") alongside
-    /// <see cref="StartNewPath"/> ("+ Neuer Pfad ab hier").
-    /// </summary>
-    BranchActionResult JumpToNode(string nodeId);
-
-    string? CurrentNodeLabel { get; }
-
-    /// <summary>
-    /// Renames a node's label (or, for a path-start marker, its path name —
-    /// the "↳ Pfad: " prefix is kept). Decision-point diamonds can't be
-    /// renamed — their fixed "◆ Abzweigung" text is how every writer
-    /// recognizes one as a decision point in the first place.
-    /// </summary>
-    BranchActionResult RenameNode(string nodeId, string newLabel);
-
-    /// <summary>
-    /// Deletes a node. Exactly one outgoing edge: the gap is stitched shut
-    /// (the node's own parent connects directly to its former child)
-    /// instead of leaving that branch orphaned. More than one outgoing edge
-    /// (a decision point, or any node a path was forked from): the whole
-    /// downstream subtree is deleted with it — the UI must confirm this
-    /// with the user first, since there's no single "the" continuation to
-    /// stitch to. If the deleted node (or one of its cascaded descendants)
-    /// was the current cursor, the cursor moves to the parent's branch tip
-    /// (or null, if the deleted node was a root).
-    /// </summary>
-    BranchActionResult DeleteNode(string nodeId);
-
-    /// <summary>
-    /// Manually connects two existing nodes with a new edge — for the
-    /// Ablauf-Übersicht's drag-to-connect gesture, when the recorded flow
-    /// itself doesn't already capture some real transition (e.g. a step
-    /// that loops back to an earlier one). Additive: no existing edge is
-    /// removed, so <paramref name="toNodeId"/> can end up with more than one
-    /// incoming edge — a genuine merge point, not a bug (the Ablauf-
-    /// Übersicht's row/column layout just picks whichever parent it reaches
-    /// <paramref name="toNodeId"/> from first). Only ordinary content nodes
-    /// qualify, on both ends — a decision point's/path-start's role as a
-    /// branch hub or a path's own identity would break if either could be
-    /// connected into or out of arbitrarily. Refuses (returns failure) if
-    /// <paramref name="toNodeId"/> can already reach <paramref name="fromNodeId"/>,
-    /// which would create a cycle.
-    /// </summary>
-    BranchActionResult ConnectNodes(string fromNodeId, string toNodeId);
-
-    /// <summary>
-    /// Removes an existing edge between two ordinary content nodes — the
-    /// undo counterpart to <see cref="ConnectNodes"/>, for the Ablauf-
-    /// Übersicht's right-click-an-edge gesture. Same marker restriction as
-    /// <see cref="ConnectNodes"/>: a decision point's/path-start's
-    /// structural edges (into it, or its own fork out of a decision point)
-    /// can't be removed this way, since that would
-    /// silently detach a whole path from <see cref="ListPaths"/> while
-    /// leaving its nodes behind, unreachable but not deleted — a confusing
-    /// half-state. Deliberately does *not* refuse just because a node would
-    /// end up with no remaining edges at all (fully isolated) — the caller
-    /// doesn't have to reconnect it to anything else; the Ablauf-Übersicht's
-    /// layout places an isolated node in its own row/column rather than
-    /// overlapping it onto whatever else happens to sit at the origin.
-    /// Refuses (returns failure) if no such edge exists.
-    /// </summary>
-    BranchActionResult DisconnectNodes(string fromNodeId, string toNodeId);
-
-    /// <summary>
-    /// Moves a node (and its screenshot/group siblings, kept aligned by the
-    /// same fixed relative-position match every other sibling lookup here
-    /// uses) to an explicit new position — the Ablauf-Übersicht's drag-to-
-    /// move gesture. Unlike every other mutating action on this interface,
-    /// this deliberately does *not* re-run the auto-layout: the whole point
-    /// is letting the user override the computed grid arrangement, and
-    /// snapping it straight back would defeat the drag that just happened.
-    /// That also means it's not a *permanent* override — there's no
-    /// "pinned position" concept in the file format, so the next action
-    /// that does re-run the auto-layout (a new click, Connect/Disconnect, a
-    /// new decision point/path) discards it again.
-    /// </summary>
-    BranchActionResult MoveNode(string nodeId, double x, double y);
-
-    /// <summary>Batch move for multiple nodes dragged together.</summary>
-    BranchActionResult MoveNodes(IReadOnlyList<(string NodeId, double X, double Y)> moves);
-
-    /// <summary>
-    /// Creates a brand-new, isolated content node at an explicit position —
-    /// the Ablauf-Übersicht's UML-style "+ Neuer Knoten hier" gesture on the
-    /// empty canvas background. No screenshot and no edges: it starts out
-    /// exactly like a node that's been <see cref="DisconnectNodes"/>'d from
-    /// everything, ready to be connected via <see cref="ConnectNodes"/> or
-    /// moved via <see cref="MoveNode"/> like any other. Like MoveNode, does
-    /// *not* re-run the auto-layout — the whole point is placing it exactly
-    /// where the user right-clicked.
-    /// </summary>
-    BranchActionResult AddManualNode(string label, double x, double y, string? shape = null, string? color = null);
-
-    /// <summary>
-    /// Creates a brand-new node with an attached external image at an explicit position.
-    /// </summary>
-    BranchActionResult AddManualImageNode(string label, string imageSourcePath, double x, double y);
-
-    /// <summary>
-    /// Updates the color and line style of an existing edge between two nodes.
-    /// </summary>
-    BranchActionResult SetEdgeStyle(string fromNodeId, string toNodeId, string? color, string? lineStyle);
-
-    /// <summary>
-    /// Reverses the direction of an existing edge between two nodes.
-    /// </summary>
-    BranchActionResult ReverseEdge(string fromNodeId, string toNodeId);
-}

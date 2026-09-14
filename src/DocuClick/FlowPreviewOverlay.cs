@@ -652,7 +652,7 @@ public sealed class FlowPreviewOverlay : Window
     /// <summary>
     /// A node with more than one outgoing edge (a decision point, or any
     /// node a path was forked from) deletes its whole downstream subtree
-    /// along with it — see <see cref="IFlowWriter.DeleteNode"/> — so this
+    /// along with it — see <see cref="CanvasFlowWriter.DeleteNode"/> — so this
     /// confirms that with the user first, naming exactly how many further
     /// steps would go with it, before firing <see cref="DeleteRequested"/>.
     /// A node with 0 or 1 (non-path-start) child needs no confirmation: at

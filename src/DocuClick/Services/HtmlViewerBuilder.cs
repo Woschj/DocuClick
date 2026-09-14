@@ -1630,7 +1630,19 @@ public static class HtmlViewerBuilder
                   }),
                   edges: cy.edges().map((e) => ({ data: e.data() }))
                 };
-                const flowJson = JSON.stringify(currentFlowData);
+                // .NET's JsonSerializer (server-side) escapes "<"/">" in
+                // string values by default, so a node label can never
+                // prematurely close the script tag it's embedded in — but
+                // JS's native JSON.stringify does NOT do that, so this
+                // client-side re-save path needs its own guard: a label
+                // containing the literal text "</script" would otherwise
+                // truncate the HTML file's own script block right there,
+                // corrupting everything after it. Breaking up the sequence
+                // with an escaped slash keeps the JSON value-equal (JSON
+                // allows "\/" as an alternate encoding of "/") while making
+                // it invisible to the HTML parser's tag-close scan.
+                const escapeScriptClose = (json) => json.replace(/<\/script/gi, "<\\/script");
+                const flowJson = escapeScriptClose(JSON.stringify(currentFlowData));
 
                 let patched = originalHtmlText;
 
@@ -1639,7 +1651,7 @@ public static class HtmlViewerBuilder
                 const startIdx = patched.indexOf(startMarker);
                 const endIdx = patched.indexOf("<\/script>", startIdx);
                 if (startIdx !== -1 && endIdx !== -1) {
-                  patched = `${patched.slice(0, startIdx + startMarker.length)}\n${JSON.stringify(canvasDoc, null, 2)}\n${patched.slice(endIdx)}`;
+                  patched = `${patched.slice(0, startIdx + startMarker.length)}\n${escapeScriptClose(JSON.stringify(canvasDoc, null, 2))}\n${patched.slice(endIdx)}`;
                 }
 
                 // 2. Patch flowData variable (Cytoscape JSON data)

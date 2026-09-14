@@ -39,14 +39,18 @@ public sealed class TopBarWindow : Window
     private static readonly Geometry PlusIconGeo = Geometry.Parse("M 8 2.5 V 13.5 M 2.5 8 H 13.5");
     private static readonly Geometry ZoomIconGeo = Geometry.Parse("M 6.5 2 A 4.5 4.5 0 1 1 2 6.5 A 4.5 4.5 0 0 1 6.5 2 M 10 10 L 14 14");
     private static readonly Geometry ObsidianIconGeo = Geometry.Parse("M 8 2 L 13.5 6.5 L 8 14.5 L 2.5 6.5 Z M 2.5 6.5 H 13.5 M 8 2 V 14.5");
+    private static readonly Geometry FolderIconGeo = Geometry.Parse("M 2 4.5 H 6.5 L 8 6 H 14 V 13 H 2 Z");
 
     private readonly Ellipse _statusDot;
     private readonly TextBlock _statusText;
+    private readonly Border _skipBadge;
+    private readonly TextBlock _skipBadgeText;
     private readonly Path _toggleIcon;
     private readonly TextBlock _toggleText;
     private readonly Button _toggleRecordingButton;
     private readonly Button _showFlowPreviewButton;
     private readonly Button _newSessionButton;
+    private readonly Button _openOutputFolderButton;
     private readonly Button _copyObsidianButton;
     private readonly Path _zoomIcon;
     private readonly TextBlock _zoomText;
@@ -56,6 +60,7 @@ public sealed class TopBarWindow : Window
     public event Action? ToggleRecordingRequested;
     public event Action? ShowFlowPreviewRequested;
     public event Action? NewSessionRequested;
+    public event Action? OpenOutputFolderRequested;
     public event Action? CopyObsidianEmbedRequested;
     public event Action? ZoomToCursorToggleRequested;
 
@@ -117,6 +122,29 @@ public sealed class TopBarWindow : Window
         statusStack.Children.Add(_statusText);
         statusChip.Child = statusStack;
 
+        // Separate from the status chip on purpose: it comes and goes on
+        // every key up/down while the skip modifier is held, and sharing
+        // _statusText/_statusDot with UpdateStatus's own, independently-
+        // timed calls would mean whichever one last wrote to those fields
+        // wins, silently clobbering the other's state.
+        _skipBadgeText = new TextBlock
+        {
+            Foreground = new SolidColorBrush(Color.FromRgb(0x0B, 0x0F, 0x19)),
+            FontSize = 11,
+            FontWeight = FontWeights.Bold,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        _skipBadge = new Border
+        {
+            Background = new SolidColorBrush(Color.FromRgb(0xF5, 0x9E, 0x0B)),
+            CornerRadius = new System.Windows.CornerRadius(13),
+            Padding = new Thickness(9, 3, 9, 3),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 4, 0),
+            Visibility = Visibility.Collapsed,
+            Child = _skipBadgeText
+        };
+
         var buttonStyle = BuildButtonStyle();
 
         // 1. Toggle Recording button
@@ -136,6 +164,12 @@ public sealed class TopBarWindow : Window
             "Startet eine neue Aufnahme-Session (fragt nach Zieldatei) — schließt bei laufender Aufnahme zuerst die aktuelle Datei ab.");
         AutomationProperties.SetAutomationId(_newSessionButton, "TopBar.NewSession");
         _newSessionButton.Click += (_, _) => NewSessionRequested?.Invoke();
+
+        // 3b. Open output folder button
+        _openOutputFolderButton = CreateIconButton(buttonStyle, FolderIconGeo, out _, out _, "Ordner",
+            "Öffnet den konfigurierten Ausgabeordner im Explorer.");
+        AutomationProperties.SetAutomationId(_openOutputFolderButton, "TopBar.OpenOutputFolder");
+        _openOutputFolderButton.Click += (_, _) => OpenOutputFolderRequested?.Invoke();
 
         // 4. Obsidian button
         _copyObsidianButton = CreateIconButton(buttonStyle, ObsidianIconGeo, out _, out _, "Obsidian",
@@ -175,11 +209,13 @@ public sealed class TopBarWindow : Window
         var panel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         panel.Children.Add(dragGrip);
         panel.Children.Add(statusChip);
+        panel.Children.Add(_skipBadge);
         panel.Children.Add(CreateSeparator());
         panel.Children.Add(_toggleRecordingButton);
         panel.Children.Add(_showFlowPreviewButton);
         panel.Children.Add(CreateSeparator());
         panel.Children.Add(_newSessionButton);
+        panel.Children.Add(_openOutputFolderButton);
         panel.Children.Add(CreateSeparator());
         panel.Children.Add(_copyObsidianButton);
         panel.Children.Add(CreateSeparator());
@@ -267,9 +303,9 @@ public sealed class TopBarWindow : Window
         iconPath = new Path
         {
             Data = iconGeo,
-            Fill = iconGeo == FlowIconGeo || iconGeo == PlusIconGeo || iconGeo == ZoomIconGeo || iconGeo == ObsidianIconGeo ? Brushes.Transparent : (iconFill ?? Brushes.White),
-            Stroke = iconGeo == FlowIconGeo || iconGeo == PlusIconGeo || iconGeo == ZoomIconGeo || iconGeo == ObsidianIconGeo ? (iconFill ?? Brushes.White) : null,
-            StrokeThickness = iconGeo == FlowIconGeo || iconGeo == PlusIconGeo || iconGeo == ZoomIconGeo || iconGeo == ObsidianIconGeo ? 1.4 : 0,
+            Fill = iconGeo == FlowIconGeo || iconGeo == PlusIconGeo || iconGeo == ZoomIconGeo || iconGeo == ObsidianIconGeo || iconGeo == FolderIconGeo ? Brushes.Transparent : (iconFill ?? Brushes.White),
+            Stroke = iconGeo == FlowIconGeo || iconGeo == PlusIconGeo || iconGeo == ZoomIconGeo || iconGeo == ObsidianIconGeo || iconGeo == FolderIconGeo ? (iconFill ?? Brushes.White) : null,
+            StrokeThickness = iconGeo == FlowIconGeo || iconGeo == PlusIconGeo || iconGeo == ZoomIconGeo || iconGeo == ObsidianIconGeo || iconGeo == FolderIconGeo ? 1.4 : 0,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round,
             Width = 11,
@@ -447,5 +483,24 @@ public sealed class TopBarWindow : Window
             : new SolidColorBrush(Color.FromArgb(38, 255, 255, 255));
 
         _zoomRadiusSlider.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Live feedback that the skip-recording modifier is held down right
+    /// now, so the next click/Enter press will be skipped — polled and
+    /// pushed from <see cref="App"/> roughly every 100ms while a session is
+    /// recording (see its own comment for why this is a poll, not a hook).
+    /// Before this, the only feedback was the skip sound/log line firing
+    /// *after* a click was already thrown away, giving no way to tell in
+    /// advance whether holding the key was actually working.
+    /// </summary>
+    public void UpdateSkipModifierActive(bool active, string modifierLabel)
+    {
+        if (active)
+        {
+            _skipBadgeText.Text = $"⏸ Skip ({modifierLabel})";
+        }
+
+        _skipBadge.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
     }
 }

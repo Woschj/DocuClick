@@ -9,11 +9,10 @@ namespace DocuClick.Services;
 /// Glues the mouse/keyboard hooks to the capture pipeline (UI Automation
 /// lookup -> screenshot -> highlight -> write) and owns the current
 /// session's target file. Writes a branching flow via
-/// <see cref="CanvasFlowWriter"/> (the sole <see cref="IFlowWriter"/>
-/// implementation — a separate, non-branching plain-note writer existed
-/// once and was removed once the HTML flow format no longer needed
-/// Obsidian). A draw.io export is always available afterward instead of
-/// recording into it directly — see <see cref="DrawIoConverter"/>.
+/// <see cref="CanvasFlowWriter"/> — a separate, non-branching plain-note
+/// writer existed once and was removed once the HTML flow format no longer
+/// needed Obsidian. A draw.io export is always available afterward instead
+/// of recording into it directly — see <see cref="DrawIoConverter"/>.
 /// </summary>
 public sealed class SessionManager : IDisposable
 {
@@ -110,6 +109,13 @@ public sealed class SessionManager : IDisposable
     {
         _config = config;
         _writer = new CanvasFlowWriter(config);
+        // The writer's own debounced background save (drag-move, add-node)
+        // needs to run its actual disk write on this same serial thread,
+        // not a bare ThreadPool continuation — otherwise it can read/mutate
+        // _doc concurrently with a click or edit action already running
+        // here, corrupting state. _writerQueue.Add is thread-safe to call
+        // from any thread, so a fire-and-forget hand-off is all this needs.
+        _writer.RunOnWriterThread = action => _writerQueue.Add(action);
         _mouseHook.LeftButtonDown += OnLeftButtonDown;
         _mouseHook.RightButtonDown += OnRightButtonDown;
         _keyboardHook.EnterPressed += OnEnterPressed;
@@ -236,8 +242,6 @@ public sealed class SessionManager : IDisposable
             Stop();
         }
 
-        _currentTargetFileName = targetFileName;
-
         var targetDirectory = Path.GetDirectoryName(Path.Combine(_config.OutputPath, targetFileName));
         if (!string.IsNullOrEmpty(targetDirectory))
         {
@@ -246,12 +250,16 @@ public sealed class SessionManager : IDisposable
 
         // Runs on the writer thread (see RunOnWriterQueue) so it can never
         // race an already-queued click from a previous session that hasn't
-        // finished processing yet.
+        // finished processing yet. _currentTargetFileName is only committed
+        // once this actually succeeds — a corrupt-file exception must leave
+        // HasActiveSession/CurrentTargetFileName reporting whatever was
+        // truly active before, not a file that never actually loaded.
         var snapshot = RunOnWriterQueue(() =>
         {
-            _writer.StartSession(_currentTargetFileName);
+            _writer.StartSession(targetFileName);
             return new StatusSnapshot(BuildStatusText(), _writer.GetPreview());
         });
+        _currentTargetFileName = targetFileName;
 
         _mouseHook.Start();
         if (_config.CaptureOnEnter)
@@ -283,12 +291,16 @@ public sealed class SessionManager : IDisposable
             return;
         }
 
-        _currentTargetFileName = targetFileName;
+        // Only committed once the writer queue action below actually
+        // succeeds — a corrupt-file exception must leave whatever session
+        // was previously active as the still-current one, not switch
+        // CurrentTargetFileName over to a file that never actually loaded.
         var preview = RunOnWriterQueue(() =>
         {
             _writer.StartSession(targetFileName);
             return _writer.GetPreview();
         });
+        _currentTargetFileName = targetFileName;
 
         FlowPreviewChanged?.Invoke(preview, false);
         LogService.Log($"Ablauf zum Bearbeiten geöffnet: {targetFileName}");
@@ -519,7 +531,7 @@ public sealed class SessionManager : IDisposable
     /// <summary>
     /// Ablauf-Übersicht: deletes a node (cascading to its whole downstream
     /// subtree if it has more than one child — see
-    /// <see cref="IFlowWriter.DeleteNode"/>). The overlay is responsible
+    /// <see cref="CanvasFlowWriter.DeleteNode"/>). The overlay is responsible
     /// for confirming a cascading delete with the user before calling this;
     /// by the time it's called here, the action is final. Not gated on
     /// <see cref="_isRunning"/> — see <see cref="RenameNode"/>.
@@ -648,7 +660,7 @@ public sealed class SessionManager : IDisposable
         }
     }
 
-    /// <summary>Ablauf-Übersicht: drag-to-move a card to an explicit position (see IFlowWriter.MoveNode — no auto-layout re-run, so it isn't undone by the very drag that just set it). Not gated on <see cref="_isRunning"/> — see <see cref="RenameNode"/>.</summary>
+    /// <summary>Ablauf-Übersicht: drag-to-move a card to an explicit position (see <see cref="CanvasFlowWriter.MoveNode"/> — no auto-layout re-run, so it isn't undone by the very drag that just set it). Not gated on <see cref="_isRunning"/> — see <see cref="RenameNode"/>.</summary>
     public void MoveNode(string nodeId, double x, double y)
     {
         var (result, snapshot) = RunOnWriterQueue(() =>
@@ -692,7 +704,7 @@ public sealed class SessionManager : IDisposable
         }
     }
 
-    /// <summary>Ablauf-Übersicht: creates a brand-new, isolated node at an explicit position (see IFlowWriter.AddManualNode — UML-style "+ Neuer Knoten hier" on the empty canvas). Not gated on <see cref="_isRunning"/> — see <see cref="RenameNode"/>.</summary>
+    /// <summary>Ablauf-Übersicht: creates a brand-new, isolated node at an explicit position (see <see cref="CanvasFlowWriter.AddManualNode"/> — UML-style "+ Neuer Knoten hier" on the empty canvas). Not gated on <see cref="_isRunning"/> — see <see cref="RenameNode"/>.</summary>
     public void AddManualNode(string label, double x, double y, string? shape = null, string? color = null)
     {
         var (result, snapshot) = RunOnWriterQueue(() =>
@@ -820,6 +832,19 @@ public sealed class SessionManager : IDisposable
         _ => false
     };
 
+    /// <summary>
+    /// True right now if the configured skip-recording modifier is held
+    /// down — a cheap poll (one <see cref="ModifierKeyState"/> win32 call,
+    /// not a hook) for the TopBar's live "wird gerade übersprungen"
+    /// indicator, so holding the key gives immediate feedback instead of
+    /// only the after-the-fact skip sound/log line. Purely informational:
+    /// calling this never itself skips or logs anything, unlike the same
+    /// check inside <see cref="HandleMouseButtonDown"/>/<see cref="OnEnterPressed"/>.
+    /// Always false when no skip modifier is configured ("None").
+    /// </summary>
+    public bool IsSkipModifierHeldNow() =>
+        IsSkipModifierDown(ModifierKeyState.ShiftDown, ModifierKeyState.ControlDown, ModifierKeyState.AltDown);
+
     private void ProcessClick(Point point, DateTime timestamp, string targetFileName, bool isRightClick)
     {
         var element = _config.UseUiAutomation ? UiAutomationService.GetElementAt(point) : null;
@@ -944,6 +969,13 @@ public sealed class SessionManager : IDisposable
     {
         _mouseHook.Dispose();
         _keyboardHook.Dispose();
+        // On the writer thread like every other _doc access — otherwise
+        // this could race whatever the writer thread is still finishing up
+        // from a click queued just before app exit. Committing this before
+        // CompleteAdding() means a drag/add-node from the last moment
+        // before quitting doesn't get silently dropped by the 150ms
+        // debounce never getting the chance to fire.
+        RunOnWriterQueue(() => _writer.FlushPendingSave());
         _writerQueue.CompleteAdding();
         _writerThread.Join(TimeSpan.FromSeconds(2));
         _writerQueue.Dispose();

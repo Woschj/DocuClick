@@ -16,17 +16,23 @@ namespace DocuClick.Services;
 ///
 /// Layout is vertical: the main line runs top-to-bottom in one column.
 ///
-/// Branching (see <see cref="IFlowWriter"/> for the full model):
-/// <see cref="MarkDecisionPoint"/> adds a small "◆ Abzweigung" diamond
-/// connected from the current node and immediately forks its first named
-/// "↳ Pfad: &lt;name&gt;" column, jumping the cursor onto it. Later,
+/// Branching: <see cref="MarkDecisionPoint"/> adds a small "◆ Abzweigung"
+/// diamond connected from the current node and immediately forks its first
+/// named "↳ Pfad: &lt;name&gt;" column, jumping the cursor onto it. Later,
 /// <see cref="StartNewPath"/> forks another new column from the same
-/// diamond, or <see cref="ContinuePath"/> resumes one started earlier.
-/// Nothing about a path/decision point is cached in memory — every lookup
-/// walks the actual node/edge graph, so a Stop()/Start() cycle can never
-/// forget or desync from what's really in the file.
+/// diamond, or <see cref="ContinuePath"/> resumes one started earlier —
+/// mirroring a UML activity diagram's decision nodes and their outgoing
+/// flows, screenshots instead of activity labels. Nothing about a path/
+/// decision point is cached in memory — every lookup walks the actual
+/// node/edge graph, so a Stop()/Start() cycle can never forget or desync
+/// from what's really in the file. This is the sole flow-writing
+/// implementation — a separate, non-branching plain-note writer existed
+/// once and was removed once the HTML flow format no longer needed
+/// Obsidian; draw.io is not a live-recording target either (see
+/// <see cref="DrawIoConverter"/>) — it converts an existing session into a
+/// .drawio file in one pass instead.
 /// </summary>
-public sealed class CanvasFlowWriter : IFlowWriter
+public sealed class CanvasFlowWriter
 {
     private const double NodeWidth = 380;
     private const double NodeHeight = 340;
@@ -52,7 +58,23 @@ public sealed class CanvasFlowWriter : IFlowWriter
     private const string PathStartColor = "4"; // preset "green" — visually distinct from the decision point itself
 
     private readonly AppConfig _config;
-    private readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
+    // Not WriteIndented: this JSON is embedded in a <script> block nothing
+    // ever reads as pretty-printed text, and it gets rewritten on every
+    // single click — the extra whitespace bytes are pure waste multiplied
+    // by every save for the life of the session.
+    private readonly JsonSerializerOptions _jsonOptions = new();
+
+    /// <summary>
+    /// Set by <see cref="SessionManager"/> to hand a callback back onto its
+    /// own serial writer thread — <see cref="ScheduleBackgroundSave"/>'s
+    /// debounced save must run there too, not on a bare ThreadPool thread,
+    /// since every other read/mutation of <see cref="_doc"/> already runs
+    /// exclusively on that thread via SessionManager.RunOnWriterQueue. When
+    /// unset (e.g. a test harness using this class directly, with no
+    /// SessionManager and hence no other thread that could race it), the
+    /// save still runs, just on the bare ThreadPool thread as before.
+    /// </summary>
+    public Action<Action>? RunOnWriterThread { get; set; }
 
     private string? _canvasPath;
     private string _sessionName = "Session";
@@ -74,6 +96,13 @@ public sealed class CanvasFlowWriter : IFlowWriter
         {
             throw new InvalidOperationException("Kein Ausgabeordner konfiguriert.");
         }
+
+        // Commit any still-pending drag/add-node save for whatever was
+        // previously loaded before possibly switching _canvasPath/_doc out
+        // from under it — the debounced continuation reads both at fire
+        // time, so an unflushed edit here would otherwise get silently
+        // lost (or, worse, written under the wrong path).
+        FlushPendingSave();
 
         var fullPath = Path.Combine(_config.OutputPath, canvasFileName);
         if (_canvasPath == fullPath && _doc is not null && _doc.Nodes.Count > 0)
@@ -102,9 +131,15 @@ public sealed class CanvasFlowWriter : IFlowWriter
             return;
         }
 
+        // Loaded into a local first and only committed to instance state
+        // once it succeeds — a corrupt-file exception from LoadOrCreate
+        // (see CanvasDocumentIo.Load) must leave whatever session was
+        // previously open untouched rather than half-switching to a
+        // now-unusable target file.
+        var loadedDoc = LoadOrCreate(fullPath);
         _canvasPath = fullPath;
         _sessionName = Path.GetFileNameWithoutExtension(canvasFileName);
-        _doc = LoadOrCreate(_canvasPath);
+        _doc = loadedDoc;
         _nextColumnX = _doc.Nodes.Count > 0 ? _doc.Nodes.Max(n => n.X) + NodeWidth + BranchColumnSpacing : 0;
 
         // Resume the main flow's actual current tip rather than leaving the
@@ -383,7 +418,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
         return StartNewPath(marker.Id, firstPathName);
     }
 
-    /// <summary>Every path already forking from <paramref name="originNodeId"/>, resolved fresh from the graph (never cached) — see <see cref="ListPaths"/> on <see cref="IFlowWriter"/>.</summary>
+    /// <summary>Every path already forking from <paramref name="originNodeId"/>, for the Ablauf-Übersicht's per-node popup — resolved fresh from the graph, never cached.</summary>
     public List<PathInfo> ListPaths(string originNodeId)
     {
         var childIds = _doc.Edges.Where(e => e.FromNode == originNodeId).Select(e => e.ToNode).ToHashSet();
@@ -453,6 +488,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
         return new BranchActionResult(true);
     }
 
+    /// <summary>Snapshot of every node currently in the flow (position + size + which one the cursor is on) for the live tree-preview overlay.</summary>
     public FlowPreview GetPreview()
     {
         var (imageIndex, _) = BuildSiblingIndex();
@@ -495,7 +531,11 @@ public sealed class CanvasFlowWriter : IFlowWriter
     /// unrelated nodes on top of each other. A deliberate new branch from a
     /// non-tip node now goes through <see cref="StartNewPath"/> instead
     /// (see the Ablauf-Übersicht's per-node popup), which gives it a real
-    /// name and its own <see cref="PreviewNode.PathId"/>/column.
+    /// name and its own <see cref="PreviewNode.PathId"/>/column. The Ablauf-
+    /// Übersicht uses this for click-to-navigate on a node that's already a
+    /// tip (no downstream content); for a node with existing children it
+    /// instead shows a popup offering this ("→ Weiter") alongside
+    /// <see cref="StartNewPath"/> ("+ Neuer Pfad ab hier").
     /// </summary>
     public BranchActionResult JumpToNode(string nodeId)
     {
@@ -513,6 +553,12 @@ public sealed class CanvasFlowWriter : IFlowWriter
         return new BranchActionResult(true);
     }
 
+    /// <summary>
+    /// Renames a node's label (or, for a path-start marker, its path name —
+    /// the "↳ Pfad: " prefix is kept). Decision-point diamonds can't be
+    /// renamed — their fixed "◆ Abzweigung" text is how one is recognized
+    /// as a decision point in the first place.
+    /// </summary>
     public BranchActionResult RenameNode(string nodeId, string newLabel)
     {
         var node = _doc.Nodes.FirstOrDefault(n => n.Id == nodeId && n.Type == "text");
@@ -539,7 +585,9 @@ public sealed class CanvasFlowWriter : IFlowWriter
     /// independently-anchored part of the flow, not a fork this node owns.
     /// Deleting this node still drops any manual edge touching it (nothing
     /// left to connect from/to), it just doesn't take the far end's subtree
-    /// down with it.
+    /// down with it. If the deleted node (or one of its cascaded
+    /// descendants) was the current cursor, the cursor moves to the
+    /// parent's branch tip (or null, if the deleted node was a root).
     /// </summary>
     public BranchActionResult DeleteNode(string nodeId)
     {
@@ -635,7 +683,21 @@ public sealed class CanvasFlowWriter : IFlowWriter
         return new BranchActionResult(true);
     }
 
-    /// <summary>Only ordinary content nodes qualify, on both ends — see <see cref="IFlowWriter.ConnectNodes"/>.</summary>
+    /// <summary>
+    /// Manually connects two existing nodes with a new edge — for the
+    /// Ablauf-Übersicht's drag-to-connect gesture, when the recorded flow
+    /// itself doesn't already capture some real transition (e.g. a step
+    /// that loops back to an earlier one). Additive: no existing edge is
+    /// removed, so <paramref name="toNodeId"/> can end up with more than one
+    /// incoming edge — a genuine merge point, not a bug (the Ablauf-
+    /// Übersicht's row/column layout just picks whichever parent it reaches
+    /// <paramref name="toNodeId"/> from first). Only ordinary content nodes
+    /// qualify, on both ends — a decision point's/path-start's role as a
+    /// branch hub or a path's own identity would break if either could be
+    /// connected into or out of arbitrarily. Refuses (returns failure) if
+    /// <paramref name="toNodeId"/> can already reach <paramref name="fromNodeId"/>,
+    /// which would create a cycle.
+    /// </summary>
     public BranchActionResult ConnectNodes(string fromNodeId, string toNodeId)
     {
         if (fromNodeId == toNodeId)
@@ -704,10 +766,22 @@ public sealed class CanvasFlowWriter : IFlowWriter
     }
 
     /// <summary>
-    /// Only ordinary content nodes qualify, on both ends — see
-    /// <see cref="IFlowWriter.DisconnectNodes"/>. Removes any edge between
-    /// them, structural or manual. Decision points/path-starts stay excluded on both ends.
-    /// Preserves manual node positions by skipping Relayout().
+    /// Removes an existing edge between two ordinary content nodes — the
+    /// undo counterpart to <see cref="ConnectNodes"/>, for the Ablauf-
+    /// Übersicht's right-click-an-edge gesture. Same marker restriction as
+    /// <see cref="ConnectNodes"/>: a decision point's/path-start's
+    /// structural edges (into it, or its own fork out of a decision point)
+    /// can't be removed this way, since that would silently detach a whole
+    /// path from <see cref="ListPaths"/> while leaving its nodes behind,
+    /// unreachable but not deleted — a confusing half-state. Deliberately
+    /// does *not* refuse just because a node would end up with no remaining
+    /// edges at all (fully isolated) — the caller doesn't have to reconnect
+    /// it to anything else; the Ablauf-Übersicht's layout places an isolated
+    /// node in its own row/column rather than overlapping it onto whatever
+    /// else happens to sit at the origin. Removes any edge between the two
+    /// nodes, structural or manual, and preserves manually arranged
+    /// positions by skipping Relayout(). Refuses (returns failure) if no
+    /// such edge exists.
     /// </summary>
     public BranchActionResult DisconnectNodes(string fromNodeId, string toNodeId)
     {
@@ -762,7 +836,19 @@ public sealed class CanvasFlowWriter : IFlowWriter
         return new BranchActionResult(true);
     }
 
-    /// <summary>See <see cref="IFlowWriter.MoveNode"/> — deliberately skips Relayout(), unlike every other mutating method here.</summary>
+    /// <summary>
+    /// Moves a node (and its screenshot/group siblings, kept aligned by the
+    /// same fixed relative-position match every other sibling lookup here
+    /// uses) to an explicit new position — the Ablauf-Übersicht's drag-to-
+    /// move gesture. Unlike every other mutating method here, this
+    /// deliberately does *not* re-run the auto-layout: the whole point is
+    /// letting the user override the computed grid arrangement, and
+    /// snapping it straight back would defeat the drag that just happened.
+    /// That also means it's not a *permanent* override — there's no
+    /// "pinned position" concept in the file format, so the next action
+    /// that does re-run the auto-layout (a new click, Connect/Disconnect, a
+    /// new decision point/path) discards it again.
+    /// </summary>
     public BranchActionResult MoveNode(string nodeId, double x, double y)
     {
         var node = _doc.Nodes.FirstOrDefault(n => n.Id == nodeId && n.Type == "text");
@@ -853,7 +939,16 @@ public sealed class CanvasFlowWriter : IFlowWriter
         return new BranchActionResult(anyMoved);
     }
 
-    /// <summary>See <see cref="IFlowWriter.AddManualNode"/> — like MoveNode, deliberately skips Relayout().</summary>
+    /// <summary>
+    /// Creates a brand-new, isolated content node at an explicit position —
+    /// the Ablauf-Übersicht's UML-style "+ Neuer Knoten hier" gesture on the
+    /// empty canvas background. No screenshot and no edges: it starts out
+    /// exactly like a node that's been <see cref="DisconnectNodes"/>'d from
+    /// everything, ready to be connected via <see cref="ConnectNodes"/> or
+    /// moved via <see cref="MoveNode"/> like any other. Like MoveNode, does
+    /// *not* re-run the auto-layout — the whole point is placing it exactly
+    /// where the user right-clicked.
+    /// </summary>
     public BranchActionResult AddManualNode(string label, double x, double y, string? shape = null, string? color = null)
     {
         var node = new CanvasNode
@@ -1054,27 +1149,92 @@ public sealed class CanvasFlowWriter : IFlowWriter
     private readonly object _saveLock = new();
     private CancellationTokenSource? _saveCts;
 
+    /// <summary>
+    /// Commits an outstanding debounced save (from <see cref="MoveNode"/>/
+    /// <see cref="AddManualNode"/>) synchronously right now, instead of
+    /// waiting for its timer. Needed in two places a bare 150ms delay can
+    /// otherwise silently lose the edit: <see cref="StartSession"/> before
+    /// switching to a different (or the same) file — the debounced
+    /// continuation reads <see cref="_canvasPath"/>/<see cref="_doc"/> at
+    /// fire time, not schedule time, so a file switch in that window would
+    /// either write the wrong file's content under the pending save's old
+    /// path or drop the edit entirely — and <see cref="SessionManager.Dispose"/>
+    /// before the process can exit out from under a still-pending save.
+    /// </summary>
+    public void FlushPendingSave()
+    {
+        bool hasPending;
+        lock (_saveLock)
+        {
+            hasPending = _saveCts is not null;
+        }
+
+        if (hasPending && _canvasPath is not null)
+        {
+            Save();
+        }
+    }
+
     private void ScheduleBackgroundSave()
     {
         lock (_saveLock)
         {
             _saveCts?.Cancel();
-            _saveCts = new CancellationTokenSource();
-            var token = _saveCts.Token;
+            var cts = new CancellationTokenSource();
+            _saveCts = cts;
+            var token = cts.Token;
+
+            void RunSave()
+            {
+                // Only clear _saveCts if it's still *this* run's token — a
+                // newer edit could have already replaced it with its own
+                // CancellationTokenSource by the time this actually runs
+                // (this one having lost the race and been cancelled), and
+                // clearing the field in that case would wrongly mark the
+                // newer, still-pending save as already handled.
+                lock (_saveLock)
+                {
+                    if (ReferenceEquals(_saveCts, cts))
+                    {
+                        _saveCts = null;
+                    }
+                }
+
+                if (token.IsCancellationRequested || _canvasPath is null)
+                {
+                    return;
+                }
+
+                try
+                {
+                    var html = BuildLiveHtml();
+                    FileSaveRetry.Save(_canvasPath!, () => File.WriteAllText(_canvasPath!, html));
+                    SaveCompanionFiles();
+                }
+                catch (Exception ex)
+                {
+                    LogService.Log($"CanvasFlowWriter background save failed: {ex.Message}");
+                }
+            }
+
+            // The actual write is handed off to RunOnWriterThread (see its
+            // own doc comment) so it never races a mutation happening
+            // concurrently on that same thread — Task.Delay here is purely
+            // the debounce timer, not where the write itself runs.
             Task.Delay(150, token).ContinueWith(t =>
             {
-                if (!t.IsCanceled && _canvasPath is not null)
+                if (t.IsCanceled)
                 {
-                    try
-                    {
-                        var html = BuildLiveHtml();
-                        FileSaveRetry.Save(_canvasPath!, () => File.WriteAllText(_canvasPath!, html));
-                        SaveCompanionFiles();
-                    }
-                    catch (Exception ex)
-                    {
-                        LogService.Log($"CanvasFlowWriter background save failed: {ex.Message}");
-                    }
+                    return;
+                }
+
+                if (RunOnWriterThread is { } runOnWriterThread)
+                {
+                    runOnWriterThread(RunSave);
+                }
+                else
+                {
+                    RunSave();
                 }
             }, TaskScheduler.Default);
         }

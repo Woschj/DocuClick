@@ -23,6 +23,7 @@ public partial class App : Application
     private FlowPreviewOverlay? _flowPreviewOverlay;
     private TopBarWindow? _topBar;
     private ZoomCursorBoxOverlay? _zoomCursorBox;
+    private DispatcherTimer? _skipModifierPollTimer;
 
     /// <summary>Set when the user closes the Ablauf-Übersicht via its own header ✕ — stops <see cref="OnFlowPreviewChanged"/> from popping it back open on the very next click, until the TopBar's "Übersicht" button explicitly asks for it again.</summary>
     private bool _flowPreviewManuallyHidden;
@@ -78,6 +79,7 @@ public partial class App : Application
         _topBar.ToggleRecordingRequested += () => _trayApp?.ToggleRecording();
         _topBar.ShowFlowPreviewRequested += OnShowFlowPreviewRequested;
         _topBar.NewSessionRequested += OnNewSessionRequested;
+        _topBar.OpenOutputFolderRequested += OnOpenOutputFolderRequested;
         _topBar.ZoomToCursorToggleRequested += () => _sessionManager?.ToggleZoomToCursor();
         _topBar.ZoomRadiusChanged += radius =>
         {
@@ -88,6 +90,21 @@ public partial class App : Application
         _topBar.ZoomRadiusCommitted += () => ConfigService.Save(_config);
         _topBar.CopyObsidianEmbedRequested += OnCopyObsidianEmbedRequested;
         _topBar.Show();
+
+        // Polls rather than extending KeyboardHookService: that hook is
+        // deliberately restricted to recognizing only VK_RETURN (see its
+        // own doc comment on why it must never become a general keystroke
+        // listener), and Shift/Control/Alt are already read the exact same
+        // way — via ModifierKeyState, not a hook — at the moment of every
+        // click/Enter capture. A 120ms cadence is frequent enough to feel
+        // live for a badge toggling on/off, at a negligible cost (one
+        // GetKeyState call, skipped entirely while nothing is recording).
+        _skipModifierPollTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(120)
+        };
+        _skipModifierPollTimer.Tick += OnSkipModifierPollTick;
+        _skipModifierPollTimer.Start();
 
         _sessionManager.ZoomToCursorChanged += active => Dispatcher.BeginInvoke(() =>
         {
@@ -525,6 +542,26 @@ public partial class App : Application
         _trayApp?.UpdatePausedState(_sessionManager!.IsPaused);
     }
 
+    /// <summary>Ticks roughly every 120ms (see the timer's own setup comment) to drive the TopBar's live skip-modifier badge.</summary>
+    private void OnSkipModifierPollTick(object? sender, EventArgs e)
+    {
+        var label = _config?.SkipRecordingModifier switch
+        {
+            "Shift" => "Umschalt",
+            "Control" => "Strg",
+            "Alt" => "Alt",
+            _ => null, // "None" (or no config yet): nothing to poll for
+        };
+
+        if (_sessionManager is not { IsRunning: true } sessionManager || label is null)
+        {
+            _topBar?.UpdateSkipModifierActive(false, "");
+            return;
+        }
+
+        _topBar?.UpdateSkipModifierActive(sessionManager.IsSkipModifierHeldNow(), label);
+    }
+
     /// <summary>"Neue Session" (top-bar button only): always prompts for a target file, whether currently recording or not.</summary>
     private void OnNewSessionRequested()
     {
@@ -564,6 +601,26 @@ public partial class App : Application
                 $"Neue Session konnte nicht gestartet werden:\n{ex.Message}",
                 "DocuClick", MessageBoxButton.OK, MessageBoxImage.Error);
             _trayApp!.SetRecording(false);
+        }
+    }
+
+    /// <summary>Opens the configured output folder in Explorer — UseShellExecute lets the shell resolve it as a normal "open this folder" request, same as the Obsidian deep-link's Process.Start below.</summary>
+    private void OnOpenOutputFolderRequested()
+    {
+        if (string.IsNullOrWhiteSpace(_config?.OutputPath) || !Directory.Exists(_config.OutputPath))
+        {
+            _trayApp?.ShowInfo("Kein gültiger Ausgabeordner konfiguriert.");
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_config.OutputPath) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"Ausgabeordner öffnen fehlgeschlagen: {ex.Message}");
+            _trayApp?.ShowInfo("Ausgabeordner konnte nicht geöffnet werden.");
         }
     }
 
@@ -669,13 +726,22 @@ public partial class App : Application
         }
 
         var relativeFileName = Path.GetRelativePath(_config.OutputPath, openDialog.FileName);
-        _sessionManager!.OpenForEditing(relativeFileName);
-        RememberLastSession(relativeFileName);
+        try
+        {
+            _sessionManager!.OpenForEditing(relativeFileName);
+            RememberLastSession(relativeFileName);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"Ablauf öffnen fehlgeschlagen: {ex}");
+            MessageBox.Show($"Ablauf konnte nicht geöffnet werden:\n{ex.Message}", "DocuClick", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
         LogService.Log($"DocuClick OnExit aufgerufen (ExitCode={e.ApplicationExitCode}).");
+        _skipModifierPollTimer?.Stop();
         _hotkeyService?.Dispose();
         _sessionManager?.Dispose();
         _trayApp?.Dispose();
