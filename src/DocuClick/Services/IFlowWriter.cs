@@ -367,9 +367,6 @@ public interface IFlowWriter
     /// </summary>
     BranchActionResult JumpToNode(string nodeId);
 
-    List<ResumableNode> ListNodesForResume(string fileName);
-    void SetResumeAnchor(ResumableNode node);
-
     string? CurrentNodeLabel { get; }
 
     /// <summary>

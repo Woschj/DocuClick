@@ -21,21 +21,20 @@ Die mitgelieferte `.gitignore` verhindert zusätzlich, dass in den
 Arbeitsordnern erzeugte Dateien versehentlich committet werden, falls der
 Ordner doch mal in-place benutzt wird — ersetzt aber nicht den Schritt oben.
 
-## Obsidian-Nutzung (Direkt im Vault)
+## Obsidian-Nutzung
 
-Dieser Ordner ist **bereits vollständig für Obsidian vorkonfiguriert**:
-* Unter `.obsidian/plugins/obsidian-html-plugin/` ist das Plugin **HTML Reader** vorinstalliert und für interaktive DocuClick-Abläufe angepasst (inkl. Script-Freigabe und Auto-Save zurück in den Vault).
-* Unter `.obsidian/app.json` ist `"showUnsupportedFiles": true` aktiviert, damit `.html`-Dateien direkt im Obsidian-Dateibaum sichtbar sind.
-* **Erste Schritte in Obsidian:**
-  1. Den Ordner in Obsidian über **"Open folder as vault"** öffnen.
-  2. In den Einstellungen unter **"Community plugins"** den eingeschränkten Modus deaktivieren (*Turn off safe mode*).
-  3. Fertig! Ein Klick auf eine beliebige `.html`-Datei öffnet den Ablauf sofort als interaktive Seite direkt in Obsidian.
+Dieser Ordner öffnet sich direkt als Obsidian-Vault (**"Open folder as
+vault"**) und zeigt `.html`-Dateien im Dateibaum an (`.obsidian/app.json`
+setzt dafür `"showUnsupportedFiles": true`). Um einen Ablauf tatsächlich
+*in* einer Notiz einzubetten, ist einmalig ein kostenloses Community-Plugin
+nötig — siehe [In Obsidian einbinden](../README.md#in-obsidian-einbinden)
+in der Haupt-README für die Installationsanleitung.
 
 ## Struktur
 
 ```
 OutputTemplate/
-├── .obsidian/                   Vorkonfiguration & Plugin für Obsidian
+├── .obsidian/                   app.json (zeigt .html-Dateien im Dateibaum)
 ├── 00 Start.md                  Startseite / Übersicht
 ├── 00 Inbox/                    Standard-Zielordner für neue Aufnahmen
 ├── 01 Prozesse/                 fertig einsortierte Prozessdokumentation

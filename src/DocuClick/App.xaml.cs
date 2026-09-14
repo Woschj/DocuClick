@@ -27,8 +27,6 @@ public partial class App : Application
     /// <summary>Set when the user closes the Ablauf-Übersicht via its own header ✕ — stops <see cref="OnFlowPreviewChanged"/> from popping it back open on the very next click, until the TopBar's "Übersicht" button explicitly asks for it again.</summary>
     private bool _flowPreviewManuallyHidden;
 
-    /// <summary>Set by clicking a node in the Ablauf-Übersicht while stopped (see <see cref="OnFlowPreviewNodeClicked"/>), consumed once by the next session-start file picker.</summary>
-    private string? _pendingResumeFileName;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -443,61 +441,32 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// While recording, clicking a node in the Ablauf-Übersicht jumps the
-    /// live cursor there (as before). While stopped, the overlay still
-    /// shows the last session's file — so a click there instead primes
-    /// *that* node as the attach point for the next Start(), replacing the
-    /// old separate "Ablauf fortsetzen ab Punkt..." tray menu item and its
-    /// own file/node picker dialogs: the overlay already shows exactly the
-    /// same nodes those would have asked to choose from.
+    /// Clicking a node in the Ablauf-Übersicht jumps the live cursor there
+    /// — whether actively recording or just paused — so the next click
+    /// attaches at that point instead of the file's end. A no-op if
+    /// nothing is loaded at all (nothing to click on in that case anyway).
     /// </summary>
     private void OnFlowPreviewNodeClicked(string nodeId)
     {
         if (_sessionManager!.HasActiveSession)
         {
             _sessionManager.JumpToNode(nodeId);
-            return;
         }
-
-        if (_sessionManager.CurrentTargetFileName is not { } fileName)
-        {
-            return;
-        }
-
-        var node = _sessionManager.ListResumableCanvasNodes(fileName).FirstOrDefault(n => n.Id == nodeId);
-        if (node is null)
-        {
-            return;
-        }
-
-        _sessionManager.SetResumeAnchor(node);
-        _pendingResumeFileName = fileName;
-        _trayApp!.ShowInfo($"Nächste Aufnahme wird angehängt an: {node.Label} (in {fileName})");
     }
 
     /// <summary>Shows the session-start file picker; null means the user cancelled.</summary>
     private string? PromptForSessionFile()
     {
-        var window = new SessionStartWindow(_config!, _pendingResumeFileName);
-        _pendingResumeFileName = null;
+        var window = new SessionStartWindow(_config!);
         return window.ShowDialog() == true ? window.SelectedFileName : null;
     }
 
-    /// <summary>
-    /// The file "Start" should resume without prompting: the last file
-    /// used, unless a resume-from-point is pending (that always needs the
-    /// dialog to actually apply).
-    /// </summary>
+    /// <summary>The file "Start" should resume without prompting: the currently loaded session, or else the last one used.</summary>
     private string? ResolveResumeFileName()
     {
         if (_sessionManager?.HasActiveSession == true && !string.IsNullOrWhiteSpace(_sessionManager.CurrentTargetFileName))
         {
             return _sessionManager.CurrentTargetFileName;
-        }
-
-        if (_pendingResumeFileName is not null)
-        {
-            return null;
         }
 
         var last = _config!.LastSessionFileName;

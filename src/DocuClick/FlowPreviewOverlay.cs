@@ -412,6 +412,11 @@ public sealed class FlowPreviewOverlay : Window
         // Löschen, see flow.js) — the browser's default one would just be
         // visual noise on top of it.
         _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+        // No DevTools on this HUD panel — it only ever navigates to our own
+        // bundled WebAssets, so there's nothing to debug via F12 in normal
+        // use, and leaving it enabled is needless extra surface for anyone
+        // with mouse/keyboard access to the running app.
+        _webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
         _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
         _webView.NavigationCompleted += (_, _) =>
         {

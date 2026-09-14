@@ -7,6 +7,13 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [1.12.3] - 2026-09-14
+
+### 🔒 Sicherheit & Code-Reduktion
+- **Gebündeltes Obsidian-Plugin entfernt**: Der in v1.12.2 hinzugefügte, gepatchte `obsidian-html-plugin`-Ordner (~24.400 Zeilen fremder Plugin-Code) ist entfernt worden. Der Patch hing einen `window.addEventListener("message", ...)`-Listener ohne `event.origin`-Prüfung ein und schrieb den darin übergebenen Dateinamen ungeprüft per `vault.adapter.write(...)` — erreichbar von jedem Inhalt, den Obsidian jemals rendert, nicht nur von echten DocuClick-Dateien. In Kombination mit dem zusätzlich aufgeweichten iframe-Sandbox (`allow-scripts allow-same-origin`, CSP entfernt) ergab das einen Pfad zu beliebigem Schreibzugriff im Vault (bis hin zum Überschreiben anderer Plugins). Empfohlener Weg für die Obsidian-Einbindung bleibt ausschließlich der bereits dokumentierte, ungepatchte Weg über die offiziellen Community-Plugins *HTML Embed*/*Local HTML Embed* (siehe [In Obsidian einbinden](README.md#in-obsidian-einbinden)).
+- **`.github/workflows/build.yml` bereinigt**: Die drei Build-/Release-Schritte, die das jetzt entfernte Plugin zippten und als eigenes Release-Asset veröffentlichten, sind entfernt.
+- **Toter Code entfernt**: der seit der Pause/Stop-Überarbeitung (v1.11.0) unerreichbare "Ansatzpunkt für die nächste Session"-Mechanismus (`SetResumeAnchor`, `ListResumableCanvasNodes`, zugehörige Felder in `SessionManager`/`CanvasFlowWriter`/`App.xaml.cs`) ist entfernt.
+
 ## [1.12.2] - 2026-09-11
 
 ### 📑 Vorkonfigurierte Obsidian-Vault-Integration & Plugin-Bundle

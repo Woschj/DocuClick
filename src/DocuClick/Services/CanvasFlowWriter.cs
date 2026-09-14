@@ -4,9 +4,6 @@ using System.Text.Json;
 
 namespace DocuClick.Services;
 
-/// <summary>An existing canvas node offered as a resume point for the next session.</summary>
-public sealed record ResumableNode(string Id, string Label, double X, double Y);
-
 /// <summary>
 /// Writes clicks as connected nodes into a single, self-contained HTML flow
 /// file (see <see cref="HtmlViewerBuilder"/>/<see cref="CanvasDocumentIo"/>)
@@ -64,45 +61,12 @@ public sealed class CanvasFlowWriter : IFlowWriter
     private double _cursorX;
     private double _cursorY;
     private double _nextColumnX;
-    private (string NodeId, double X, double Y)? _pendingResumeAnchor;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _base64Cache = new();
 
     public CanvasFlowWriter(AppConfig config)
     {
         _config = config;
     }
-
-    /// <summary>
-    /// Lists every node currently in <paramref name="canvasFileName"/> so the
-    /// UI can offer one as a resume point for the next session — without
-    /// starting a session or touching any writer state.
-    /// </summary>
-    public List<ResumableNode> ListNodesForResume(string canvasFileName)
-    {
-        if (string.IsNullOrWhiteSpace(_config.OutputPath))
-        {
-            return new List<ResumableNode>();
-        }
-
-        var path = Path.Combine(_config.OutputPath, canvasFileName);
-        var doc = LoadOrCreate(path);
-
-        // Only offer real content nodes as resume points — not their
-        // sibling image nodes (no Text to show), decision points, or path
-        // starts (neither has a screenshot to resume "at").
-        return doc.Nodes
-            .Where(n => n.Type == "text" && !IsDecisionPointNode(n) && !IsPathStartNode(n))
-            .OrderBy(n => n.Y).ThenBy(n => n.X)
-            .Select(n => new ResumableNode(n.Id, BuildLabel(n.Text), n.X, n.Y))
-            .ToList();
-    }
-
-    /// <summary>
-    /// Queues an existing node as the starting point for the *next* call to
-    /// <see cref="StartSession"/> — new clicks connect from it instead of
-    /// starting a disconnected subgraph. Consumed once.
-    /// </summary>
-    public void SetResumeAnchor(ResumableNode node) => _pendingResumeAnchor = (node.Id, node.X, node.Y);
 
     public void StartSession(string canvasFileName)
     {
@@ -114,33 +78,26 @@ public sealed class CanvasFlowWriter : IFlowWriter
         var fullPath = Path.Combine(_config.OutputPath, canvasFileName);
         if (_canvasPath == fullPath && _doc is not null && _doc.Nodes.Count > 0)
         {
-            // Session already open in memory: keep current cursor or apply pending anchor without moving to a new column
-            if (_pendingResumeAnchor is { } anchor && _doc.Nodes.Any(n => n.Id == anchor.NodeId))
+            // Session already open in memory: keep the current cursor if
+            // it's still valid, otherwise fall through to the same
+            // tip-resolution logic as a fresh load below.
+            if (_cursorNodeId is not null && _doc.Nodes.Any(n => n.Id == _cursorNodeId))
             {
-                _cursorNodeId = anchor.NodeId;
-                _cursorX = anchor.X;
-                _cursorY = anchor.Y;
-                _pendingResumeAnchor = null;
+                return;
             }
-            else if (_cursorNodeId is not null && _doc.Nodes.Any(n => n.Id == _cursorNodeId))
-            {
-                // Current cursor is already established and valid — keep it!
-            }
-            else
-            {
-                var targetIds = _doc.Edges.Where(e => !e.Manual).Select(e => e.ToNode).ToHashSet();
-                var root = _doc.Nodes
-                    .Where(n => n.Type == "text" && !targetIds.Contains(n.Id))
-                    .OrderBy(n => n.Y).ThenBy(n => n.X)
-                    .FirstOrDefault();
 
-                if (root is not null)
-                {
-                    var tip = FindBranchTip(root);
-                    _cursorNodeId = tip.Id;
-                    _cursorX = tip.X;
-                    _cursorY = tip.Y;
-                }
+            var openTargetIds = _doc.Edges.Where(e => !e.Manual).Select(e => e.ToNode).ToHashSet();
+            var openRoot = _doc.Nodes
+                .Where(n => n.Type == "text" && !openTargetIds.Contains(n.Id))
+                .OrderBy(n => n.Y).ThenBy(n => n.X)
+                .FirstOrDefault();
+
+            if (openRoot is not null)
+            {
+                var openTip = FindBranchTip(openRoot);
+                _cursorNodeId = openTip.Id;
+                _cursorX = openTip.X;
+                _cursorY = openTip.Y;
             }
             return;
         }
@@ -150,48 +107,33 @@ public sealed class CanvasFlowWriter : IFlowWriter
         _doc = LoadOrCreate(_canvasPath);
         _nextColumnX = _doc.Nodes.Count > 0 ? _doc.Nodes.Max(n => n.X) + NodeWidth + BranchColumnSpacing : 0;
 
-        if (_pendingResumeAnchor is { } resume && _doc.Nodes.Any(n => n.Id == resume.NodeId))
+        // Resume the main flow's actual current tip rather than leaving the
+        // cursor null. A null cursor meant every node-relative action
+        // (MarkDecisionPoint included) failed with "kein Klick vorhanden"
+        // until a throwaway click created *some* node first — confusing
+        // right after deliberately resuming a file that already has
+        // content. Placed in a fresh column so it never visually collides
+        // with whatever's already in the file.
+        var targetIds = _doc.Edges.Where(e => !e.Manual).Select(e => e.ToNode).ToHashSet();
+        var root = _doc.Nodes
+            .Where(n => n.Type == "text" && !targetIds.Contains(n.Id))
+            .OrderBy(n => n.Y).ThenBy(n => n.X)
+            .FirstOrDefault();
+
+        if (root is not null)
         {
-            // Continue from a previously recorded node as a new column, so
-            // it never collides with whatever is already below it.
-            _cursorNodeId = resume.NodeId;
+            var tip = FindBranchTip(root);
+            _cursorNodeId = tip.Id;
             _cursorX = _nextColumnX;
-            _cursorY = resume.Y;
+            _cursorY = tip.Y;
         }
         else
         {
-            // No explicit resume point chosen ("Bestehende Datei
-            // fortsetzen" without picking a node): still resume the main
-            // flow's actual current tip rather than leaving the cursor
-            // null. A null cursor meant every node-relative action
-            // (MarkDecisionPoint included) failed with "kein Klick
-            // vorhanden" until a throwaway click created *some* node first
-            // — confusing right after deliberately resuming a file that
-            // already has content. Still placed in a fresh column so it
-            // never visually collides with whatever's already in the file.
-            var targetIds = _doc.Edges.Where(e => !e.Manual).Select(e => e.ToNode).ToHashSet();
-            var root = _doc.Nodes
-                .Where(n => n.Type == "text" && !targetIds.Contains(n.Id))
-                .OrderBy(n => n.Y).ThenBy(n => n.X)
-                .FirstOrDefault();
-
-            if (root is not null)
-            {
-                var tip = FindBranchTip(root);
-                _cursorNodeId = tip.Id;
-                _cursorX = _nextColumnX;
-                _cursorY = tip.Y;
-            }
-            else
-            {
-                // Truly empty file — nothing yet to attach to.
-                _cursorNodeId = null;
-                _cursorX = _nextColumnX;
-                _cursorY = 0;
-            }
+            // Truly empty file — nothing yet to attach to.
+            _cursorNodeId = null;
+            _cursorX = _nextColumnX;
+            _cursorY = 0;
         }
-
-        _pendingResumeAnchor = null;
     }
 
     public void Pause()

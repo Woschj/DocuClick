@@ -76,12 +76,8 @@ public sealed class SessionManager : IDisposable
 
     /// <summary>
     /// The target file of the current (or, once stopped, the most recent)
-    /// session — null before any session has ever run. Lets the
-    /// Ablauf-Übersicht overlay resolve a clicked node back to "which file
-    /// is this actually in" for the resume-from-point flow (see
-    /// <see cref="ListResumableCanvasNodes"/>/<see cref="SetResumeAnchor"/>)
-    /// without a separate file picker — the overlay already only ever
-    /// shows this file's content.
+    /// session — null before any session has ever run, and while a
+    /// session is loaded (running or paused).
     /// </summary>
     public string? CurrentTargetFileName => string.IsNullOrEmpty(_currentTargetFileName) ? null : _currentTargetFileName;
 
@@ -737,13 +733,6 @@ public sealed class SessionManager : IDisposable
             FlowPreviewChanged?.Invoke(snapshot.Preview, false);
         }
     }
-
-    /// <summary>For the Ablauf-Übersicht's resume-while-stopped flow: nodes already in <paramref name="fileName"/>.</summary>
-    public List<ResumableNode> ListResumableCanvasNodes(string fileName) =>
-        _writer.ListNodesForResume(fileName);
-
-    /// <summary>Queues a chosen node as the starting point of the next Start() call.</summary>
-    public void SetResumeAnchor(ResumableNode node) => _writer.SetResumeAnchor(node);
 
     private void OnLeftButtonDown(object? sender, MouseClickEventArgs e) => HandleMouseButtonDown(e, isRightClick: false);
 
