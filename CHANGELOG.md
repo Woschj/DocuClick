@@ -7,6 +7,12 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [1.12.4] - 2026-09-14
+
+### 🔒 Sicherheit & Code-Reduktion (Teil 2)
+- **"Nach HTML exportieren..." entfernt**: Der einstige Grund für diesen Export — die Live-Session-Datei referenzierte Screenshots per relativem Pfad und war daher nicht eigenständig weiterzugeben — entfällt seit v1.11.1: die Live-Datei bettet Screenshots bereits direkt als Base64 ein und ist von Anfang an vollständig eigenständig. Der separate Export (`HtmlFlowExporter.cs`, eigener Tray-Menüpunkt, eigenes Layout-System mit dritter Kartengröße) war dadurch reine Redundanz und ist komplett entfernt (Datei, Menüpunkt, Wiring, Doku).
+- **Client-seitige Vault-Schreib-Lücke entfernt**: Die exportierte/live `.html`-Datei versuchte beim Speichern selbstständig `window.parent.app.vault.adapter.write(...)` aufzurufen — ganz ohne Prüfung, ob `window.parent` überhaupt echtes Obsidian ist, und mit demselben ungeprüften Zielpfad-Muster wie das in v1.12.3 entfernte Plugin. Da die aktuell unterstützte Obsidian-Einbindung (*HTML Embed*/*Local HTML Embed*) ohnehin nur eine Nur-Lese-Ansicht in einem regulären, nicht privilegierten iframe ist, ist dieser Codepfad ersatzlos entfernt worden (inkl. der zugehörigen `postMessage`-Bridge, die ebenfalls nie einen Empfänger hatte). Einziger verbleibender Speicherweg bleibt die File System Access API (expliziter "Mit Datei verbinden"-Klick, Browser-Sicherheitsanforderung).
+
 ## [1.12.3] - 2026-09-14
 
 ### 🔒 Sicherheit & Code-Reduktion

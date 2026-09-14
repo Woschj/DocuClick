@@ -71,7 +71,6 @@ public partial class App : Application
         _trayApp.RecordingStateChanged += OnRecordingStateChanged;
         _trayApp.SettingsRequested += OnSettingsRequested;
         _trayApp.ExportToDrawIoRequested += OnExportToDrawIoRequested;
-        _trayApp.ExportToHtmlRequested += OnExportToHtmlRequested;
 
         // Visible for the app's whole lifetime (not just while recording),
         // so there is always an at-a-glance answer to "is it running".
@@ -672,67 +671,6 @@ public partial class App : Application
         var relativeFileName = Path.GetRelativePath(_config.OutputPath, openDialog.FileName);
         _sessionManager!.OpenForEditing(relativeFileName);
         RememberLastSession(relativeFileName);
-    }
-
-    /// <summary>
-    /// Tray menu "Nach HTML exportieren...": converts an existing Canvas-
-    /// mode session into a single fully self-contained .html file
-    /// (Cytoscape.js and every screenshot embedded as base64) — opens in
-    /// any browser with no sibling Attachments folder needed, for sharing
-    /// the result with someone who has none of DocuClick's dependencies.
-    /// The live session file is *also* .html now (see
-    /// CanvasFlowWriter.BuildLiveHtml), so the export deliberately gets its
-    /// own distinct "(Export).html" name rather than Path.ChangeExtension —
-    /// same source and target extension would otherwise make this silently
-    /// overwrite the live, still-editable session file with a dead,
-    /// read-only copy that has no embedded data left to reopen for editing.
-    /// </summary>
-    private void OnExportToHtmlRequested()
-    {
-        if (string.IsNullOrWhiteSpace(_config!.OutputPath) || !Directory.Exists(_config.OutputPath))
-        {
-            MessageBox.Show(
-                "Kein gültiger Ausgabeordner konfiguriert — in den Einstellungen setzen, dann erneut versuchen.",
-                "DocuClick", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        var openDialog = new Microsoft.Win32.OpenFileDialog
-        {
-            Title = "Ablauf für den HTML-Export wählen",
-            InitialDirectory = _config.OutputPath,
-            Filter = "DocuClick-Ablauf (*.html;*.canvas)|*.html;*.canvas|HTML-Abläufe (*.html)|*.html|Obsidian Canvas (*.canvas)|*.canvas|Alle Dateien (*.*)|*.*",
-            CheckFileExists = true
-        };
-        if (openDialog.ShowDialog() != true)
-        {
-            return;
-        }
-
-        var exportDir = Path.GetDirectoryName(openDialog.FileName)!;
-        var exportName = Path.GetFileNameWithoutExtension(openDialog.FileName) + " (Export).html";
-        var htmlPath = Path.Combine(exportDir, exportName);
-        if (File.Exists(htmlPath))
-        {
-            var overwrite = MessageBox.Show(
-                $"\"{Path.GetFileName(htmlPath)}\" existiert bereits. Überschreiben?",
-                "DocuClick", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (overwrite != MessageBoxResult.Yes)
-            {
-                return;
-            }
-        }
-
-        try
-        {
-            HtmlFlowExporter.Convert(openDialog.FileName, _config.OutputPath, htmlPath);
-            _trayApp?.ShowInfo($"Nach HTML exportiert: {Path.GetFileName(htmlPath)}");
-        }
-        catch (Exception ex)
-        {
-            LogService.Log($"HTML-Export fehlgeschlagen: {ex}");
-            MessageBox.Show($"Export fehlgeschlagen:\n{ex.Message}", "DocuClick", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
     }
 
     protected override void OnExit(ExitEventArgs e)

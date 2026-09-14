@@ -23,9 +23,6 @@ public sealed class TrayApp : IDisposable
     /// <summary>Tray menu: "Nach draw.io exportieren..." — converts an existing Canvas-mode session into a .drawio file in one pass (see DrawIoConverter), since draw.io is no longer a live-recording mode.</summary>
     public event Action? ExportToDrawIoRequested;
 
-    /// <summary>Tray menu: "Nach HTML exportieren..." — converts an existing Canvas-mode session into a single self-contained, shareable .html file (see HtmlFlowExporter).</summary>
-    public event Action? ExportToHtmlRequested;
-
     public bool IsRecording => _isRecording;
 
     public TrayApp()
@@ -33,7 +30,6 @@ public sealed class TrayApp : IDisposable
         _toggleItem = new ToolStripMenuItem("Aufnahme starten", null, OnToggleClicked);
         var settingsItem = new ToolStripMenuItem("Einstellungen...", null, OnSettingsClicked);
         var exportItem = new ToolStripMenuItem("Nach draw.io exportieren...", null, (_, _) => ExportToDrawIoRequested?.Invoke());
-        var exportHtmlItem = new ToolStripMenuItem("Nach HTML exportieren...", null, (_, _) => ExportToHtmlRequested?.Invoke());
         var exitItem = new ToolStripMenuItem("Beenden", null, OnExitClicked);
 
         var contextMenu = new ContextMenuStrip();
@@ -41,7 +37,6 @@ public sealed class TrayApp : IDisposable
         contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add(settingsItem);
         contextMenu.Items.Add(exportItem);
-        contextMenu.Items.Add(exportHtmlItem);
         contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add(exitItem);
 

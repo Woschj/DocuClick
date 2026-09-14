@@ -11,7 +11,7 @@ namespace DocuClick.Services;
 /// <see cref="HtmlViewerBuilder"/>) that page can now move/connect nodes
 /// and save the result straight back into this same file itself via the
 /// File System Access API, no DocuClick or Obsidian needed. Centralized
-/// here since CanvasFlowWriter, DrawIoConverter, and HtmlFlowExporter all
+/// here since CanvasFlowWriter and DrawIoConverter both
 /// need to read this same format, and a session recorded before this
 /// format switch is still a bare-JSON .canvas file — <see cref="Load"/>
 /// falls back to parsing the whole file as JSON directly when no

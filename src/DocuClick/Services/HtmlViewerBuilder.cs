@@ -5,18 +5,12 @@ namespace DocuClick.Services;
 
 /// <summary>
 /// Builds the actual interactive HTML page (Cytoscape.js graph, pan/zoom,
-/// click-to-enlarge screenshot) shared by two different callers with two
-/// different needs: <see cref="CanvasFlowWriter"/>'s live, on-disk session
-/// file (relative image paths, embeds the raw node/edge JSON so it can be
-/// read back and edited again — see <see cref="CanvasDocumentIo"/> — and,
-/// only when that data block is present, ships its own drag-to-move/
-/// shift-drag-to-connect editing and a File System Access API save-back, so
-/// the page can edit and persist itself with no DocuClick or Obsidian
-/// running) and <see cref="HtmlFlowExporter"/>'s one-shot, fully
-/// self-contained share export (base64-embedded images, no embedded data
-/// block since it's never read back or edited). Keeping one shared template
-/// means a rendering fix (like the row-spacing bug already found and fixed
-/// once) only ever needs making in one place.
+/// click-to-enlarge screenshot) for <see cref="CanvasFlowWriter"/>'s live,
+/// on-disk session file — embeds the raw node/edge JSON so it can be read
+/// back and edited again (see <see cref="CanvasDocumentIo"/>), and ships
+/// its own drag-to-move/shift-drag-to-connect editing plus a File System
+/// Access API save-back, so the page can edit and persist itself with no
+/// DocuClick or Obsidian running.
 /// </summary>
 public static class HtmlViewerBuilder
 {
@@ -34,12 +28,11 @@ public static class HtmlViewerBuilder
     public sealed record EdgeSpec(string Source, string Target, string Color, bool Manual, string LineStyle = "solid");
 
     /// <param name="embeddedDataJson">
-    /// When non-null, embedded verbatim in a `&lt;script id="docuclick-data"
+    /// Embedded verbatim in a `&lt;script id="docuclick-data"
     /// type="application/json"&gt;` block for <see cref="CanvasDocumentIo.Load"/>
-    /// to read back later — omitted entirely for a read-only export that's
-    /// never re-opened for editing.
+    /// to read back later.
     /// </param>
-    public static string BuildPage(string title, IReadOnlyList<NodeSpec> nodes, IReadOnlyList<EdgeSpec> edges, string? embeddedDataJson = null)
+    public static string BuildPage(string title, IReadOnlyList<NodeSpec> nodes, IReadOnlyList<EdgeSpec> edges, string embeddedDataJson)
     {
         var jsNodes = nodes.Select((n, idx) => new
         {
@@ -71,9 +64,7 @@ public static class HtmlViewerBuilder
         // System.Text.Json's default encoder already escapes '<'/'>' inside
         // string values (e.g. a description containing literal "</script>"),
         // so this can never prematurely close its own tag.
-        var embeddedBlock = embeddedDataJson is null
-            ? ""
-            : $"\n<script id=\"docuclick-data\" type=\"application/json\">\n{embeddedDataJson}\n</script>";
+        var embeddedBlock = $"\n<script id=\"docuclick-data\" type=\"application/json\">\n{embeddedDataJson}\n</script>";
 
         var nodeCount = nodes.Count;
         var edgeCount = edges.Count;
@@ -403,9 +394,11 @@ public static class HtmlViewerBuilder
               /* Iframe & Obsidian Embed Adaptations */
               body.embedded-in-iframe .brand-bar { top: 10px; left: 10px; padding: 4px 10px; }
               body.embedded-in-iframe .floating-dock { bottom: 12px; }
-              body.embedded-in-iframe #connect-btn, body.embedded-in-iframe #download-btn { display: none !important; }
-              body.embedded-in-iframe #dock-save-group { display: flex !important; }
-              body.embedded-in-iframe .save-status { color: #34d399 !important; font-weight: 600; }
+              /* Embedded in an Obsidian note (via HTML Embed/Local HTML
+                 Embed) is a read-only view — no save mechanism reaches back
+                 into the vault from inside that iframe, so there's nothing
+                 actionable to offer here. */
+              body.embedded-in-iframe #dock-save-group { display: none !important; }
 
               /* Context Menu */
               .hud-menu {
@@ -1609,9 +1602,7 @@ public static class HtmlViewerBuilder
               const setStatus = (text) => { if (saveStatus) saveStatus.textContent = text; };
               const connectBtn = document.getElementById("connect-btn");
 
-              if (isEmbedded) {
-                setStatus("✓ Vault-Sync aktiv");
-              } else if (!window.showOpenFilePicker) {
+              if (!isEmbedded && !window.showOpenFilePicker) {
                 if (connectBtn) connectBtn.disabled = true;
                 setStatus("Lokales Auto-Save aktiv");
               }
@@ -1689,50 +1680,23 @@ public static class HtmlViewerBuilder
                 const htmlFileName = titleClean + ".html";
                 const canvasJsonStr = JSON.stringify(canvasDoc, null, 2);
 
-                // 1. LocalStorage auto-backup (instant)
+                // 1. LocalStorage auto-backup (instant) — a same-browser
+                // safety net only; not a real save destination on its own.
                 try {
                   localStorage.setItem("docuclick_cache_" + titleClean, patched);
                   localStorage.setItem("docuclick_canvas_" + titleClean, canvasJsonStr);
                 } catch (e) {}
 
+                // 2. File System Access API — the only real save-to-disk
+                // path. Embedding in Obsidian (via HTML Embed/Local HTML
+                // Embed) is read-only viewing, not a live, writable
+                // connection to the vault, so there is deliberately no
+                // "reach into window.parent and write" fallback here
+                // (removed: it blindly trusted whatever object happened to
+                // sit at window.parent.app with no origin check at all —
+                // exploitable by any page that embeds a DocuClick export in
+                // an iframe, not just Obsidian).
                 let savedToDisk = false;
-
-                // 2. Obsidian PostMessage Bridge (if embedded in Obsidian)
-                if (isEmbedded) {
-                  try {
-                    window.parent.postMessage({
-                      type: "docuclick-save",
-                      fileName: htmlFileName,
-                      htmlContent: patched,
-                      canvasDoc: canvasDoc
-                    }, "*");
-                    savedToDisk = true;
-                  } catch (e) {}
-                }
-
-                // 3. Direct Obsidian App Vault write (if same-origin Electron)
-                try {
-                  const parentApp = (window.parent && window.parent.app) || (window.top && window.top.app);
-                  if (parentApp && parentApp.vault && parentApp.vault.adapter) {
-                    const adapter = parentApp.vault.adapter;
-                    const files = parentApp.vault.getFiles();
-                    const targetFile = files.find((f) => f.name === htmlFileName || f.path.endsWith("/" + htmlFileName));
-                    const targetPath = targetFile ? targetFile.path : htmlFileName;
-                    try {
-                      const leaves = parentApp.workspace.getLeavesOfType("html-view");
-                      for (const leaf of leaves) {
-                        if (leaf.view && leaf.view.watcher && leaf.view.watcher.noteSelfWrite) {
-                          leaf.view.watcher.noteSelfWrite(patched);
-                        }
-                      }
-                    } catch (err) {}
-                    await adapter.write(targetPath, patched);
-                    await adapter.write(targetPath.replace(/\.html$/i, ".canvas"), canvasJsonStr);
-                    savedToDisk = true;
-                  }
-                } catch (e) {}
-
-                // 4. File System Access API
                 if (fileHandle) {
                   try {
                     const writable = await fileHandle.createWritable();
@@ -1749,7 +1713,7 @@ public static class HtmlViewerBuilder
 
                 const timeStr = new Date().toLocaleTimeString("de-DE");
                 if (savedToDisk) {
-                  setStatus(isEmbedded ? `✓ Vault-Sync (${timeStr})` : `✓ Gespeichert (${timeStr})`);
+                  setStatus(`✓ Gespeichert (${timeStr})`);
                 } else if (!isEmbedded && !fileHandle) {
                   setStatus("Lokal gesichert — 'Datei verbinden' für Festplatte");
                 }

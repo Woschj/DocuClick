@@ -1194,8 +1194,8 @@ public sealed class CanvasFlowWriter : IFlowWriter
     // Cytoscape rendering — distinct from DecisionPointColor/PathStartColor
     // above, which are Obsidian Canvas's own small integer color-preset
     // slots ("6"="purple" etc.), meaningless to a plain <input>/CSS color.
-    // Kept in sync with DrawIoConverter/HtmlFlowExporter's own palette so a
-    // session looks the same whether viewed live or exported.
+    // Kept in sync with DrawIoConverter's own palette so a session looks
+    // the same whether viewed live or exported to draw.io.
     private const string HtmlDecisionPointColor = "#6B7280";
     private const string HtmlMainColor = "#2563EB";
     private static readonly string[] HtmlBranchColors =
@@ -1210,13 +1210,13 @@ public sealed class CanvasFlowWriter : IFlowWriter
     /// back on the next Start()/OpenForEditing() — opening the file directly
     /// in a plain browser shows the same diagram the Ablauf-Übersicht does,
     /// no DocuClick or Obsidian needed just to look at it. Screenshots are
-    /// referenced by a path *relative to this file* (never re-embedded as
-    /// base64 here) — this runs on every single click, and re-encoding every
-    /// screenshot on every save is exactly the per-click cost that made the
-    /// old live draw.io writer too slow to keep as a recording mode (see
-    /// DrawIoConverter's own doc comment); <see cref="HtmlFlowExporter"/>
-    /// is the deliberately separate, slower, fully self-contained one-shot
-    /// export for when a truly single portable file is actually needed.
+    /// embedded as base64 (<see cref="ResolveImageSrc"/>) rather than
+    /// referenced by relative path, so the file is fully self-contained and
+    /// works when embedded directly in an Obsidian note — the trade-off
+    /// (noted here, not yet acted on) is that this runs on every single
+    /// click, so a long session with many/large screenshots means every one
+    /// of those clicks re-serializes and rewrites *all* of them to disk, not
+    /// just the newest one.
     /// </summary>
     private string BuildLiveHtml()
     {
@@ -1224,7 +1224,7 @@ public sealed class CanvasFlowWriter : IFlowWriter
         var htmlDir = Path.GetDirectoryName(_canvasPath!) ?? _config.OutputPath;
 
         // Reuses GetPreview()'s own PathId tagging for column-based accent
-        // colors, matching DrawIoConverter/HtmlFlowExporter's palette —
+        // colors, matching DrawIoConverter's palette —
         // this is purely a coloring lookup, the actual rendered *position*
         // of every node still comes from this document's own X/Y below
         // (already meaningful/clean via Relayout()), not recomputed here.

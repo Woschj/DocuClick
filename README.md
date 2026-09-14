@@ -256,20 +256,16 @@ Die Datei ist sofort in jedem Browser lesbar (Diagramm frei
 zoom-/schwenkbar, Klick auf eine Karte zeigt den Screenshot in voller
 Größe) — Bearbeiten (umbenennen, löschen, verbinden, springen) geht über
 das Tray-Menü **"Ablauf öffnen..."**, das die Datei in DocuClicks eigener
-Ablauf-Übersicht aufmacht, ganz ohne laufende Aufnahme. Screenshots liegen
-als eigene Dateien im Attachments-Ordner daneben und werden per relativem
-Pfad eingebunden statt bei jedem Klick neu einzubetten — das hält auch
-sehr lange Sitzungen schnell (siehe unten für eine Variante ganz ohne
-diese Abhängigkeit).
+Ablauf-Übersicht aufmacht, ganz ohne laufende Aufnahme. Screenshots werden
+zusätzlich im Attachments-Ordner als eigene Dateien gesichert, aber direkt
+als Base64 in die `.html`-Datei eingebettet — die Datei ist dadurch von
+Anfang an vollständig eigenständig (kein separater Export nötig) und lässt
+sich direkt weitergeben oder in Obsidian einbetten (siehe [In Obsidian
+einbinden](#in-obsidian-einbinden)).
 
-Aus einer bestehenden Ablauf-Session lassen sich über das Tray-Menü zwei
-verschiedene Exporte erzeugen:
+Aus einer bestehenden Ablauf-Session lässt sich über das Tray-Menü zusätzlich
+ein Export erzeugen:
 
-- **"Nach HTML exportieren..."**: eine zweite, komplett eigenständige
-  `.html`-Kopie — alle Screenshots als Base64 eingebettet, keine
-  Abhängigkeit mehr vom Attachments-Ordner. Zum Weitergeben an jemanden,
-  der nur die eine Datei bekommen soll (rein lesend; die Live-Session
-  bleibt die editierbare Originaldatei).
 - **"Nach draw.io exportieren..."**: ein voll editierbares
   draw.io-Flowchart — nicht als eigener Aufnahme-Modus (frühere Versionen
   schrieben draw.io live mit; das wurde durch diesen Ein-Schritt-Export
@@ -539,8 +535,8 @@ Neues Release erstellen (baut automatisch und hängt das Zip an ein neues
 GitHub Release):
 
 ```bash
-git tag v1.12.1
-git push origin v1.12.1
+git tag v1.12.4
+git push origin v1.12.4
 ```
 
 Offene Punkte: Feinschliff bei Multi-Monitor/DPI-Kantenfällen, robustere

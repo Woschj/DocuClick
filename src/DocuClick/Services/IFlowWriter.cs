@@ -292,9 +292,8 @@ public static class FlowPreviewBranching
     /// would collide column and -column onto the same palette slot, giving
     /// two clearly different branches the same accent color. Shared by
     /// every renderer that colors a node/edge by its column (the live
-    /// Ablauf-Übersicht viewer, <c>DrawIoConverter</c>,
-    /// <c>HtmlFlowExporter</c>) instead of three separately-maintained
-    /// copies of the same one-line hash.
+    /// Ablauf-Übersicht viewer, <c>DrawIoConverter</c>) instead of two
+    /// separately-maintained copies of the same one-line hash.
     /// </summary>
     public static int StableColumnHash(int column) => unchecked((int)((uint)column * 2654435761u) & 0x7FFFFFFF);
 }
