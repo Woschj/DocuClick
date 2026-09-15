@@ -13,22 +13,24 @@ mitveröffentlicht. Stattdessen:
 
 1. Diesen `OutputTemplate`-Ordner an einen Ort außerhalb des Repos kopieren
    (z. B. `%USERPROFILE%\Documents\Prozess-Ablaeufe`).
-2. In DocuClick unter Einstellungen → Speicherort den Ausgabeordner auf
-   den kopierten Ordner selbst setzen (Attachments-Unterordner bleibt auf
-   dem Standard `Attachments`, landet also direkt im Ordner-Root).
+2. Beim nächsten "Neue Session" in DocuClick im Session-Start-Dialog über
+   **"Durchsuchen..."** direkt diesen kopierten Ordner (oder einen seiner
+   Unterordner, z. B. `01 Prozesse/IT-Support`) als Speicherort wählen —
+   DocuClick verlangt keinen vorher global konfigurierten Ausgabeordner
+   mehr, jede Session wählt ihren Ordner frei bei ihrem eigenen Start.
 
 Die mitgelieferte `.gitignore` verhindert zusätzlich, dass in den
 Arbeitsordnern erzeugte Dateien versehentlich committet werden, falls der
 Ordner doch mal in-place benutzt wird — ersetzt aber nicht den Schritt oben.
 
-## Obsidian-Nutzung
+## Obsidian-Nutzung (optional)
 
 Dieser Ordner öffnet sich direkt als Obsidian-Vault (**"Open folder as
 vault"**) und zeigt `.html`-Dateien im Dateibaum an (`.obsidian/app.json`
-setzt dafür `"showUnsupportedFiles": true`). Um einen Ablauf tatsächlich
-*in* einer Notiz einzubetten, ist einmalig ein kostenloses Community-Plugin
-nötig — siehe [In Obsidian einbinden](../README.md#in-obsidian-einbinden)
-in der Haupt-README für die Installationsanleitung.
+setzt dafür `"showUnsupportedFiles": true`). DocuClick selbst bietet dafür
+keine eigene Einbindungs-Funktion mehr — die Abläufe sind eigenständige
+`.html`-Dateien, die in jedem Browser und über "Ordner öffnen" in
+DocuClicks Top-Leiste direkt erreichbar sind, mit oder ohne Obsidian.
 
 ## Struktur
 
@@ -52,19 +54,18 @@ interaktiven Ablauf-Seite um (siehe [Workflow unten](#workflow-vorlage-nutzen-un
 
 ## Workflow: Zielordner beim Aufnahme-Start wählen
 
-Der Session-Start-Dialog fragt bei jeder Aufnahme neben dem Dateinamen
-auch nach dem **Zielordner** (relativ zum Ausgabeordner) — Vorschläge kommen
-aus allen bereits vorhandenen Unterordnern. So landen neue Aufnahmen
-direkt dort, wo sie hingehören (z. B. `01 Prozesse/IT-Support`), statt
-immer im Ordner-Root. Leer lassen = Ordner-Root; `00 Inbox` eignet sich für
-noch nicht einsortierte Aufnahmen.
+Der Session-Start-Dialog fragt bei jeder neuen Aufnahme nach dem
+**Speicherort** — per "Durchsuchen..." direkt in einen der vorbereiteten
+Unterordner navigieren (z. B. `01 Prozesse/IT-Support`), statt alles in
+einem gemeinsamen Wurzelordner zu sammeln. `00 Inbox` eignet sich für noch
+nicht einsortierte Aufnahmen.
 
 ## Workflow: Vorlage nutzen und DocuClick daran fortsetzen lassen
 
 1. `Leere-Ablauf-Vorlage.html` aus `02 Vorlagen/` in den gewünschten
    Zielordner kopieren und umbenennen.
 2. In DocuClick eine Aufnahme starten → im Session-Start-Dialog
-   **"Bestehende Datei fortsetzen"** wählen → die vorbereitete Datei
-   auswählen (Liste zeigt auch den Unterordner mit an).
+   **"Bestehende Datei fortsetzen"** wählen → per "Durchsuchen..." die
+   vorbereitete Datei auswählen.
 3. Jeder Klick wird automatisch als neuer Knoten an die vorbereitete Datei
    angehängt.

@@ -88,7 +88,6 @@ public partial class App : Application
             _zoomCursorBox.Preview(radius);
         };
         _topBar.ZoomRadiusCommitted += () => ConfigService.Save(_config);
-        _topBar.CopyObsidianEmbedRequested += OnCopyObsidianEmbedRequested;
         _topBar.Show();
 
         // Polls rather than extending KeyboardHookService: that hook is
@@ -285,7 +284,7 @@ public partial class App : Application
             return;
         }
 
-        if (!_sessionManager.HasActiveSession || !_sessionManager.SupportsBranching)
+        if (!_sessionManager.HasActiveSession)
         {
             _sessionManager.MarkDecisionPoint(string.Empty);
             return;
@@ -340,7 +339,7 @@ public partial class App : Application
                 // came up broken-looking and non-editable until manually
                 // reopened later — exactly the "one overlay, not two views"
                 // complaint this replaces.
-                _flowPreviewOverlay = new FlowPreviewOverlay(_config!);
+                _flowPreviewOverlay = new FlowPreviewOverlay();
                 _flowPreviewOverlay.NodeClicked += OnFlowPreviewNodeClicked;
                 _flowPreviewOverlay.PathsProvider = decisionPointId => _sessionManager?.ListPaths(decisionPointId) ?? new List<PathInfo>();
                 _flowPreviewOverlay.NewPathRequested += OnNewPathRequested;
@@ -362,6 +361,7 @@ public partial class App : Application
                 };
             }
 
+            _flowPreviewOverlay.CurrentSessionFolder = _sessionManager?.CurrentSessionFolder;
             _flowPreviewOverlay.UpdatePreview(preview, isRecordedClick);
             if (!_flowPreviewManuallyHidden)
             {
@@ -409,53 +409,6 @@ public partial class App : Application
         OnOpenFlowRequested();
     }
 
-    private void OnCopyObsidianEmbedRequested()
-    {
-        var targetFile = _sessionManager?.CurrentTargetFileName ?? _config?.LastSessionFileName;
-        if (string.IsNullOrWhiteSpace(targetFile))
-        {
-            _trayApp?.ShowInfo("Keine aktive Session für Obsidian gefunden.");
-            return;
-        }
-
-        var baseFileName = Path.GetFileNameWithoutExtension(targetFile);
-        var htmlFileName = Path.ChangeExtension(Path.GetFileName(targetFile), ".html");
-        var snippet = $"```html-embed\n{htmlFileName}\n750\n```";
-
-        try
-        {
-            System.Windows.Clipboard.SetText(snippet);
-        }
-        catch (Exception ex)
-        {
-            LogService.Log($"Clipboard-Kopieren für Obsidian fehlgeschlagen: {ex.Message}");
-        }
-
-        // Directly open the flow in Obsidian if OutputPath is a vault!
-        if (!string.IsNullOrWhiteSpace(_config?.OutputPath))
-        {
-            var vaultName = Path.GetFileName(_config.OutputPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-            var isVault = Directory.Exists(Path.Combine(_config.OutputPath, ".obsidian"));
-            if (isVault)
-            {
-                try
-                {
-                    // Open the companion markdown note or html directly in Obsidian
-                    var uri = $"obsidian://open?vault={Uri.EscapeDataString(vaultName)}&file={Uri.EscapeDataString(htmlFileName)}";
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri) { UseShellExecute = true });
-                    _trayApp?.ShowInfo($"In Obsidian geöffnet: {htmlFileName}");
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    LogService.Log($"Öffnen in Obsidian fehlgeschlagen: {ex.Message}");
-                }
-            }
-        }
-
-        _trayApp?.ShowInfo($"Obsidian-Codeblock für '{htmlFileName}' in Zwischenablage kopiert!");
-    }
-
     /// <summary>
     /// Clicking a node in the Ablauf-Übersicht jumps the live cursor there
     /// — whether actively recording or just paused — so the next click
@@ -489,16 +442,14 @@ public partial class App : Application
         return string.IsNullOrWhiteSpace(last) ? null : last;
     }
 
-    private void RememberLastSession(string fileName)
+    private void RememberLastSession(string filePath)
     {
-        _config!.LastSessionFileName = fileName;
-        // Also remembers the output folder itself for Settings' "Zuletzt
-        // verwendet" dropdown — every call site here is exactly "a session
-        // just started successfully against the currently-configured
-        // output path", the moment that path is actually demonstrated to
-        // work (as opposed to just typed/browsed-to in Settings, which the
-        // Browse button's own handler already remembers separately).
-        _config.RememberRecentOutputPath(_config.OutputPath);
+        _config!.LastSessionFileName = filePath;
+        // Also remembers this session's folder for SessionStartWindow's
+        // free folder picker to default to next time — every call site
+        // here is exactly "a session just started successfully in this
+        // folder", the moment that folder is actually demonstrated to work.
+        _config.RememberRecentOutputPath(Path.GetDirectoryName(filePath) ?? "");
         ConfigService.Save(_config);
     }
 
@@ -538,7 +489,7 @@ public partial class App : Application
         }
 
         var detail = !isRecording && _sessionManager!.IsPaused ? "Pausiert" : null;
-        _topBar?.UpdateStatus(isRecording, detail: detail, _sessionManager!.SupportsBranching);
+        _topBar?.UpdateStatus(isRecording, detail: detail);
         _trayApp?.UpdatePausedState(_sessionManager!.IsPaused);
     }
 
@@ -593,7 +544,7 @@ public partial class App : Application
 
             RememberLastSession(fileName);
             _trayApp!.ShowInfo($"Neue Session gestartet: {fileName}");
-            _topBar?.UpdateStatus(true, detail: null, _sessionManager.SupportsBranching);
+            _topBar?.UpdateStatus(true, detail: null);
         }
         catch (Exception ex)
         {
@@ -604,23 +555,27 @@ public partial class App : Application
         }
     }
 
-    /// <summary>Opens the configured output folder in Explorer — UseShellExecute lets the shell resolve it as a normal "open this folder" request, same as the Obsidian deep-link's Process.Start below.</summary>
+    /// <summary>The current session's own folder, falling back to the most recently used one if nothing is loaded — used to seed folder pickers and the "open folder" action.</summary>
+    private string? ResolveStartingFolder() => _sessionManager?.CurrentSessionFolder ?? _config?.RecentOutputPaths.FirstOrDefault();
+
+    /// <summary>Opens the current session's own folder in Explorer (falling back to the most recently used one if nothing is loaded) — UseShellExecute lets the shell resolve it as a normal "open this folder" request.</summary>
     private void OnOpenOutputFolderRequested()
     {
-        if (string.IsNullOrWhiteSpace(_config?.OutputPath) || !Directory.Exists(_config.OutputPath))
+        var folder = ResolveStartingFolder();
+        if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
         {
-            _trayApp?.ShowInfo("Kein gültiger Ausgabeordner konfiguriert.");
+            _trayApp?.ShowInfo("Keine aktive Session und kein zuletzt verwendeter Ordner gefunden.");
             return;
         }
 
         try
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_config.OutputPath) { UseShellExecute = true });
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(folder) { UseShellExecute = true });
         }
         catch (Exception ex)
         {
-            LogService.Log($"Ausgabeordner öffnen fehlgeschlagen: {ex.Message}");
-            _trayApp?.ShowInfo("Ausgabeordner konnte nicht geöffnet werden.");
+            LogService.Log($"Ordner öffnen fehlgeschlagen: {ex.Message}");
+            _trayApp?.ShowInfo("Ordner konnte nicht geöffnet werden.");
         }
     }
 
@@ -635,11 +590,7 @@ public partial class App : Application
     {
         SetUpHotkeys();
 
-        // The top bar's branch buttons reflect SupportsBranching for the
-        // *active* output mode — if the user switches modes in Settings
-        // while a recording is already running (nothing prevents that),
-        // nothing else would ever refresh them until the next Stop/Start.
-        _topBar?.UpdateStatus(_trayApp!.IsRecording, detail: null, _sessionManager!.SupportsBranching);
+        _topBar?.UpdateStatus(_trayApp!.IsRecording, detail: null);
     }
 
     /// <summary>
@@ -653,18 +604,10 @@ public partial class App : Application
     /// </summary>
     private void OnExportToDrawIoRequested()
     {
-        if (string.IsNullOrWhiteSpace(_config!.OutputPath) || !Directory.Exists(_config.OutputPath))
-        {
-            MessageBox.Show(
-                "Kein gültiger Ausgabeordner konfiguriert — in den Einstellungen setzen, dann erneut versuchen.",
-                "DocuClick", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
         var openDialog = new Microsoft.Win32.OpenFileDialog
         {
             Title = "Ablauf für den draw.io-Export wählen",
-            InitialDirectory = _config.OutputPath,
+            InitialDirectory = ResolveStartingFolder(),
             Filter = "DocuClick-Ablauf (*.html;*.canvas)|*.html;*.canvas|HTML-Abläufe (*.html)|*.html|Obsidian Canvas (*.canvas)|*.canvas|Alle Dateien (*.*)|*.*",
             CheckFileExists = true
         };
@@ -687,7 +630,12 @@ public partial class App : Application
 
         try
         {
-            DrawIoConverter.Convert(openDialog.FileName, _config.OutputPath, drawioPath);
+            // Screenshots are resolved relative to the source file's own
+            // folder — there's no separate configured output root any more,
+            // every session (and its attachments) is fully self-contained
+            // wherever it was freely placed.
+            var sourceFolder = Path.GetDirectoryName(openDialog.FileName)!;
+            DrawIoConverter.Convert(openDialog.FileName, sourceFolder, drawioPath);
             _trayApp?.ShowInfo($"Nach draw.io exportiert: {Path.GetFileName(drawioPath)}");
         }
         catch (Exception ex)
@@ -705,18 +653,10 @@ public partial class App : Application
     /// </summary>
     private void OnOpenFlowRequested()
     {
-        if (string.IsNullOrWhiteSpace(_config!.OutputPath) || !Directory.Exists(_config.OutputPath))
-        {
-            MessageBox.Show(
-                "Kein gültiger Ausgabeordner konfiguriert — in den Einstellungen setzen, dann erneut versuchen.",
-                "DocuClick", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
         var openDialog = new Microsoft.Win32.OpenFileDialog
         {
             Title = "Ablauf zum Ansehen/Bearbeiten wählen",
-            InitialDirectory = _config.OutputPath,
+            InitialDirectory = ResolveStartingFolder(),
             Filter = "DocuClick-Ablauf (*.html;*.canvas)|*.html;*.canvas|HTML-Abläufe (*.html)|*.html|Obsidian Canvas (*.canvas)|*.canvas|Alle Dateien (*.*)|*.*",
             CheckFileExists = true
         };
@@ -725,11 +665,10 @@ public partial class App : Application
             return;
         }
 
-        var relativeFileName = Path.GetRelativePath(_config.OutputPath, openDialog.FileName);
         try
         {
-            _sessionManager!.OpenForEditing(relativeFileName);
-            RememberLastSession(relativeFileName);
+            _sessionManager!.OpenForEditing(openDialog.FileName);
+            RememberLastSession(openDialog.FileName);
         }
         catch (Exception ex)
         {

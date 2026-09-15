@@ -1,38 +1,33 @@
-using System.Text.Json.Serialization;
-
 namespace DocuClick;
 
 /// <summary>Persisted user configuration, serialized as-is to config.json.</summary>
 public sealed class AppConfig
 {
-    /// <summary>
-    /// Root output folder everything gets written under. Property renamed
-    /// from "VaultPath" (the app used to require an Obsidian vault here;
-    /// the live output is now a self-contained HTML file, no Obsidian
-    /// needed) — the JSON attribute keeps the on-disk key unchanged so an
-    /// existing config.json keeps loading with no migration step.
-    /// </summary>
-    [JsonPropertyName("VaultPath")]
-    public string OutputPath { get; set; } = string.Empty;
+    // Historically a single, globally-configured "output root" everything
+    // had to live under (JSON key "VaultPath" from when the app required an
+    // Obsidian vault there). Replaced by a free-choice folder picker per
+    // session (see SessionStartWindow) — there is no longer one root at
+    // all, so this setting and its Settings-menu UI are gone; an existing
+    // config.json's "VaultPath" value is simply ignored from here on
+    // (System.Text.Json skips unknown properties), same as any other
+    // deliberately dropped legacy field.
 
     public string AttachmentsFolder { get; set; } = "Attachments";
 
     private const int MaxRecentOutputPaths = 8;
 
     /// <summary>
-    /// Most-recently-used output folders, most-recent-first, deduplicated
+    /// Most-recently-used session folders, most-recent-first, deduplicated
     /// case-insensitively, capped at <see cref="MaxRecentOutputPaths"/>
     /// entries. Populated via <see cref="RememberRecentOutputPath"/>
-    /// whenever a folder is deliberately chosen (Settings' Browse button)
-    /// or actually put to use (a session starts successfully) — lets
-    /// switching between a few regularly-used output locations (e.g.
-    /// different clients/projects) happen from a dropdown instead of
-    /// retyping or re-browsing the full path every time.
+    /// whenever a session actually starts successfully — used only to seed
+    /// SessionStartWindow's folder picker with the last-used location as a
+    /// starting point, not to constrain where a new session can go.
     /// </summary>
     public List<string> RecentOutputPaths { get; set; } = new();
 
     /// <summary>
-    /// Records <paramref name="path"/> as the most-recently-used output
+    /// Records <paramref name="path"/> as the most-recently-used session
     /// folder: moves it to the front if already present (case-insensitive —
     /// Windows paths), inserts it otherwise, then trims the list back down
     /// to <see cref="MaxRecentOutputPaths"/>. No-op for a blank path.
@@ -104,10 +99,10 @@ public sealed class AppConfig
     public bool CaptureOnRightClick { get; set; } = true;
 
     /// <summary>
-    /// Target file name (with extension, possibly subfolder-prefixed) most
-    /// recently used to start a session — persisted so a plain "Start"
-    /// (tray/hotkey/top-bar) can resume it directly without prompting.
-    /// "Neue Session" always prompts regardless of this.
+    /// Absolute path to the target file most recently used to start a
+    /// session — persisted so a plain "Start" (tray/hotkey/top-bar) can
+    /// resume it directly without prompting. "Neue Session" always prompts
+    /// regardless of this.
     /// </summary>
     public string? LastSessionFileName { get; set; }
 }

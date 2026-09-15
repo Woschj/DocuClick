@@ -4,25 +4,21 @@ using System.IO;
 
 namespace DocuClick.Services;
 
-/// <summary>Used by CanvasFlowWriter to save every click's screenshot.</summary>
+/// <summary>Used by CanvasFlowWriter to save every click's screenshot, into the session's own folder — the same one its .html file lives in.</summary>
 public static class AttachmentSaver
 {
     /// <summary>
-    /// Saves a screenshot under Attachments/&lt;sessionName&gt;/ instead of
-    /// directly in Attachments/, so screenshots from different sessions
-    /// don't all pile up flat in one folder. <paramref name="sessionName"/>
-    /// is normally the target file's name without extension.
+    /// Saves a screenshot under &lt;sessionFolder&gt;/&lt;attachmentsFolderName&gt;/&lt;sessionName&gt;/
+    /// instead of directly in the attachments folder, so screenshots from
+    /// different sessions sharing one folder don't all pile up flat
+    /// together. <paramref name="sessionName"/> is normally the target
+    /// file's name without extension.
     /// </summary>
-    /// <returns>A tuple of the saved file's path relative to Attachments and the raw PNG bytes.</returns>
-    public static (string RelativePath, byte[] PngBytes) SaveScreenshot(AppConfig config, Bitmap screenshot, DateTime timestamp, string sessionName)
+    /// <returns>A tuple of the saved file's path relative to the attachments folder and the raw PNG bytes.</returns>
+    public static (string RelativePath, byte[] PngBytes) SaveScreenshot(string sessionFolder, string attachmentsFolderName, Bitmap screenshot, DateTime timestamp, string sessionName)
     {
-        if (string.IsNullOrWhiteSpace(config.OutputPath))
-        {
-            throw new InvalidOperationException("Kein Ausgabeordner konfiguriert.");
-        }
-
         var subfolder = SanitizeSessionName(sessionName);
-        var attachmentsDir = Path.Combine(config.OutputPath, config.AttachmentsFolder, subfolder);
+        var attachmentsDir = Path.Combine(sessionFolder, attachmentsFolderName, subfolder);
         Directory.CreateDirectory(attachmentsDir);
 
         // No "screenshot_" prefix and no date: the enclosing session
@@ -42,17 +38,13 @@ public static class AttachmentSaver
     }
 
     /// <summary>
-    /// Copies an external image file to Attachments/&lt;sessionName&gt;/ and returns its relative path and bytes.
+    /// Copies an external image file into &lt;sessionFolder&gt;/&lt;attachmentsFolderName&gt;/&lt;sessionName&gt;/
+    /// and returns its relative path and bytes.
     /// </summary>
-    public static (string RelativePath, byte[] ImageBytes) SaveImage(AppConfig config, string sourceFilePath, string sessionName)
+    public static (string RelativePath, byte[] ImageBytes) SaveImage(string sessionFolder, string attachmentsFolderName, string sourceFilePath, string sessionName)
     {
-        if (string.IsNullOrWhiteSpace(config.OutputPath))
-        {
-            throw new InvalidOperationException("Kein Ausgabeordner konfiguriert.");
-        }
-
         var subfolder = SanitizeSessionName(sessionName);
-        var attachmentsDir = Path.Combine(config.OutputPath, config.AttachmentsFolder, subfolder);
+        var attachmentsDir = Path.Combine(sessionFolder, attachmentsFolderName, subfolder);
         Directory.CreateDirectory(attachmentsDir);
 
         var ext = Path.GetExtension(sourceFilePath);

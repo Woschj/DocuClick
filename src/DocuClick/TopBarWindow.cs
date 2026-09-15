@@ -38,7 +38,6 @@ public sealed class TopBarWindow : Window
     private static readonly Geometry FlowIconGeo = Geometry.Parse("M 2 8 H 5.5 M 5.5 8 L 9.5 4 M 5.5 8 L 9.5 12 M 9.5 4 H 13.5 M 9.5 12 H 13.5");
     private static readonly Geometry PlusIconGeo = Geometry.Parse("M 8 2.5 V 13.5 M 2.5 8 H 13.5");
     private static readonly Geometry ZoomIconGeo = Geometry.Parse("M 6.5 2 A 4.5 4.5 0 1 1 2 6.5 A 4.5 4.5 0 0 1 6.5 2 M 10 10 L 14 14");
-    private static readonly Geometry ObsidianIconGeo = Geometry.Parse("M 8 2 L 13.5 6.5 L 8 14.5 L 2.5 6.5 Z M 2.5 6.5 H 13.5 M 8 2 V 14.5");
     private static readonly Geometry FolderIconGeo = Geometry.Parse("M 2 4.5 H 6.5 L 8 6 H 14 V 13 H 2 Z");
 
     private readonly Ellipse _statusDot;
@@ -51,7 +50,6 @@ public sealed class TopBarWindow : Window
     private readonly Button _showFlowPreviewButton;
     private readonly Button _newSessionButton;
     private readonly Button _openOutputFolderButton;
-    private readonly Button _copyObsidianButton;
     private readonly Path _zoomIcon;
     private readonly TextBlock _zoomText;
     private readonly Button _zoomToCursorButton;
@@ -61,7 +59,6 @@ public sealed class TopBarWindow : Window
     public event Action? ShowFlowPreviewRequested;
     public event Action? NewSessionRequested;
     public event Action? OpenOutputFolderRequested;
-    public event Action? CopyObsidianEmbedRequested;
     public event Action? ZoomToCursorToggleRequested;
 
     /// <summary>Fired live while the zoom-radius slider is being dragged/adjusted — the new radius in pixels. Not persisted to disk yet, see <see cref="ZoomRadiusCommitted"/>.</summary>
@@ -167,15 +164,9 @@ public sealed class TopBarWindow : Window
 
         // 3b. Open output folder button
         _openOutputFolderButton = CreateIconButton(buttonStyle, FolderIconGeo, out _, out _, "Ordner",
-            "Öffnet den konfigurierten Ausgabeordner im Explorer.");
+            "Öffnet den Ordner der aktuellen Session im Explorer.");
         AutomationProperties.SetAutomationId(_openOutputFolderButton, "TopBar.OpenOutputFolder");
         _openOutputFolderButton.Click += (_, _) => OpenOutputFolderRequested?.Invoke();
-
-        // 4. Obsidian button
-        _copyObsidianButton = CreateIconButton(buttonStyle, ObsidianIconGeo, out _, out _, "Obsidian",
-            "Kopiert den interaktiven HTML-Einbindungscode für Obsidian in die Zwischenablage.");
-        AutomationProperties.SetAutomationId(_copyObsidianButton, "TopBar.CopyObsidian");
-        _copyObsidianButton.Click += (_, _) => CopyObsidianEmbedRequested?.Invoke();
 
         // 5. Zoom button
         _zoomToCursorButton = CreateIconButton(buttonStyle, ZoomIconGeo, out _zoomIcon, out _zoomText, "Zoom",
@@ -217,8 +208,6 @@ public sealed class TopBarWindow : Window
         panel.Children.Add(_newSessionButton);
         panel.Children.Add(_openOutputFolderButton);
         panel.Children.Add(CreateSeparator());
-        panel.Children.Add(_copyObsidianButton);
-        panel.Children.Add(CreateSeparator());
         panel.Children.Add(_zoomToCursorButton);
         panel.Children.Add(_zoomRadiusSlider);
 
@@ -246,7 +235,7 @@ public sealed class TopBarWindow : Window
         };
         Content = border;
 
-        UpdateStatus(isRecording: false, detail: null, supportsBranching: false);
+        UpdateStatus(isRecording: false, detail: null);
         UpdateZoomToCursorState(active: false);
 
         border.MouseLeftButtonDown += (_, e) =>
@@ -303,9 +292,9 @@ public sealed class TopBarWindow : Window
         iconPath = new Path
         {
             Data = iconGeo,
-            Fill = iconGeo == FlowIconGeo || iconGeo == PlusIconGeo || iconGeo == ZoomIconGeo || iconGeo == ObsidianIconGeo || iconGeo == FolderIconGeo ? Brushes.Transparent : (iconFill ?? Brushes.White),
-            Stroke = iconGeo == FlowIconGeo || iconGeo == PlusIconGeo || iconGeo == ZoomIconGeo || iconGeo == ObsidianIconGeo || iconGeo == FolderIconGeo ? (iconFill ?? Brushes.White) : null,
-            StrokeThickness = iconGeo == FlowIconGeo || iconGeo == PlusIconGeo || iconGeo == ZoomIconGeo || iconGeo == ObsidianIconGeo || iconGeo == FolderIconGeo ? 1.4 : 0,
+            Fill = iconGeo == FlowIconGeo || iconGeo == PlusIconGeo || iconGeo == ZoomIconGeo || iconGeo == FolderIconGeo ? Brushes.Transparent : (iconFill ?? Brushes.White),
+            Stroke = iconGeo == FlowIconGeo || iconGeo == PlusIconGeo || iconGeo == ZoomIconGeo || iconGeo == FolderIconGeo ? (iconFill ?? Brushes.White) : null,
+            StrokeThickness = iconGeo == FlowIconGeo || iconGeo == PlusIconGeo || iconGeo == ZoomIconGeo || iconGeo == FolderIconGeo ? 1.4 : 0,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round,
             Width = 11,
@@ -422,7 +411,7 @@ public sealed class TopBarWindow : Window
         return style;
     }
 
-    public void UpdateStatus(bool isRecording, string? detail, bool supportsBranching)
+    public void UpdateStatus(bool isRecording, string? detail)
     {
         var isPaused = !isRecording && detail == "Pausiert";
 

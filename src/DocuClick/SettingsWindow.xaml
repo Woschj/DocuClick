@@ -16,26 +16,6 @@
 
                 <Border Style="{StaticResource CardBorder}">
                     <StackPanel>
-                        <TextBlock Text="Speicherort" Style="{StaticResource SectionHeader}"/>
-
-                        <TextBlock Text="Ausgabeordner" Style="{StaticResource FieldLabel}"/>
-                        <DockPanel Margin="0,0,0,4">
-                            <Button Content="Durchsuchen..." DockPanel.Dock="Right" Margin="8,0,0,0"
-                                    Style="{StaticResource ModernButton}" Click="OnBrowseOutputPathClicked"/>
-                            <ComboBox x:Name="OutputPathBox" Style="{StaticResource ModernComboBox}" IsEditable="True"/>
-                        </DockPanel>
-                        <TextBlock Style="{StaticResource HintText}" Margin="0,0,0,12"
-                                   Text="Jeder Klick wird als verbundener Knoten in eine einzelne, interaktive .html-Datei in diesem Ordner geschrieben (vertikaler Hauptfluss, Abzweigungspunkte mit neuen Pfaden als Spalten, gesteuert über die Ablauf-Übersicht) — öffnet direkt in jedem Browser. Das Dropdown zeigt zuletzt verwendete Ausgabeordner."/>
-
-                        <StackPanel x:Name="AttachmentsRow">
-                            <TextBlock Text="Attachments-Unterordner" Style="{StaticResource FieldLabel}"/>
-                            <TextBox x:Name="AttachmentsFolderBox" Style="{StaticResource ModernTextBox}"/>
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
-
-                <Border Style="{StaticResource CardBorder}">
-                    <StackPanel>
                         <TextBlock Text="Aufnahme-Verhalten" Style="{StaticResource SectionHeader}"/>
 
                         <CheckBox x:Name="UseUiAutomationBox" Content="UI-Automation-Beschreibungstexte verwenden" Margin="0,0,0,10"/>
@@ -53,11 +33,6 @@
 
                         <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0"
                                    Text="Die Zieldatei wird bei jedem Start der Aufnahme abgefragt (neue Datei anlegen oder eine bestehende fortsetzen) — es gibt keinen automatisch generierten Namen mehr."/>
-
-                        <TextBlock Text="Zoom-auf-Cursor: Radius in Pixeln" Style="{StaticResource FieldLabel}" Margin="0,12,0,0"/>
-                        <TextBox x:Name="ZoomToCursorRadiusBox" Style="{StaticResource ModernTextBox}"/>
-                        <TextBlock Style="{StaticResource HintText}" Margin="0,2,0,0"
-                                   Text="Per Hotkey umschaltbar (siehe unten): erfasst statt des ganzen geklickten Fensters nur ein Quadrat mit diesem Radius rund um den Mauszeiger — nützlich, um kleine Bedienelemente größer sichtbar zu machen."/>
                     </StackPanel>
                 </Border>
 
@@ -101,34 +76,58 @@
                 </Border>
 
                 <Border Style="{StaticResource CardBorder}">
-                    <StackPanel>
-                        <TextBlock Text="Highlighter" Style="{StaticResource SectionHeader}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
 
-                        <TextBlock Text="Farbe" Style="{StaticResource FieldLabel}"/>
-                        <StackPanel x:Name="HighlightColorSwatchPanel" Orientation="Horizontal" Margin="0,0,0,14">
-                            <Button Tag="#E63946" Background="#E63946" Style="{StaticResource ColorSwatchButton}" Click="OnHighlightColorSwatchClicked"/>
-                            <Button Tag="#F77F00" Background="#F77F00" Style="{StaticResource ColorSwatchButton}" Click="OnHighlightColorSwatchClicked"/>
-                            <Button Tag="#FFD60A" Background="#FFD60A" Style="{StaticResource ColorSwatchButton}" Click="OnHighlightColorSwatchClicked"/>
-                            <Button Tag="#22C55E" Background="#22C55E" Style="{StaticResource ColorSwatchButton}" Click="OnHighlightColorSwatchClicked"/>
-                            <Button Tag="#1D4ED8" Background="#1D4ED8" Style="{StaticResource ColorSwatchButton}" Click="OnHighlightColorSwatchClicked"/>
-                            <Button Tag="#7C3AED" Background="#7C3AED" Style="{StaticResource ColorSwatchButton}" Click="OnHighlightColorSwatchClicked"/>
+                        <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                            <TextBlock Text="Highlighter" Style="{StaticResource SectionHeader}"/>
+
+                            <TextBlock Text="Farbe" Style="{StaticResource FieldLabel}"/>
+                            <WrapPanel x:Name="HighlightColorSwatchPanel" Margin="0,0,0,14">
+                                <Border Style="{StaticResource ColorSwatchFrame}">
+                                    <Button Tag="#E63946" Background="#E63946" Style="{StaticResource ColorSwatchButton}" Click="OnHighlightColorSwatchClicked"/>
+                                </Border>
+                                <Border Style="{StaticResource ColorSwatchFrame}">
+                                    <Button Tag="#F77F00" Background="#F77F00" Style="{StaticResource ColorSwatchButton}" Click="OnHighlightColorSwatchClicked"/>
+                                </Border>
+                                <Border Style="{StaticResource ColorSwatchFrame}">
+                                    <Button Tag="#FFD60A" Background="#FFD60A" Style="{StaticResource ColorSwatchButton}" Click="OnHighlightColorSwatchClicked"/>
+                                </Border>
+                                <Border Style="{StaticResource ColorSwatchFrame}">
+                                    <Button Tag="#22C55E" Background="#22C55E" Style="{StaticResource ColorSwatchButton}" Click="OnHighlightColorSwatchClicked"/>
+                                </Border>
+                                <Border Style="{StaticResource ColorSwatchFrame}">
+                                    <Button Tag="#1D4ED8" Background="#1D4ED8" Style="{StaticResource ColorSwatchButton}" Click="OnHighlightColorSwatchClicked"/>
+                                </Border>
+                                <Border Style="{StaticResource ColorSwatchFrame}">
+                                    <Button Tag="#7C3AED" Background="#7C3AED" Style="{StaticResource ColorSwatchButton}" Click="OnHighlightColorSwatchClicked"/>
+                                </Border>
+                            </WrapPanel>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                    <TextBlock Text="Radius (px)" Style="{StaticResource FieldLabel}"/>
+                                    <TextBox x:Name="HighlightRadiusBox" Style="{StaticResource ModernTextBox}" TextChanged="OnHighlightPreviewInputChanged"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                    <TextBlock Text="Strichstärke (px)" Style="{StaticResource FieldLabel}"/>
+                                    <TextBox x:Name="HighlightThicknessBox" Style="{StaticResource ModernTextBox}" TextChanged="OnHighlightPreviewInputChanged"/>
+                                </StackPanel>
+                            </Grid>
                         </StackPanel>
 
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                <TextBlock Text="Radius (px)" Style="{StaticResource FieldLabel}"/>
-                                <TextBox x:Name="HighlightRadiusBox" Style="{StaticResource ModernTextBox}"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Margin="8,0,0,0">
-                                <TextBlock Text="Strichstärke (px)" Style="{StaticResource FieldLabel}"/>
-                                <TextBox x:Name="HighlightThicknessBox" Style="{StaticResource ModernTextBox}"/>
-                            </StackPanel>
-                        </Grid>
-                    </StackPanel>
+                        <Border Grid.Column="1" Width="110" Height="110" Background="#14141A" CornerRadius="8"
+                                VerticalAlignment="Top" Margin="0,26,0,0" ClipToBounds="True">
+                            <Ellipse x:Name="HighlightPreviewEllipse" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </Grid>
                 </Border>
 
             </StackPanel>

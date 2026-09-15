@@ -90,11 +90,12 @@ public sealed class CanvasFlowWriter
         _config = config;
     }
 
-    public void StartSession(string canvasFileName)
+    /// <param name="canvasFilePath">Absolute path to the target .html file — there's no configured "output root" any more (see AppConfig's own history), so this is used exactly as given, not combined with anything.</param>
+    public void StartSession(string canvasFilePath)
     {
-        if (string.IsNullOrWhiteSpace(_config.OutputPath))
+        if (string.IsNullOrWhiteSpace(canvasFilePath) || !Path.IsPathRooted(canvasFilePath))
         {
-            throw new InvalidOperationException("Kein Ausgabeordner konfiguriert.");
+            throw new InvalidOperationException("Kein gültiger Ablauf-Dateipfad angegeben.");
         }
 
         // Commit any still-pending drag/add-node save for whatever was
@@ -104,7 +105,7 @@ public sealed class CanvasFlowWriter
         // lost (or, worse, written under the wrong path).
         FlushPendingSave();
 
-        var fullPath = Path.Combine(_config.OutputPath, canvasFileName);
+        var fullPath = canvasFilePath;
         if (_canvasPath == fullPath && _doc is not null && _doc.Nodes.Count > 0)
         {
             // Session already open in memory: keep the current cursor if
@@ -138,7 +139,7 @@ public sealed class CanvasFlowWriter
         // now-unusable target file.
         var loadedDoc = LoadOrCreate(fullPath);
         _canvasPath = fullPath;
-        _sessionName = Path.GetFileNameWithoutExtension(canvasFileName);
+        _sessionName = Path.GetFileNameWithoutExtension(canvasFilePath);
         _doc = loadedDoc;
         _nextColumnX = _doc.Nodes.Count > 0 ? _doc.Nodes.Max(n => n.X) + NodeWidth + BranchColumnSpacing : 0;
 
@@ -298,8 +299,9 @@ public sealed class CanvasFlowWriter
         }
 
         // Screenshots land in Attachments/<session>/ instead of flat in
-        // Attachments/.
-        var (imageRelativeToAttachments, imageBytes) = AttachmentSaver.SaveScreenshot(_config, screenshot, timestamp, _sessionName);
+        // Attachments/, inside the session's own folder (wherever its .html
+        // file itself lives — there's no separate configured output root).
+        var (imageRelativeToAttachments, imageBytes) = AttachmentSaver.SaveScreenshot(Path.GetDirectoryName(_canvasPath)!, _config.AttachmentsFolder, screenshot, timestamp, _sessionName);
         var imageOutputRelativePath = Path.Combine(_config.AttachmentsFolder, imageRelativeToAttachments).Replace('\\', '/');
 
         // Immediately cache the screenshot in memory as base64 data URI (zero disk re-read cost later)
@@ -993,7 +995,7 @@ public sealed class CanvasFlowWriter
             throw new InvalidOperationException("Canvas-Session wurde nicht gestartet.");
         }
 
-        var (imageRelativeToAttachments, imageBytes) = AttachmentSaver.SaveImage(_config, imageSourcePath, _sessionName);
+        var (imageRelativeToAttachments, imageBytes) = AttachmentSaver.SaveImage(Path.GetDirectoryName(_canvasPath)!, _config.AttachmentsFolder, imageSourcePath, _sessionName);
         var imageOutputRelativePath = Path.Combine(_config.AttachmentsFolder, imageRelativeToAttachments).Replace('\\', '/');
 
         try
@@ -1209,7 +1211,6 @@ public sealed class CanvasFlowWriter
                 {
                     var html = BuildLiveHtml();
                     FileSaveRetry.Save(_canvasPath!, () => File.WriteAllText(_canvasPath!, html));
-                    SaveCompanionFiles();
                 }
                 catch (Exception ex)
                 {
@@ -1250,104 +1251,6 @@ public sealed class CanvasFlowWriter
 
         var html = BuildLiveHtml();
         FileSaveRetry.Save(_canvasPath!, () => File.WriteAllText(_canvasPath!, html));
-        SaveCompanionFiles();
-    }
-
-    private void SaveCompanionFiles()
-    {
-        if (_canvasPath is null || _doc is null) return;
-
-        try
-        {
-            // 1. Companion native Obsidian Canvas file (.canvas) — opens directly in Obsidian with zero plugins
-            var canvasPath = Path.ChangeExtension(_canvasPath, ".canvas");
-            var canvasJson = JsonSerializer.Serialize(_doc, _jsonOptions);
-            FileSaveRetry.Save(canvasPath, () => File.WriteAllText(canvasPath, canvasJson));
-        }
-        catch (Exception ex)
-        {
-            LogService.Log($"Fehler beim Speichern der Begleit-.canvas-Datei: {ex.Message}");
-        }
-
-        try
-        {
-            // 2. Companion native Obsidian Markdown note (.md) — opens directly in Obsidian note list
-            var mdPath = Path.ChangeExtension(_canvasPath, ".md");
-            var mdContent = BuildCompanionMarkdown();
-            FileSaveRetry.Save(mdPath, () => File.WriteAllText(mdPath, mdContent));
-        }
-        catch (Exception ex)
-        {
-            LogService.Log($"Fehler beim Speichern der Begleit-.md-Datei: {ex.Message}");
-        }
-    }
-
-    private string BuildCompanionMarkdown()
-    {
-        var sb = new System.Text.StringBuilder();
-        var sessionName = string.IsNullOrWhiteSpace(_sessionName)
-            ? Path.GetFileNameWithoutExtension(_canvasPath)
-            : _sessionName;
-        var htmlFileName = Path.GetFileName(_canvasPath);
-        var canvasFileName = Path.ChangeExtension(htmlFileName, ".canvas");
-
-        sb.AppendLine("---");
-        sb.AppendLine($"title: \"{sessionName}\"");
-        sb.AppendLine($"date: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-        sb.AppendLine("tags:");
-        sb.AppendLine("  - docuclick");
-        sb.AppendLine("  - prozess");
-        sb.AppendLine("---");
-        sb.AppendLine();
-        sb.AppendLine($"# {sessionName}");
-        sb.AppendLine();
-        sb.AppendLine("> [!TIP] Ablauf visualisieren");
-        sb.AppendLine($"> 🌐 [Interaktiven HTML-Ablauf öffnen]({htmlFileName}) · 📊 [Canvas-Board öffnen]({canvasFileName})");
-        sb.AppendLine();
-        sb.AppendLine("```html-embed");
-        sb.AppendLine("auto");
-        sb.AppendLine("750");
-        sb.AppendLine("```");
-        sb.AppendLine();
-        sb.AppendLine("## Schritte");
-        sb.AppendLine();
-
-        var preview = GetPreview();
-        var (imageIndex, _) = BuildSiblingIndex();
-        var textNodesById = _doc.Nodes.Where(n => n.Type == "text").ToDictionary(n => n.Id);
-
-        int stepNum = 1;
-        foreach (var node in preview.Nodes)
-        {
-            if (node.IsDecisionPoint)
-            {
-                sb.AppendLine("### ◆ Abzweigung");
-                sb.AppendLine();
-                continue;
-            }
-            if (node.IsPathStart)
-            {
-                sb.AppendLine($"### ↳ Pfad: {node.PathName ?? node.Label}");
-                sb.AppendLine();
-                continue;
-            }
-
-            if (textNodesById.TryGetValue(node.Id, out var canvasNode))
-            {
-                var label = BuildLabel(canvasNode.Text);
-                sb.AppendLine($"### Schritt {stepNum++}: {label}");
-                sb.AppendLine();
-
-                var imageSibling = FindImageSibling(canvasNode, imageIndex);
-                if (imageSibling?.File is { } relImage)
-                {
-                    sb.AppendLine($"![[{relImage}]]");
-                    sb.AppendLine();
-                }
-            }
-        }
-
-        return sb.ToString();
     }
 
     // Hex colors for the live Ablauf-Übersicht-in-a-browser viewer's own
@@ -1381,7 +1284,6 @@ public sealed class CanvasFlowWriter
     private string BuildLiveHtml()
     {
         var dataJson = JsonSerializer.Serialize(_doc, _jsonOptions);
-        var htmlDir = Path.GetDirectoryName(_canvasPath!) ?? _config.OutputPath;
 
         // Reuses GetPreview()'s own PathId tagging for column-based accent
         // colors, matching DrawIoConverter's palette —
@@ -1485,7 +1387,8 @@ public sealed class CanvasFlowWriter
             return cachedDataUri;
         }
 
-        var fullImagePath = Path.Combine(_config.OutputPath, relativeToOutput);
+        var sessionDir = Path.GetDirectoryName(_canvasPath!) ?? "";
+        var fullImagePath = Path.Combine(sessionDir, relativeToOutput);
         if (File.Exists(fullImagePath))
         {
             try
@@ -1501,8 +1404,7 @@ public sealed class CanvasFlowWriter
             }
         }
 
-        var htmlDir = Path.GetDirectoryName(_canvasPath!) ?? _config.OutputPath;
-        return ToRelativeUrl(htmlDir, fullImagePath);
+        return ToRelativeUrl(sessionDir, fullImagePath);
     }
 
     /// <summary>

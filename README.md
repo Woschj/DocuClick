@@ -7,10 +7,8 @@ einzelne, interaktive `.html`-Datei schreibt — der **Ablauf**. Die Datei
 öffnet sich direkt in jedem Browser und lässt sich in DocuClicks eigener
 Ablauf-Übersicht bearbeiten, ganz ohne zusätzliche Software. Aus einer
 solchen Ablauf-Session lässt sich jederzeit zusätzlich ein voll
-editierbares draw.io-Flowchart oder eine einzelne, komplett eigenständige
-HTML-Kopie zum Weitergeben exportieren — oder sich per Community-Plugin
-direkt in eine Obsidian-Notiz einbetten. Details zum Aufnahme-Format und
-den Exporten weiter unten.
+editierbares draw.io-Flowchart exportieren. Details zum Aufnahme-Format
+und den Exporten weiter unten.
 
 App-Icon: [Assets/app.ico](src/DocuClick/Assets/app.ico) (im selben
 Rot-auf-Dunkel-Stil wie das Tray-Icon).
@@ -31,21 +29,20 @@ Nach dem Start läuft DocuClick als Tray-Icon im Infobereich der
 Taskleiste — kein sichtbares Fenster, siehe [Funktionsumfang](#funktionsumfang)
 für die Bedienung.
 
-## Ausgabeordner einrichten
+## Speicherort
 
-Die Sessions sind eigenständige `.html`-Dateien, die DocuClicks eigene
-Ablauf-Übersicht direkt öffnen/bearbeiten kann und die auch in jedem
-normalen Browser lesbar sind — ein beliebiger Ordner als Ausgabeordner
-reicht.
+Jede Session ist eine eigenständige `.html`-Datei mit einem
+`Attachments`-Unterordner direkt daneben — DocuClick verlangt keinen
+vorher festgelegten, global konfigurierten Ausgabeordner mehr. Beim
+Anlegen einer neuen Session wird der Speicherort frei über einen
+Ordner-Dialog gewählt (siehe [Zieldatei bei jedem
+Session-Start](#start-vs-neue-session-zieldatei)) — ein beliebiger Ordner
+reicht, DocuClick merkt sich zuletzt verwendete Ordner nur als Vorschlag
+für den nächsten Dialog, nicht als feste Vorgabe.
 
-1. **Ausgabeordner vorbereiten**: [OutputTemplate/](OutputTemplate/) aus
-   diesem Repo an einen Ort außerhalb des Repos kopieren (z. B.
-   `%USERPROFILE%\Documents\Prozess-Ablaeufe`) — Details und der Grund
-   dafür (Screenshots landen sonst im öffentlichen Git-Verlauf) in
-   [OutputTemplate/README.md](OutputTemplate/README.md).
-2. **DocuClick verbinden**: In den DocuClick-Einstellungen unter
-   "Speicherort" den Ausgabeordner auf denselben kopierten Ordner setzen
-   (Dropdown merkt sich zuletzt verwendete Ordner).
+Für eine vorbereitete Ordnerstruktur mit Vorlage siehe [Ausgabeordner-Vorlage
+für Prozessdokumentation](#ausgabeordner-vorlage-für-prozessdokumentation)
+weiter unten — praktisch für eine Knowledge Base, aber kein Pflichtschritt.
 
 Danach läuft die Aufnahme unabhängig von jedem anderen Programm — die App
 muss beim Aufzeichnen nicht mal geöffnet sein, DocuClick schreibt direkt in
@@ -54,14 +51,14 @@ ohnehin live an.
 
 Alltags-Workflow:
 
-- Beim Start einer Aufnahme fragt DocuClick nach Zieldatei **und
-  -ordner** innerhalb des Ausgabeordners (siehe [Zieldatei bei jedem
-  Session-Start](#start-vs-neue-session-zieldatei)) — damit landet
-  jede Aufnahme direkt dort, wo sie in der Ordnerstruktur hingehört,
-  statt alles im Wurzelordner zu sammeln.
+- Beim Start einer neuen Aufnahme fragt DocuClick nach Speicherort und
+  Dateiname (siehe [Zieldatei bei jedem
+  Session-Start](#start-vs-neue-session-zieldatei)) — jede Session landet
+  in ihrem eigenen, frei gewählten Ordner statt in einer gemeinsamen
+  Ordnerstruktur.
 - Für länger geplante Abläufe lohnt es sich, vorher eine Vorlage aus
-  `02 Vorlagen/` zu kopieren und mit Titel/Zweck auszufüllen, dann beim
-  Session-Start "Bestehende Datei fortsetzen" wählen.
+  `02 Vorlagen/` (siehe unten) zu kopieren und mit Titel/Zweck auszufüllen,
+  dann beim Session-Start "Bestehende Datei fortsetzen" wählen.
 - Verzweigt sich ein Ablauf (z. B. Fehlerfall vs. Erfolgsfall), über die
   Ablauf-Übersicht einen Abzweigungspunkt setzen und benannte Pfade
   anlegen (siehe [Abzweigungen im Ablauf](#abzweigungen-im-ablauf)).
@@ -91,10 +88,10 @@ auf ..."):
    großes UIA-Bounding-Rect — z. B. wenn die Automation die Fensterfläche
    selbst zurückgibt — fällt automatisch auf den Kreis zurück, damit nicht
    ganze Fenster rot eingerahmt werden)
-4. Speichern des Bilds im konfigurierten Attachments-Ordner (in einem
-   Unterordner benannt nach der Zieldatei, z. B.
-   `Attachments/Onboarding-Flow/073934_321.png`, statt alles flach zu
-   sammeln) und Anhängen von Beschreibung + Screenshot als neuem,
+4. Speichern des Bilds im `Attachments`-Unterordner direkt neben der
+   Zieldatei (in einem weiteren Unterordner benannt nach der Zieldatei,
+   z. B. `Attachments/Onboarding-Flow/073934_321.png`, statt alles flach
+   zu sammeln) und Anhängen von Beschreibung + Screenshot als neuem,
    verbundenem Knoten in der `.html`-Datei (siehe unten)
 
 Klicks auf DocuClicks eigene Fenster (Top-Leiste, Ablauf-Übersicht,
@@ -112,21 +109,20 @@ verwendete Aufnahme direkt fort — ohne Rückfrage. **Neue Session**
 aufgezeichnet wird oder nicht — sie ist der einzige Weg, um bewusst zu
 einer anderen bzw. neuen Datei zu wechseln:
 
-- **Neue Datei anlegen**: Ein Name wird automatisch vorgeschlagen
-  (**Zielordner-Name + Datum + laufende Nummer**, z. B.
-  `IT-Support 2026-08-04 (1)`, statt eines generischen "Screenshots"), lässt
-  sich aber frei überschreiben (Endung immer `.html`). Optional ein
-  **Zielordner** wählen (relativ zum Ausgabeordner) — Vorschläge kommen aus
-  allen bereits vorhandenen Unterordnern, der Namensvorschlag passt sich
-  beim Ordnerwechsel automatisch an, solange der Name nicht von Hand
-  geändert wurde. So landen Aufnahmen direkt in der Ordnerstruktur (z. B.
-  `Prozesse/IT-Support`) statt immer im Wurzelordner, und die laufende
-  Nummer verhindert, dass ein zweiter Klick auf "Neue Session" am selben
-  Tag versehentlich eine bestehende Datei fortsetzt.
-- **Bestehende Datei fortsetzen**: Auswahl aus allen vorhandenen `.html`-
-  Dateien im konfigurierten Ausgabeordner (inkl. Unterordner), neueste
-  zuerst. Neue Klicks werden an diese Datei angehängt, ab dem bisherigen
-  Cursor-Stand (siehe Abzweigungs-Logik unten).
+- **Neue Datei anlegen**: Speicherort per **"Durchsuchen..."** frei wählen
+  (Vorschlag beim Öffnen: der zuletzt verwendete Ordner) — der native
+  Ordner-Dialog erlaubt auch direkt "Neuer Ordner". Ein Dateiname wird
+  automatisch vorgeschlagen (**Ordnername + Datum + laufende Nummer**,
+  z. B. `IT-Support 2026-08-04 (1)`, statt eines generischen
+  "Screenshots"), lässt sich aber frei überschreiben (Endung immer
+  `.html`). Die laufende Nummer verhindert, dass ein zweiter Klick auf
+  "Neue Session" am selben Tag versehentlich eine bestehende Datei
+  überschreibt. Die `.html`-Datei und ihr `Attachments`-Unterordner landen
+  direkt in diesem einen gewählten Ordner.
+- **Bestehende Datei fortsetzen**: Datei per **"Durchsuchen..."**
+  auswählen (ein normaler Datei-Öffnen-Dialog, gefiltert auf
+  `.html`/`.canvas`). Neue Klicks werden an diese Datei angehängt, ab dem
+  bisherigen Cursor-Stand (siehe Abzweigungs-Logik unten).
 
 Der Dialog erscheint außerdem beim allerersten "Start" nach Installation
 (noch keine Datei zum Fortsetzen vorhanden). Wird der Dialog abgebrochen,
@@ -148,7 +144,7 @@ Eine kleine, mittig oben schwebende Pille (wie die TeamViewer-Session-Leiste
 — nicht bildschirmbreit, sonst würde sie Fenster ziehen/Menüs/Snap-Zonen
 blockieren) ist sichtbar, solange die App läuft, und zeigt auf einen Blick
 den Aufnahmestatus. Frei verschiebbar per Ziehen an der Kopfzeile. Sie
-enthält vier Bereiche:
+enthält folgende Bereiche:
 
 - **Aufnahme / Stopp / Fortsetzen**: entspricht dem Tray-Menüpunkt bzw. dem
   Start/Stop-Hotkey. Wichtig: Ein Klick auf "Stopp" während der Aufnahme
@@ -169,13 +165,8 @@ enthält vier Bereiche:
   ganzen Fensters, direkt hier pro Screenshot umschaltbar statt nur global
   über die Einstellungen; der Regler passt die Größe dieses Bereichs live
   an (mit Vorschau-Rahmen um den Cursor).
-- **Obsidian**: kopiert einen Einbindungs-Codeblock für die aktuelle
-  Session in die Zwischenablage (siehe [In Obsidian
-  einbinden](#in-obsidian-einbinden) für Details und die dafür nötige
-  Plugin-Installation). Liegt der konfigurierte Ausgabeordner selbst in
-  einem Obsidian-Vault (erkannt am `.obsidian`-Unterordner), öffnet der
-  Button stattdessen direkt die aktuelle Datei in Obsidian, statt nur zu
-  kopieren.
+- **Ordner**: öffnet den Ordner der aktuellen Session (bzw. den zuletzt
+  verwendeten, falls gerade nichts geladen ist) im Explorer.
 
 Zusätzlich öffnet sich automatisch die
 **Ablauf-Übersicht** — ein frei verschiebbares, größenveränderliches
@@ -260,8 +251,7 @@ Ablauf-Übersicht aufmacht, ganz ohne laufende Aufnahme. Screenshots werden
 zusätzlich im Attachments-Ordner als eigene Dateien gesichert, aber direkt
 als Base64 in die `.html`-Datei eingebettet — die Datei ist dadurch von
 Anfang an vollständig eigenständig (kein separater Export nötig) und lässt
-sich direkt weitergeben oder in Obsidian einbetten (siehe [In Obsidian
-einbinden](#in-obsidian-einbinden)).
+sich direkt weitergeben.
 
 Aus einer bestehenden Ablauf-Session lässt sich über das Tray-Menü zusätzlich
 ein Export erzeugen:
@@ -362,73 +352,6 @@ ohne laufende Aufnahme. Eine eigene "Ansatzpunkt für die nächste Session"-
 Markierung ist dafür nicht mehr nötig — praktisch bedeutet das: zum
 gezielten Fortsetzen einfach pausieren statt stoppen, den gewünschten
 Knoten anklicken und mit "Fortsetzen" weiteraufnehmen.
-
-## In Obsidian einbinden
-
-Da ein Ablauf eine ganz normale, eigenständige `.html`-Datei ist (Screenshots
-werden während der Aufnahme direkt Base64-eingebettet, keine externen
-Bild-Dateien nötig — siehe [Der Ablauf](#der-ablauf-interaktive-html-datei-drawio-als-export)),
-lässt er sich direkt in eine Obsidian-Notiz einbetten und bleibt darin voll
-interaktiv (zoombar, Anleitung, Klick auf Screenshot für Vollbild). Obsidian
-kann von Haus aus aber keine beliebigen `.html`-Dateien einbetten (nur
-Notizen, Bilder, Audio/Video/PDF) — dafür ist einmalig eines von zwei
-kostenlosen Community-Plugins nötig.
-
-### Plugin installieren
-
-1. In Obsidian: **Einstellungen → Community-Plugins** → falls noch nie
-   benutzt, Community-Plugins aktivieren.
-2. **Durchsuchen** anklicken und nach **"HTML Embed"** suchen (Autor "The
-   Pieza") → **Installieren** → **Aktivieren**.
-
-   Alternative: **"Local HTML Embed"** — einfachere Codeblock-Syntax (siehe
-   unten), zum Zeitpunkt dieser Anleitung aber ggf. noch nicht über die
-   Plugin-Suche auffindbar; falls nicht gelistet, das jeweils neueste
-   Release manuell von der Plugin-Seite auf GitHub in
-   `<Vault>/.obsidian/plugins/` entpacken und in den Community-Plugins
-   aktivieren.
-
-### Einbindungscode einfügen
-
-Der **"Obsidian"**-Button in DocuClicks Top-Leiste (siehe
-[oben](#top-leiste-ablauf-übersicht-und-neue-session)) kopiert für die
-aktuelle Session einen fertigen Codeblock in die Zwischenablage:
-
-````
-```html-embed
-Mein-Ablauf.html
-750
-```
-````
-
-Das entspricht direkt der Syntax von **"Local HTML Embed"** (Dateiname,
-optional Höhe in Pixeln in der zweiten Zeile). Diesen Block einfach in eine
-Obsidian-Notiz einfügen — fertig.
-
-Bei **"HTML Embed"** stattdessen dieses Format verwenden (`file:`/`height:`-
-Schlüssel):
-
-````
-```html-embed
-file: Mein-Ablauf.html
-height: 750
-```
-````
-
-In beiden Fällen ist der Dateiname **relativ zum Vault-Root** anzugeben —
-liegt die Datei in einem Unterordner (z. B. weil beim Session-Start ein
-Zielordner gewählt wurde, siehe [Zieldatei bei jedem
-Session-Start](#start-vs-neue-session-zieldatei)), den Unterordner-Pfad vor
-den Dateinamen ergänzen (z. B. `Prozesse/IT-Support/Mein-Ablauf.html`) — der
-von DocuClick kopierte Codeblock enthält nur den reinen Dateinamen.
-
-### Komfort: direkt aus DocuClick öffnen
-
-Ist der in den DocuClick-Einstellungen konfigurierte Ausgabeordner selbst
-das Root eines Obsidian-Vaults (erkannt am `.obsidian`-Unterordner darin),
-öffnet der "Obsidian"-Button die aktuelle Datei stattdessen direkt in
-Obsidian, statt nur den Codeblock zu kopieren — praktisch, wenn Ausgabe- und
-Vault-Ordner ohnehin derselbe sind.
 
 ## Start/Stopp per Hotkey
 

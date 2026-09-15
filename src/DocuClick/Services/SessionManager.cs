@@ -74,11 +74,14 @@ public sealed class SessionManager : IDisposable
     public bool IsRunning => _isRunning;
 
     /// <summary>
-    /// The target file of the current (or, once stopped, the most recent)
-    /// session — null before any session has ever run, and while a
-    /// session is loaded (running or paused).
+    /// Absolute path to the target file of the current (or, once stopped,
+    /// the most recent) session — null before any session has ever run,
+    /// and while a session is loaded (running or paused).
     /// </summary>
     public string? CurrentTargetFileName => string.IsNullOrEmpty(_currentTargetFileName) ? null : _currentTargetFileName;
+
+    /// <summary>The folder the current session's target file (and its Attachments subfolder) actually lives in — for the TopBar's "Ordner öffnen" and the draw.io export's InitialDirectory. Null under the same conditions as <see cref="CurrentTargetFileName"/>.</summary>
+    public string? CurrentSessionFolder => CurrentTargetFileName is { } path ? Path.GetDirectoryName(path) : null;
 
     /// <summary>Whether a session target file is loaded and active (running or paused).</summary>
     public bool HasActiveSession => !string.IsNullOrEmpty(_currentTargetFileName);
@@ -101,9 +104,6 @@ public sealed class SessionManager : IDisposable
             ? $"Zoom-auf-Cursor aktiviert (Radius {_config.ZoomToCursorRadius}px) — nächste Screenshots erfassen nur den Bereich um den Mauszeiger."
             : "Zoom-auf-Cursor deaktiviert — Screenshots erfassen wieder das ganze Fenster.");
     }
-
-    /// <summary>Always true now that CanvasFlowWriter is the only writer — kept so App.xaml.cs's branch-button gating doesn't need its own special case.</summary>
-    public bool SupportsBranching => true;
 
     public SessionManager(AppConfig config)
     {
@@ -191,36 +191,15 @@ public sealed class SessionManager : IDisposable
     public const string OutputExtension = ".html";
 
     /// <summary>
-    /// Existing files anywhere under the configured output folder (as paths
-    /// relative to it, so files filed into subfolders stay distinguishable),
-    /// newest first — used by the session-start file picker and the "Ablauf
-    /// fortsetzen" tray action. Every session now requires an explicit file
-    /// (chosen or newly named) instead of an auto-generated name, so callers
-    /// always have something to list.
-    /// </summary>
-    public List<string> ListExistingFiles()
-    {
-        if (string.IsNullOrWhiteSpace(_config.OutputPath) || !Directory.Exists(_config.OutputPath))
-        {
-            return new List<string>();
-        }
-
-        return Directory.GetFiles(_config.OutputPath, "*" + OutputExtension, SearchOption.AllDirectories)
-            .Select(f => Path.GetRelativePath(_config.OutputPath, f))
-            .OrderByDescending(f => File.GetLastWriteTimeUtc(Path.Combine(_config.OutputPath, f)))
-            .ToList();
-    }
-
-    /// <summary>
-    /// Starts a session against an explicit target file name (with
-    /// extension, optionally prefixed with a subfolder path) — see
-    /// <see cref="ListExistingFiles"/>. The target subfolder is created if
-    /// it doesn't exist yet, so a freshly typed folder name in the
+    /// Starts a session against an explicit target file — an absolute path,
+    /// freely chosen per session (see SessionStartWindow) rather than
+    /// relative to any configured "output root". The target folder is
+    /// created if it doesn't exist yet, so a brand-new folder picked in the
     /// session-start dialog works immediately.
     /// </summary>
-    public void Start(string targetFileName)
+    public void Start(string targetFilePath)
     {
-        if (HasActiveSession && string.Equals(_currentTargetFileName, targetFileName, StringComparison.OrdinalIgnoreCase) && !_isRunning)
+        if (HasActiveSession && string.Equals(_currentTargetFileName, targetFilePath, StringComparison.OrdinalIgnoreCase) && !_isRunning)
         {
             // Resume paused session without re-opening from scratch
             _mouseHook.Start();
@@ -242,7 +221,7 @@ public sealed class SessionManager : IDisposable
             Stop();
         }
 
-        var targetDirectory = Path.GetDirectoryName(Path.Combine(_config.OutputPath, targetFileName));
+        var targetDirectory = Path.GetDirectoryName(targetFilePath);
         if (!string.IsNullOrEmpty(targetDirectory))
         {
             Directory.CreateDirectory(targetDirectory);
@@ -256,10 +235,10 @@ public sealed class SessionManager : IDisposable
         // truly active before, not a file that never actually loaded.
         var snapshot = RunOnWriterQueue(() =>
         {
-            _writer.StartSession(targetFileName);
+            _writer.StartSession(targetFilePath);
             return new StatusSnapshot(BuildStatusText(), _writer.GetPreview());
         });
-        _currentTargetFileName = targetFileName;
+        _currentTargetFileName = targetFilePath;
 
         _mouseHook.Start();
         if (_config.CaptureOnEnter)
@@ -270,7 +249,7 @@ public sealed class SessionManager : IDisposable
         _isRunning = true;
         CanvasStatusChanged?.Invoke(snapshot.StatusText);
         FlowPreviewChanged?.Invoke(snapshot.Preview, false);
-        LogService.Log($"Session gestartet. Ziel: {_currentTargetFileName}, Ausgabeordner: '{_config.OutputPath}'");
+        LogService.Log($"Session gestartet. Ziel: {_currentTargetFileName}");
     }
 
     /// <summary>
@@ -283,7 +262,7 @@ public sealed class SessionManager : IDisposable
     /// redirect that session's writer (cursor/target file) onto a different
     /// file out from under it, corrupting the next captured click.
     /// </summary>
-    public void OpenForEditing(string targetFileName)
+    public void OpenForEditing(string targetFilePath)
     {
         if (_isRunning)
         {
@@ -297,13 +276,13 @@ public sealed class SessionManager : IDisposable
         // CurrentTargetFileName over to a file that never actually loaded.
         var preview = RunOnWriterQueue(() =>
         {
-            _writer.StartSession(targetFileName);
+            _writer.StartSession(targetFilePath);
             return _writer.GetPreview();
         });
-        _currentTargetFileName = targetFileName;
+        _currentTargetFileName = targetFilePath;
 
         FlowPreviewChanged?.Invoke(preview, false);
-        LogService.Log($"Ablauf zum Bearbeiten geöffnet: {targetFileName}");
+        LogService.Log($"Ablauf zum Bearbeiten geöffnet: {targetFilePath}");
     }
 
     /// <summary>

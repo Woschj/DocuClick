@@ -188,12 +188,59 @@
         </Setter>
     </Style>
 
-    <Style x:Key="ColorSwatchButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
-        <Setter Property="Width" Value="32"/>
-        <Setter Property="Height" Value="32"/>
-        <Setter Property="Margin" Value="0,0,8,0"/>
+    <!--
+        Selection used to be shown by changing the swatch BUTTON's own
+        BorderThickness (1px -> 3px) directly on a Border that also has
+        CornerRadius — WPF's Border can render that combination unevenly
+        (a rounded corner's inner/outer arc math doesn't always agree when
+        the stroke width changes, and it visibly showed up as one edge of
+        the ring looking missing/cut off, not just a DPI-rounding issue).
+        Selection is now a completely separate wrapping frame instead,
+        whose own BorderThickness never changes — only its BorderBrush
+        toggles between transparent and black — so there is no dynamic
+        CornerRadius+thickness combination for WPF to get wrong.
+    -->
+    <Style x:Key="ColorSwatchFrame" TargetType="Border">
+        <Setter Property="Width" Value="38"/>
+        <Setter Property="Height" Value="38"/>
+        <Setter Property="Margin" Value="0,0,8,8"/>
+        <Setter Property="CornerRadius" Value="8"/>
+        <Setter Property="BorderThickness" Value="2"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
+        <Setter Property="UseLayoutRounding" Value="True"/>
+    </Style>
+
+    <Style x:Key="ColorSwatchButton" TargetType="Button">
+        <Setter Property="Width" Value="30"/>
+        <Setter Property="Height" Value="30"/>
+        <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="BorderBrush" Value="#C9C9D1"/>
         <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
+        <Setter Property="UseLayoutRounding" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="SwatchBorder"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="6"/>
+                    <ControlTemplate.Triggers>
+                        <!-- Dims instead of swapping Background (ModernButton's
+                             hover/pressed behavior) — a color swatch must always
+                             show its actual color, hovered or not. -->
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="SwatchBorder" Property="Opacity" Value="0.85"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="SwatchBorder" Property="Opacity" Value="0.7"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <Style x:Key="ModernSliderThumb" TargetType="Thumb">

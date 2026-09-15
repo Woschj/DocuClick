@@ -7,6 +7,23 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [1.13.0] - 2026-09-15
+
+### 🗂️ Freie Ordnerwahl statt globalem Ausgabeordner
+- **Kein zentral konfigurierter Ausgabeordner mehr**: Jede Session wählt ihren eigenen Ordner frei beim Start (per "Durchsuchen..."-Dialog) — dort landen sowohl die `.html`-Datei als auch ihr `Attachments`-Unterordner. Die Einstellungen-Karte "Speicherort" ist komplett entfernt; `AppConfig.OutputPath` gibt es nicht mehr (eine alte `config.json` mit `VaultPath`/`OutputPath` wird beim Laden einfach ignoriert). Zuletzt verwendete Ordner werden weiterhin gemerkt, dienen aber nur noch als Vorauswahl im Ordner-Dialog.
+- **Session-Start-Dialog neu gebaut**: "Neue Datei anlegen" und "Bestehende Datei fortsetzen" haben jetzt jeweils genau eine Bedienung — ein schreibgeschütztes Textfeld plus "Durchsuchen..."-Button (nativer Ordner- bzw. Dateidialog) — statt der bisherigen Freitext-Eingabe mit Root-Abgleich.
+- **Neuer TopBar-Button "Ordner"**: öffnet den Ordner der aktuellen Session (bzw. den zuletzt verwendeten, falls nichts geladen ist) direkt im Explorer.
+
+### 🧹 Redundanz entfernt
+- **Keine Begleitdateien mehr**: Jede Aufnahme legte bisher zusätzlich zur `.html` noch eine bare-JSON `.canvas`-Datei und eine `.md`-Notiz mit Frontmatter/`html-embed`-Codeblock an — reine Obsidian-Vault-Ära-Redundanz, da die `.html`-Datei längst vollständig eigenständig ist. Beides ist ersatzlos entfernt.
+- **Obsidian-Einbindung entfernt**: Der TopBar-Button zum Einbetten in eine Obsidian-Notiz ist entfernt. Recherche ergab, dass die naheliegende Alternative (Community-Plugin *HTML Reader*) DocuClicks Cytoscape.js-basierte, vollständig skriptabhängige Abläufe in keinem seiner Modi zuverlässig ausführt — die Abläufe bleiben als eigenständige `.html`-Dateien in jedem Browser nutzbar, mit oder ohne Obsidian.
+- Kleinere Code-Aufräumarbeiten: dreifach duplizierte Ordner-Fallback-Logik in `App.xaml.cs` zu einer Hilfsmethode zusammengefasst; die seit der Einzel-Writer-Architektur immer `true` liefernde `SessionManager.SupportsBranching`-Property und ihr toter Durchreiche-Parameter in `TopBarWindow.UpdateStatus` entfernt.
+
+### 🎨 Highlighter-Einstellungen überarbeitet
+- Die "Zoom-auf-Cursor"-Einstellung ist aus den Settings entfernt (wird bereits über den Regler in der TopBar gesteuert).
+- Neue Live-Vorschau für Radius und Strichstärke des Highlighter-Kreises direkt im Einstellungsfenster.
+- Rendering-Fehler behoben, bei dem der ausgewählte Farb-Swatch teilweise blass/leer statt farbig erschien (WPF-Eigenheit bei `Border`+`CornerRadius`+dynamisch wechselnder `BorderThickness` — behoben durch einen separaten, konstant dicken Auswahlrahmen statt Änderung der Swatch-eigenen Randstärke).
+
 ## [1.12.4] - 2026-09-14
 
 ### 🔒 Sicherheit & Code-Reduktion (Teil 2)

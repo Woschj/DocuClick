@@ -1,82 +1,51 @@
 using System.IO;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Input;
 using DocuClick.Services;
 
 namespace DocuClick;
 
 /// <summary>
 /// Shown every time a recording session is about to start, so the target
-/// file is always either an explicitly typed new name or a deliberately
-/// chosen existing file — never a name so generic it silently collides
-/// with (and resumes) an earlier session. Also asks which (sub)folder
-/// relative to the output path the file belongs in, so captures can be
-/// filed straight into the output folder's existing structure instead of always
-/// landing at its root.
+/// file is always either an explicitly chosen new folder + name or a
+/// deliberately picked existing file — never a name so generic it silently
+/// collides with (and resumes) an earlier session. There is no configured
+/// "output root" any more (see AppConfig's own history) — a new session's
+/// folder is a completely free choice made right here, and that same
+/// folder is where its Attachments subfolder lives too, so a session is
+/// always fully self-contained in whatever single folder the user picked.
 /// </summary>
 public partial class SessionStartWindow : Window
 {
-    private readonly string _outputPath;
     private readonly string _extension;
 
+    // Absolute path, or "" until the user has actually browsed for one —
+    // Starten refuses until this is set (see OnStartClicked). Defaults to
+    // the most recently used folder (config.RecentOutputPaths) purely as a
+    // starting point for Durchsuchen..., not a constraint on where the user
+    // can end up.
+    private string _selectedTargetFolder = "";
+
+    // Absolute path to the picked existing file — null until browsed.
+    private string? _selectedExistingFile;
+
     // Tracks whether the user has typed their own name, so the
-    // folder-aware suggestion (see SuggestFileName) only auto-updates
+    // folder-aware suggestion (see SetSuggestedFileName) only auto-updates
     // while they haven't overridden it.
     private bool _fileNameEditedByUser;
     private bool _suppressFileNameChangeTracking;
 
+    /// <summary>Absolute path to the chosen/created target file once the dialog is confirmed.</summary>
     public string? SelectedFileName { get; private set; }
 
-    /// <param name="preselectExistingFile">
-    /// If set and present among the existing files (e.g. a resume anchor
-    /// set by clicking a node in the Ablauf-Übersicht while stopped — see
-    /// App.OnFlowPreviewNodeClicked — lives in this file), the "bestehende
-    /// Datei" option is preselected with it instead of defaulting to "neue
-    /// Datei".
-    /// </param>
-    public SessionStartWindow(AppConfig config, string? preselectExistingFile = null)
+    public SessionStartWindow(AppConfig config)
     {
         InitializeComponent();
 
-        _outputPath = config.OutputPath;
         _extension = SessionManager.OutputExtension;
+        _selectedTargetFolder = config.RecentOutputPaths.FirstOrDefault(Directory.Exists) ?? "";
+        TargetFolderBox.Text = string.IsNullOrEmpty(_selectedTargetFolder) ? "" : _selectedTargetFolder;
 
-        var existingFiles = new List<string>();
-        var existingFolders = new List<string>();
-        if (!string.IsNullOrWhiteSpace(_outputPath) && Directory.Exists(_outputPath))
-        {
-            existingFiles = Directory.GetFiles(_outputPath, "*" + _extension, SearchOption.AllDirectories)
-                .Select(f => Path.GetRelativePath(_outputPath, f))
-                .OrderByDescending(f => File.GetLastWriteTimeUtc(Path.Combine(_outputPath, f)))
-                .ToList();
-
-            existingFolders = Directory.GetDirectories(_outputPath, "*", SearchOption.AllDirectories)
-                .Select(d => Path.GetRelativePath(_outputPath, d))
-                // Hide dot-folders (.git, .obsidian if the output folder happens to also be a vault, etc.) and anything nested under them.
-                .Where(d => !d.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                    .Any(segment => segment.StartsWith('.')))
-                .OrderBy(d => d, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
-
-        ExistingFilesListBox.ItemsSource = existingFiles;
-        if (existingFiles.Count == 0)
-        {
-            ExistingFileRadio.IsEnabled = false;
-        }
-
-        TargetFolderBox.ItemsSource = existingFolders;
-
-        if (preselectExistingFile is not null && existingFiles.Contains(preselectExistingFile))
-        {
-            ExistingFileRadio.IsChecked = true;
-            ExistingFilesListBox.SelectedItem = preselectExistingFile;
-        }
-        else
-        {
-            SetSuggestedFileName();
-        }
+        SetSuggestedFileName();
 
         NewFileNameBox.TextChanged += (_, _) =>
         {
@@ -85,8 +54,6 @@ public partial class SessionStartWindow : Window
                 _fileNameEditedByUser = true;
             }
         };
-        TargetFolderBox.SelectionChanged += (_, _) => SetSuggestedFileName();
-        TargetFolderBox.LostFocus += (_, _) => SetSuggestedFileName();
 
         ApplyModeToControls();
         NewFileNameBox.Focus();
@@ -94,31 +61,28 @@ public partial class SessionStartWindow : Window
     }
 
     /// <summary>
-    /// Suggests "&lt;Zielordner-Name&gt; yyyy-MM-dd (N)" (folder name of
-    /// wherever the file is about to be created, today's date, and a
-    /// running number that skips names already taken in that folder) —
-    /// never overwrites a name the user already typed themselves.
-    /// "(N)" rather than "#N": this name also becomes the Attachments
-    /// subfolder for every screenshot in Canvas mode, and
-    /// "#" is Obsidian's link-anchor delimiter — a literal "#" in a file
-    /// or folder name breaks every embed that references it, since
-    /// everything after it gets parsed as a heading/block reference
-    /// instead of part of the path.
+    /// Suggests "&lt;Zielordner-Name&gt; yyyy-MM-dd (N)" (the chosen
+    /// folder's own name, today's date, and a running number that skips
+    /// names already taken in that folder) — never overwrites a name the
+    /// user already typed themselves. "(N)" rather than "#N": this name
+    /// also becomes the Attachments subfolder for every screenshot, and
+    /// "#" is Obsidian's link-anchor delimiter — a literal "#" in a file or
+    /// folder name breaks every embed that references it, since everything
+    /// after it gets parsed as a heading/block reference instead of part
+    /// of the path.
     /// </summary>
     private void SetSuggestedFileName()
     {
-        if (_fileNameEditedByUser)
+        if (_fileNameEditedByUser || string.IsNullOrEmpty(_selectedTargetFolder))
         {
             return;
         }
 
-        var folder = SanitizeRelativeFolder(TargetFolderBox.Text ?? "");
-        var folderLabel = GetFolderLabel(folder);
+        var folderLabel = GetFolderLabel(_selectedTargetFolder);
         var datePart = DateTime.Now.ToString("yyyy-MM-dd");
-        var targetDir = string.IsNullOrEmpty(folder) ? _outputPath : Path.Combine(_outputPath, folder);
 
-        var existingNames = Directory.Exists(targetDir)
-            ? Directory.GetFiles(targetDir, "*" + _extension)
+        var existingNames = Directory.Exists(_selectedTargetFolder)
+            ? Directory.GetFiles(_selectedTargetFolder, "*" + _extension)
                 .Select(f => Path.GetFileNameWithoutExtension(f)!)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase)
             : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -136,20 +100,10 @@ public partial class SessionStartWindow : Window
         _suppressFileNameChangeTracking = false;
     }
 
-    private string GetFolderLabel(string relativeFolder)
+    private static string GetFolderLabel(string absoluteFolder)
     {
-        if (string.IsNullOrWhiteSpace(relativeFolder))
-        {
-            var folderName = Path.GetFileName(_outputPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-            return string.IsNullOrWhiteSpace(folderName) ? "Session" : folderName;
-        }
-
-        var lastSegment = relativeFolder
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-            .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-            .LastOrDefault(s => !string.IsNullOrWhiteSpace(s));
-
-        return string.IsNullOrWhiteSpace(lastSegment) ? "Session" : lastSegment;
+        var name = Path.GetFileName(absoluteFolder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        return string.IsNullOrWhiteSpace(name) ? "Session" : name;
     }
 
     private void OnModeChanged(object sender, RoutedEventArgs e) => ApplyModeToControls();
@@ -158,7 +112,7 @@ public partial class SessionStartWindow : Window
     {
         // Guard: RadioButton's Checked event (IsChecked="True" in XAML) can
         // fire while InitializeComponent is still wiring named fields.
-        if (NewFileNameBox is null || ExistingFilesListBox is null || TargetFolderBox is null)
+        if (NewFileNameBox is null || TargetFolderBox is null || ExistingFileBox is null)
         {
             return;
         }
@@ -166,35 +120,59 @@ public partial class SessionStartWindow : Window
         var isNewFile = NewFileRadio.IsChecked == true;
         NewFileNameBox.IsEnabled = isNewFile;
         TargetFolderBox.IsEnabled = isNewFile;
-        var isExisting = ExistingFileRadio.IsChecked == true;
-        ExistingFilesListBox.IsEnabled = isExisting;
+        ExistingFileBox.IsEnabled = !isNewFile;
 
-        if (isExisting)
-        {
-            if (ExistingFilesListBox.SelectedItem is null && ExistingFilesListBox.Items.Count > 0)
-            {
-                ExistingFilesListBox.SelectedIndex = 0;
-            }
-            ExistingFilesListBox.Focus();
-        }
-        else
+        if (isNewFile)
         {
             NewFileNameBox.Focus();
         }
     }
 
-    private void OnExistingFileDoubleClicked(object sender, MouseButtonEventArgs e)
+    private void OnBrowseFolderClicked(object sender, RoutedEventArgs e)
     {
-        if (ExistingFilesListBox.SelectedItem is not null)
+        using var dialog = new System.Windows.Forms.FolderBrowserDialog
         {
-            OnStartClicked(sender, e);
+            SelectedPath = string.IsNullOrEmpty(_selectedTargetFolder) ? "" : _selectedTargetFolder,
+        };
+
+        if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+        {
+            return;
         }
+
+        _selectedTargetFolder = dialog.SelectedPath;
+        TargetFolderBox.Text = _selectedTargetFolder;
+        SetSuggestedFileName();
+    }
+
+    private void OnBrowseExistingFileClicked(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Bestehenden Ablauf auswählen",
+            Filter = "DocuClick-Ablauf (*.html;*.canvas)|*.html;*.canvas|HTML-Abläufe (*.html)|*.html|Obsidian Canvas (*.canvas)|*.canvas|Alle Dateien (*.*)|*.*",
+            CheckFileExists = true,
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        _selectedExistingFile = dialog.FileName;
+        ExistingFileBox.Text = dialog.FileName;
     }
 
     private void OnStartClicked(object sender, RoutedEventArgs e)
     {
         if (NewFileRadio.IsChecked == true)
         {
+            if (string.IsNullOrEmpty(_selectedTargetFolder))
+            {
+                MessageBox.Show("Bitte einen Speicherort wählen.", "DocuClick", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
             var name = NewFileNameBox.Text.Trim();
             if (string.IsNullOrWhiteSpace(name))
             {
@@ -203,19 +181,17 @@ public partial class SessionStartWindow : Window
             }
 
             var fileName = SanitizeFileNameSegment(Path.GetFileNameWithoutExtension(name)) + _extension;
-            var folder = SanitizeRelativeFolder(TargetFolderBox.Text ?? "");
-
-            SelectedFileName = string.IsNullOrEmpty(folder) ? fileName : Path.Combine(folder, fileName);
+            SelectedFileName = Path.Combine(_selectedTargetFolder, fileName);
         }
         else
         {
-            if (ExistingFilesListBox.SelectedItem is not string selected)
+            if (_selectedExistingFile is null)
             {
                 MessageBox.Show("Bitte eine Datei auswählen.", "DocuClick", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            SelectedFileName = selected;
+            SelectedFileName = _selectedExistingFile;
         }
 
         DialogResult = true;
@@ -236,19 +212,5 @@ public partial class SessionStartWindow : Window
         }
 
         return name;
-    }
-
-    /// <summary>
-    /// Splits on both slash styles, sanitizes each segment, and drops "."
-    /// / ".." so a typed folder path can never escape the output root.
-    /// </summary>
-    private static string SanitizeRelativeFolder(string input)
-    {
-        var segments = input
-            .Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(s => s != "." && s != "..")
-            .Select(SanitizeFileNameSegment);
-
-        return Path.Combine(segments.ToArray());
     }
 }

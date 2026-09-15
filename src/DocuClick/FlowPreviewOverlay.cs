@@ -108,7 +108,16 @@ public sealed class FlowPreviewOverlay : Window
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    private readonly AppConfig _config;
+    /// <summary>
+    /// Absolute folder the currently-loaded session's file (and its
+    /// Attachments subfolder) lives in — set by App.xaml.cs from
+    /// SessionManager.CurrentSessionFolder whenever the preview changes.
+    /// There's no configured "output root" any more (see AppConfig's own
+    /// history), so this is the only way <see cref="BuildImageDataUri"/>
+    /// can resolve a node's stored output-relative screenshot path.
+    /// </summary>
+    public string? CurrentSessionFolder { get; set; }
+
     private readonly Microsoft.Web.WebView2.Wpf.WebView2 _webView;
     private readonly Border _canvasHost;
     private readonly TextBlock _collapseIcon;
@@ -170,9 +179,8 @@ public sealed class FlowPreviewOverlay : Window
     /// <summary>Fired when the header's close (✕) icon is clicked — App.xaml.cs hides rather than destroys the window, so <see cref="UpdatePreview"/> keeps the state current for whenever the TopBar's reopen button brings it back.</summary>
     public event Action? CloseRequested;
 
-    public FlowPreviewOverlay(AppConfig config)
+    public FlowPreviewOverlay()
     {
-        _config = config;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = Brushes.Transparent;
@@ -954,7 +962,12 @@ public sealed class FlowPreviewOverlay : Window
             return cached;
         }
 
-        var fullPath = System.IO.Path.Combine(_config.OutputPath, outputRelativePath);
+        if (CurrentSessionFolder is null)
+        {
+            return null;
+        }
+
+        var fullPath = System.IO.Path.Combine(CurrentSessionFolder, outputRelativePath);
         try
         {
             var bytes = System.IO.File.ReadAllBytes(fullPath);

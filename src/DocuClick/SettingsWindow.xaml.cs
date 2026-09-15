@@ -46,9 +46,6 @@ public partial class SettingsWindow : Window
 
     private void LoadIntoForm()
     {
-        OutputPathBox.ItemsSource = _config.RecentOutputPaths;
-        OutputPathBox.Text = _config.OutputPath;
-        AttachmentsFolderBox.Text = _config.AttachmentsFolder;
         UseUiAutomationBox.IsChecked = _config.UseUiAutomation;
         EnableClickSoundBox.IsChecked = _config.EnableClickSound;
         CaptureOnEnterBox.IsChecked = _config.CaptureOnEnter;
@@ -63,12 +60,11 @@ public partial class SettingsWindow : Window
         _zoomToCursorKey = _config.ZoomToCursorKey;
         RefreshHotkeyDisplays();
 
-        ZoomToCursorRadiusBox.Text = _config.ZoomToCursorRadius.ToString();
-
         _selectedHighlightColorHex = _config.HighlightColorHex;
         RefreshSwatchSelection();
         HighlightRadiusBox.Text = _config.HighlightRadius.ToString();
         HighlightThicknessBox.Text = _config.HighlightThickness.ToString();
+        RefreshHighlightPreview();
     }
 
     private void SelectSkipModifier(string modifier)
@@ -96,22 +92,59 @@ public partial class SettingsWindow : Window
 
         _selectedHighlightColorHex = hex;
         RefreshSwatchSelection();
+        RefreshHighlightPreview();
     }
 
     private void RefreshSwatchSelection()
     {
+        // Each swatch is a Button wrapped in its own always-same-size
+        // "ColorSwatchFrame" Border (see Theme.xaml's own comment on why) —
+        // selection toggles only that outer frame's BorderBrush, never the
+        // swatch button's own border, so there's no dynamic thickness for
+        // WPF's rounded-corner rendering to get wrong.
         foreach (var child in HighlightColorSwatchPanel.Children)
         {
-            if (child is not Button button || button.Tag is not string hex)
+            if (child is not Border frame || frame.Child is not Button button || button.Tag is not string hex)
             {
                 continue;
             }
 
             var isSelected = string.Equals(hex, _selectedHighlightColorHex, StringComparison.OrdinalIgnoreCase);
-            button.BorderBrush = isSelected ? Brushes.Black : new SolidColorBrush(Color.FromRgb(0xC9, 0xC9, 0xD1));
-            button.BorderThickness = new Thickness(isSelected ? 3 : 1);
+            frame.BorderBrush = isSelected ? Brushes.Black : Brushes.Transparent;
         }
     }
+
+    private void OnHighlightPreviewInputChanged(object sender, TextChangedEventArgs e) => RefreshHighlightPreview();
+
+    /// <summary>
+    /// Mirrors HighlightRenderer.DrawClickCircle's exact look (semi-transparent
+    /// fill at alpha 60/255, solid stroke) so this is a true preview, not just
+    /// an approximation — scaled to always fill the preview box regardless of
+    /// the actual radius, since only the *relative* thickness-to-radius look
+    /// matters for "what would this look like", not the literal pixel size.
+    /// </summary>
+    private void RefreshHighlightPreview()
+    {
+        const double displayDiameter = 80; // fits inside the 110x110 box with margin regardless of stroke width
+        const double minDisplayThickness = 1.5;
+        const double maxDisplayThickness = 22; // keeps the rendered stroke (half of which draws outward) from overflowing the ClipToBounds box
+
+        var radius = ParseHighlightValue(HighlightRadiusBox.Text, _config.HighlightRadius, 1, 500);
+        var thickness = ParseHighlightValue(HighlightThicknessBox.Text, _config.HighlightThickness, 1, 50);
+
+        var scale = displayDiameter / (2.0 * radius);
+        var displayThickness = Math.Clamp(thickness * scale, minDisplayThickness, maxDisplayThickness);
+
+        var color = (Color)System.Windows.Media.ColorConverter.ConvertFromString(_selectedHighlightColorHex);
+        HighlightPreviewEllipse.Width = displayDiameter;
+        HighlightPreviewEllipse.Height = displayDiameter;
+        HighlightPreviewEllipse.Fill = new SolidColorBrush(Color.FromArgb(60, color.R, color.G, color.B));
+        HighlightPreviewEllipse.Stroke = new SolidColorBrush(color);
+        HighlightPreviewEllipse.StrokeThickness = displayThickness;
+    }
+
+    private static int ParseHighlightValue(string text, int fallback, int min, int max) =>
+        int.TryParse(text, out var value) ? Math.Clamp(value, min, max) : fallback;
 
     // --- Hotkey capture -------------------------------------------------
 
@@ -204,34 +237,10 @@ public partial class SettingsWindow : Window
         return string.Join("+", parts);
     }
 
-    // --- Speicherort / save / cancel ------------------------------------
-
-    private void OnBrowseOutputPathClicked(object sender, RoutedEventArgs e)
-    {
-        using var dialog = new System.Windows.Forms.FolderBrowserDialog
-        {
-            SelectedPath = string.IsNullOrWhiteSpace(OutputPathBox.Text) ? string.Empty : OutputPathBox.Text
-        };
-
-        if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-        {
-            OutputPathBox.Text = dialog.SelectedPath;
-            // Reflected immediately (not just after "Speichern") so the
-            // very same folder just picked already shows up in the
-            // dropdown if the user reopens it before saving.
-            _config.RememberRecentOutputPath(dialog.SelectedPath);
-            OutputPathBox.ItemsSource = null;
-            OutputPathBox.ItemsSource = _config.RecentOutputPaths;
-            OutputPathBox.Text = dialog.SelectedPath;
-        }
-    }
+    // --- Save / cancel ---------------------------------------------------
 
     private void OnSaveClicked(object sender, RoutedEventArgs e)
     {
-        _config.OutputPath = OutputPathBox.Text.Trim();
-        _config.AttachmentsFolder = string.IsNullOrWhiteSpace(AttachmentsFolderBox.Text)
-            ? "Attachments"
-            : AttachmentsFolderBox.Text.Trim();
         _config.UseUiAutomation = UseUiAutomationBox.IsChecked == true;
         _config.EnableClickSound = EnableClickSoundBox.IsChecked == true;
         _config.CaptureOnEnter = CaptureOnEnterBox.IsChecked == true;
@@ -247,14 +256,10 @@ public partial class SettingsWindow : Window
         _config.BranchMarkKey = _branchMarkKey;
         _config.ZoomToCursorModifiers = _zoomToCursorModifiers;
         _config.ZoomToCursorKey = _zoomToCursorKey;
-        // Clamped to the same range the TopBar's own zoom-radius slider
-        // enforces (see TopBarWindow's ZoomRadiusMin/Max) — this plain text
-        // box has no such built-in limit, and an out-of-range value (0,
-        // negative, ...) previously made every future capture fail with a
-        // repeating error until manually corrected here again.
-        _config.ZoomToCursorRadius = int.TryParse(ZoomToCursorRadiusBox.Text, out var zoomRadius)
-            ? Math.Clamp(zoomRadius, 50, 600)
-            : _config.ZoomToCursorRadius;
+        // ZoomToCursorRadius itself is no longer editable here — the
+        // TopBar's own zoom-radius slider already reads/clamps/persists it
+        // directly (see App.xaml.cs's ZoomRadiusCommitted wiring), so a
+        // second, duplicate control here could only ever go stale against it.
 
         _config.HighlightColorHex = _selectedHighlightColorHex;
         // A non-positive radius/thickness makes GDI+'s ellipse/pen drawing
