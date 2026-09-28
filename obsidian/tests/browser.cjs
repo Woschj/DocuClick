@@ -129,7 +129,8 @@ let browser, socket;
   await evaluate("testHost.plugin.settings.themeMode = 'custom'; testHost.plugin.settings.background = '#ffffff'; testHost.plugin.settings.accent = '#e11d48'; testHost.plugin.saveSettings()");
   for (let i = 0; i < 40 && await inFrame("getComputedStyle(document.documentElement).getPropertyValue('--bg-canvas').trim()") !== "#ffffff"; i++) await delay(50);
   assert.equal(await inFrame("getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()"), "#e11d48");
-  assert.equal(await inFrame("cy.nodes().first().style('color')"), "rgb(15,23,42)");
+  // Labels above screenshot cards follow the theme (plain shapes keep white text on their fill).
+  assert.equal(await inFrame("cy.nodes('[imageUrl]').first().style('color')"), "rgb(15,23,42)");
   assert.equal(await evaluate("JSON.stringify(window.pluginData.themeMode)"), '"custom"');
   // Only the editor's own dock remains. Export is a separate viewer-only HTML.
   assert.equal(await evaluate("testHost.view.contentEl.querySelectorAll('button, .docuclick-toolbar').length"), 0);
