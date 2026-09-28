@@ -27,13 +27,16 @@ HTMLElement.prototype.createEl = function(tag, options = {}) {
 };
 HTMLElement.prototype.createDiv = function(options) { return this.createEl('div', options); };
 HTMLElement.prototype.createSpan = function(options) { return this.createEl('span', options); };
-const files = new Map(), notices = [];
+const files = new Map(), folders = new Map(), notices = [];
+class TFolder { constructor(path) { this.path = path; } }
 class TFile { constructor(path) { this.path = path; this.basename = path.replace(/\\.[^.]+$/, ''); this.extension = path.split('.').pop(); this.parent = {path: '/'}; } }
 const vault = {
   read: async file => files.get(file.path).text,
   process: async (file, fn) => { if (window.writeDelay) await new Promise(resolve => setTimeout(resolve, window.writeDelay)); const entry = files.get(file.path); entry.text = fn(entry.text); },
   create: async (path, text) => { if (files.has(path)) throw Error('exists'); const file = new TFile(path); files.set(path, {file, text}); return file; },
-  getAbstractFileByPath: path => files.get(path)?.file
+  getAbstractFileByPath: path => files.get(path)?.file || folders.get(path),
+  createFolder: async path => { if (files.has(path) || folders.has(path)) throw Error('exists'); const folder = new TFolder(path); folders.set(path, folder); return folder; },
+  getAllLoadedFiles: () => [...folders.values()]
 };
 const app = {vault, workspace: {on: () => () => {}, getActiveFile: () => null, getLeaf: () => ({openFile: async () => {}}), getLeavesOfType: () => window.testHost ? [{view: window.testHost.view}] : []}};
 class Plugin {
@@ -44,12 +47,12 @@ class Plugin {
 }
 class FileView { constructor() { this.app = app; this.contentEl = document.body.createDiv(); this.contentEl.style = 'height:95vh;display:flex;flex-direction:column'; } }
 window.module = {exports: {}};
-window.require = name => { if (name !== 'obsidian') throw Error(name); return {Plugin, PluginSettingTab: class {}, FileView, Modal: class {}, Setting: class {}, Notice: class {constructor(text) {notices.push(text);}}, TFile, normalizePath: path => path}; };
+window.require = name => { if (name !== 'obsidian') throw Error(name); return {Plugin, PluginSettingTab: class {}, AbstractInputSuggest: class {}, TFolder, FileView, Modal: class {}, Setting: class {}, Notice: class {constructor(text) {notices.push(text);}}, TFile, normalizePath: path => path}; };
 window.start = async () => {
   const plugin = new module.exports(); await plugin.onload();
   const file = await vault.create('Test.docuclick', JSON.stringify({format:'docuclick-diagram', version:1, canvas:{nodes:[],edges:[]}, flow:{nodes:[],edges:[]}}));
   const view = plugin.factory({}); view.file = file; await view.onOpen(); await view.onLoadFile(file);
-  window.testHost = {plugin, view, file, files, notices, vault};
+  window.testHost = {plugin, view, file, files, folders, notices, vault};
 };
 })();
 `;
@@ -125,6 +128,13 @@ let browser, socket;
   assert.equal(await inFrame("snapshot().flow.nodes.length"), 2);
   assert.equal(await inFrame("snapshot().canvas.edges.length"), 1);
   await evaluate("testHost.view.flush()");
+  // Default folder: nested folders are created; unsafe paths are rejected.
+  assert.equal(await evaluate("testHost.plugin.targetFolder()"), "");
+  await evaluate("testHost.plugin.settings.defaultFolder = 'Prozesse/Buchhaltung'; testHost.plugin.ensureFolder(testHost.plugin.targetFolder())");
+  assert.equal(await evaluate("[...testHost.folders.keys()].join(',')"), "Prozesse,Prozesse/Buchhaltung");
+  assert.equal(await evaluate("testHost.plugin.createUnique(testHost.plugin.targetFolder(), 'Neu', 'docuclick', '{}').then(f => f.path)"), "Prozesse/Buchhaltung/Neu.docuclick");
+  assert.equal(await evaluate("JSON.stringify(['../x', 'a/../b', 'a:b', '/Prozesse/', ' '].map(cleanFolder))"), '[null,null,null,"Prozesse",""]');
+  await evaluate("testHost.plugin.settings.defaultFolder = ''");
   // Colour settings restyle the open editor live (CSS and graph labels).
   await evaluate("testHost.plugin.settings.themeMode = 'custom'; testHost.plugin.settings.background = '#ffffff'; testHost.plugin.settings.accent = '#e11d48'; testHost.plugin.saveSettings()");
   for (let i = 0; i < 40 && await inFrame("getComputedStyle(document.documentElement).getPropertyValue('--bg-canvas').trim()") !== "#ffffff"; i++) await delay(50);
@@ -190,7 +200,7 @@ let browser, socket;
   assert.equal(await evaluate("JSON.parse(testHost.files.get(recoveryPath).text).flow.nodes.length"), 4);
   assert.equal(await evaluate("document.querySelectorAll('iframe').length"), 0);
   assert.deepEqual(errors, [], "Uncaught browser errors");
-  console.log("PASS: sandbox, palette, colour themes, rename, undo/redo, image move, connect/delete/restore, Vault save, read-only HTML export/search/guide/lightbox, forged message rejection, conflict recovery, close flush");
+  console.log("PASS: sandbox, palette, default folder, colour themes, rename, undo/redo, image move, connect/delete/restore, Vault save, read-only HTML export/search/guide/lightbox, forged message rejection, conflict recovery, close flush");
 })().catch(error => { console.error(error); process.exitCode=1; }).finally(async () => {
   socket?.close(); browser?.kill(); server.close();
   await delay(300);
