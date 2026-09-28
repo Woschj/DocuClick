@@ -35,15 +35,16 @@ const vault = {
   create: async (path, text) => { if (files.has(path)) throw Error('exists'); const file = new TFile(path); files.set(path, {file, text}); return file; },
   getAbstractFileByPath: path => files.get(path)?.file
 };
-const app = {vault, workspace: {on: () => () => {}, getActiveFile: () => null, getLeaf: () => ({openFile: async () => {}})}};
+const app = {vault, workspace: {on: () => () => {}, getActiveFile: () => null, getLeaf: () => ({openFile: async () => {}}), getLeavesOfType: () => window.testHost ? [{view: window.testHost.view}] : []}};
 class Plugin {
   constructor() { this.app = app; }
   registerView(type, factory) { this.factory = factory; }
-  registerExtensions() {} addRibbonIcon() {} addCommand() {} registerEvent() {}
+  registerExtensions() {} addRibbonIcon() {} addCommand() {} registerEvent() {} addSettingTab() {}
+  async loadData() { return window.pluginData || null; } async saveData(data) { window.pluginData = JSON.parse(JSON.stringify(data)); }
 }
 class FileView { constructor() { this.app = app; this.contentEl = document.body.createDiv(); this.contentEl.style = 'height:95vh;display:flex;flex-direction:column'; } }
 window.module = {exports: {}};
-window.require = name => { if (name !== 'obsidian') throw Error(name); return {Plugin, FileView, Modal: class {}, Setting: class {}, Notice: class {constructor(text) {notices.push(text);}}, TFile, normalizePath: path => path}; };
+window.require = name => { if (name !== 'obsidian') throw Error(name); return {Plugin, PluginSettingTab: class {}, FileView, Modal: class {}, Setting: class {}, Notice: class {constructor(text) {notices.push(text);}}, TFile, normalizePath: path => path}; };
 window.start = async () => {
   const plugin = new module.exports(); await plugin.onload();
   const file = await vault.create('Test.docuclick', JSON.stringify({format:'docuclick-diagram', version:1, canvas:{nodes:[],edges:[]}, flow:{nodes:[],edges:[]}}));
@@ -124,11 +125,18 @@ let browser, socket;
   assert.equal(await inFrame("snapshot().flow.nodes.length"), 2);
   assert.equal(await inFrame("snapshot().canvas.edges.length"), 1);
   await evaluate("testHost.view.flush()");
+  // Colour settings restyle the open editor live (CSS and graph labels).
+  await evaluate("testHost.plugin.settings.themeMode = 'custom'; testHost.plugin.settings.background = '#ffffff'; testHost.plugin.settings.accent = '#e11d48'; testHost.plugin.saveSettings()");
+  for (let i = 0; i < 40 && await inFrame("getComputedStyle(document.documentElement).getPropertyValue('--bg-canvas').trim()") !== "#ffffff"; i++) await delay(50);
+  assert.equal(await inFrame("getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()"), "#e11d48");
+  assert.equal(await inFrame("cy.nodes().first().style('color')"), "rgb(15,23,42)");
+  assert.equal(await evaluate("JSON.stringify(window.pluginData.themeMode)"), '"custom"');
   // Only the editor's own dock remains. Export is a separate viewer-only HTML.
   assert.equal(await evaluate("testHost.view.contentEl.querySelectorAll('button, .docuclick-toolbar').length"), 0);
   await inFrame("document.getElementById('export-readonly-btn').click()");
   await until("testHost.files.has('Test – Ansicht.html')");
   assert.equal(await evaluate("DocuClickDocument.importHtml(testHost.files.get('Test – Ansicht.html').text).flow.nodes.length"), 2);
+  assert.ok(await evaluate("testHost.files.get('Test – Ansicht.html').text.includes('--accent: #e11d48;')"), "Viewer export ignores the colour settings");
   await evaluate("window.viewerFrame = document.body.createEl('iframe', {attr:{sandbox:'allow-scripts'}}); viewerFrame.srcdoc = testHost.files.get('Test – Ansicht.html').text");
   let viewerContext;
   for (let i=0; i<100 && !viewerContext; i++) {
@@ -181,7 +189,7 @@ let browser, socket;
   assert.equal(await evaluate("JSON.parse(testHost.files.get(recoveryPath).text).flow.nodes.length"), 4);
   assert.equal(await evaluate("document.querySelectorAll('iframe').length"), 0);
   assert.deepEqual(errors, [], "Uncaught browser errors");
-  console.log("PASS: sandbox, palette, rename, undo/redo, image move, connect/delete/restore, Vault save, read-only HTML export/search/guide/lightbox, forged message rejection, conflict recovery, close flush");
+  console.log("PASS: sandbox, palette, colour themes, rename, undo/redo, image move, connect/delete/restore, Vault save, read-only HTML export/search/guide/lightbox, forged message rejection, conflict recovery, close flush");
 })().catch(error => { console.error(error); process.exitCode=1; }).finally(async () => {
   socket?.close(); browser?.kill(); server.close();
   await delay(300);

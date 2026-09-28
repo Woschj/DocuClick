@@ -73,7 +73,63 @@ function importHtml(html) {
   return validateDocument({ format: FORMAT, version: 1, canvas: JSON.parse(data[1]), flow: JSON.parse(graph[1]) });
 }
 function emptyDocument() { return { format: FORMAT, version: 1, canvas: { nodes: [], edges: [] }, flow: { nodes: [], edges: [] } }; }
-function buildHtml(template, cytoscape, document, title, { readOnly = false } = {}) {
+// ---- Colour themes -------------------------------------------------------
+// Derives every theme variable of the shared template (see its :root) from
+// two colours, so a light background automatically gets dark text etc.
+const HEX = /^#[0-9a-f]{6}$/i;
+const rgb = hex => { const n = parseInt(hex.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+const toHex = c => "#" + c.map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0")).join("");
+const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+const triplet = c => c.map(v => Math.round(v)).join(", ");
+function luminance(c) {
+  const [r, g, b] = c.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+function themeCss(theme) {
+  if (!theme) return "";
+  check(HEX.test(theme.background) && HEX.test(theme.accent), "Ungültige Theme-Farbe.");
+  const bg = rgb(theme.background), accent = rgb(theme.accent), black = [0, 0, 0], white = [255, 255, 255];
+  const light = luminance(bg) > 0.4;
+  const text = rgb(light ? "#0f172a" : "#f8fafc");
+  const tint = light ? "15, 23, 42" : "255, 255, 255";
+  const panel = mix(bg, text, 0.04), panelAlt = mix(bg, text, 0.08);
+  const vars = {
+    "color-scheme": light ? "light" : "dark",
+    "--bg-canvas": toHex(bg),
+    "--surface-glass": `rgba(${triplet(panelAlt)}, 0.82)`,
+    "--surface-glass-hover": `rgba(${triplet(mix(bg, text, 0.14))}, 0.9)`,
+    "--surface-card": toHex(mix(bg, text, 0.06)),
+    "--border-glass": `rgba(${tint}, ${light ? 0.16 : 0.12})`,
+    "--border-subtle": `rgba(${tint}, ${light ? 0.09 : 0.06})`,
+    "--accent": toHex(accent),
+    "--accent-hover": toHex(mix(accent, black, 0.15)),
+    "--accent-glow": `rgba(${triplet(accent)}, 0.4)`,
+    "--accent-rgb": triplet(accent),
+    "--accent-text": toHex(light ? mix(accent, black, 0.25) : mix(accent, white, 0.3)),
+    "--on-accent": luminance(accent) > 0.45 ? "#0f172a" : "#ffffff",
+    "--brand-end": toHex(mix(accent, black, 0.2)),
+    "--text-main": toHex(text),
+    "--text-sub": light ? "#475569" : "#94a3b8",
+    "--text-muted": "#64748b",
+    "--shadow-dock": light ? "0 10px 30px -5px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(15, 23, 42, 0.08)" : "0 10px 30px -5px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1)",
+    "--shadow-card": light ? "0 8px 24px -4px rgba(15, 23, 42, 0.15)" : "0 8px 24px -4px rgba(0, 0, 0, 0.4)",
+    "--tint": tint,
+    "--shade": light ? "255, 255, 255" : "0, 0, 0",
+    "--panel": triplet(panel),
+    "--panel-drawer": triplet(panel),
+    "--text-strong": toHex(text),
+    "--primary-btn-text": luminance(accent) > 0.45 ? "#0f172a" : "#ffffff",
+    "--panel-alt": triplet(panelAlt),
+    "--input-bg": toHex(light ? mix(bg, white, 0.6) : mix(bg, black, 0.2)),
+    "--swatch-ring": toHex(text),
+    "--graph-label-text": toHex(text),
+    "--graph-label-bg": toHex(panelAlt),
+    "--graph-label-border": `rgba(${tint}, 0.16)`,
+    "--graph-node-border": `rgba(${tint}, 0.18)`,
+  };
+  return `:root {\n${Object.entries(vars).map(([key, value]) => `  ${key}: ${value};`).join("\n")}\n}\n`;
+}
+function buildHtml(template, cytoscape, document, title, { readOnly = false, theme = null } = {}) {
   const doc = validateDocument(document);
   if (readOnly) {
     // Strip the actual editor before inserting any user data. Viewer exports
@@ -82,7 +138,10 @@ function buildHtml(template, cytoscape, document, title, { readOnly = false } = 
       .replace(/<!-- DOCUCLICK-EDITOR-START -->[\s\S]*?<!-- DOCUCLICK-EDITOR-END -->/g, "")
       .replace(/\/\/ DOCUCLICK-EDITOR-START\r?\n[\s\S]*?\/\/ DOCUCLICK-EDITOR-END/g, "");
   }
+  // Theme overrides go last in <head>, after the template's own :root.
+  const css = themeCss(theme);
+  if (css) template = template.replace("</head>", () => `<style id="docuclick-theme">\n${css}</style>\n</head>`);
   const values = { TITLE: escapeHtml(title), NODE_COUNT: String(doc.flow.nodes.length), EDGE_COUNT: String(doc.flow.edges.length), DOCUMENT: `<script id="docuclick-data" type="application/json">${safeJson(doc.canvas)}</script>`, CYTOSCAPE: cytoscape, FLOW: safeJson(doc.flow), SAVE_PORT: "47811" };
   return template.replace(/@@([A-Z_]+)@@/g, (_, key) => { check(key in values, `Unbekannter Vorlagenwert: ${key}`); return values[key]; });
 }
-module.exports = { FORMAT, MAX_BYTES, validateDocument, parseDocument, importHtml, emptyDocument, buildHtml, safeJson };
+module.exports = { FORMAT, MAX_BYTES, validateDocument, parseDocument, importHtml, emptyDocument, buildHtml, safeJson, themeCss };

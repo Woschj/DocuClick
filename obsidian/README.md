@@ -68,6 +68,28 @@ Datei mit allen Schritten und Screenshots; die HTML-Datei bleibt unverändert.
 Der Weg geht nur in diese Richtung: Die DocuClick-Apps öffnen keine
 `.docuclick`-Dateien. Zum Weitergeben dient die **HTML-Ansicht**.
 
+### Farben an das eigene Theme anpassen
+
+**Einstellungen → Community-Plugins → DocuClick Diagrams** (Zahnrad):
+
+- **Farbschema**
+  - *DocuClick (dunkel)*: Standard-Aussehen der DocuClick-Apps.
+  - *Obsidian-Theme übernehmen*: Hintergrund und Akzentfarbe kommen aus dem
+    aktiven Obsidian-Theme und wechseln automatisch mit (Hell/Dunkel, anderes
+    Theme, andere Akzentfarbe).
+  - *Eigene Farben*: **Hintergrundfarbe** (Fläche hinter dem Diagramm) und
+    **Detailfarbe** (Schaltflächen, Auswahl, Markierungen, Nummern) frei
+    wählen. „Übernehmen“ setzt beide einmalig auf die Theme-Farben als
+    Ausgangspunkt.
+- **Farben auch für die HTML-Ansicht**: exportierte Ansichten sehen genauso
+  aus (aus: immer DocuClick-Standard).
+- **Auf Standard zurücksetzen**.
+
+Leisten, Menüs, Dialoge und Schrift werden aus den zwei Farben abgeleitet;
+bei hellem Hintergrund wird die Schrift automatisch dunkel. Die Farben der
+einzelnen Schritte und Pfade gehören zum Diagramm und bleiben erhalten.
+Änderungen wirken sofort in allen offenen Diagramm-Tabs.
+
 ## Speicherung und Konflikte
 
 `.docuclick` ist JSON mit `format: "docuclick-diagram"`, `version: 1`, dem
@@ -103,9 +125,8 @@ das konkrete Frame-Fenster und einen zufälligen Kanal gebunden; der Editor kann
 keinen Zielpfad angeben. Die Host-Seite validiert jedes gespeicherte Dokument.
 
 Noch nicht enthalten: native Obsidian-Notizlinks/Backlinks, Einbettung in Markdown,
-Mobile-/Touch-Anpassung, draw.io-Export im Plugin, separate Bildanhänge und ein
-helles Editor-Theme. Die Desktop-App verwendet für ihre eigene Ablaufübersicht
-weiterhin `flow.js`; deren vollständige Zusammenführung ist ein weiterer Umbau.
+Mobile-/Touch-Anpassung, draw.io-Export im Plugin und separate Bildanhänge.
+Die Desktop-App verwendet für ihre eigene Ablaufübersicht weiterhin `flow.js`; deren vollständige Zusammenführung ist ein weiterer Umbau.
 
 ## Tests und Release
 

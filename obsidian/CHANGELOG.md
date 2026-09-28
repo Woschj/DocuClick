@@ -5,6 +5,18 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [0.2.0] – unveröffentlicht
+
+- **Farbschema in den Plugin-Einstellungen**: „DocuClick (dunkel)“,
+  „Obsidian-Theme übernehmen“ (folgt Hell/Dunkel und Akzentfarbe des Themes
+  automatisch) oder „Eigene Farben“ mit Hintergrund- und Detailfarbe.
+  Leisten, Menüs, Dialoge, Beschriftungen und Schrift passen sich an, ein
+  heller Hintergrund bekommt automatisch dunkle Schrift. Änderungen gelten
+  sofort in allen offenen Diagrammen.
+- Exportierte HTML-Ansichten übernehmen das Farbschema (abschaltbar).
+- Gemeinsame HTML-Vorlage: Farben laufen über CSS-Variablen; die Standard-
+  darstellung der DocuClick-Apps bleibt unverändert.
+
 ## [0.1.1] – unveröffentlicht
 
 - Zusätzliche obere Menüleiste entfernt. Der neue Button „HTML-Ansicht“ in

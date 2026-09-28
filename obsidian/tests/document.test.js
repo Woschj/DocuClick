@@ -75,3 +75,23 @@ test("viewer export omits editor code and UI but preserves data, search, guide a
   // The normal editor still has its tools after generating a viewer.
   assert.ok(D.buildHtml(template, "", doc, "Editor").includes("function addManualElement"));
 });
+
+test("themes derive readable colours and are injected after the template's own styles", () => {
+  const dark = D.themeCss({ background: "#1e1e1e", accent: "#7c3aed" });
+  assert.match(dark, /--text-main: #f8fafc;/);
+  assert.match(dark, /color-scheme: dark;/);
+  const light = D.themeCss({ background: "#ffffff", accent: "#e11d48" });
+  assert.match(light, /--text-main: #0f172a;/);
+  assert.match(light, /--graph-label-text: #0f172a;/);
+  assert.match(light, /--bg-canvas: #ffffff;/);
+  assert.equal(D.themeCss(null), "");
+  for (const bad of [{ background: "red", accent: "#000000" }, { background: "#000000", accent: "#000;}body{x:1" }]) {
+    assert.throws(() => D.themeCss(bad), /Theme-Farbe/);
+  }
+  const html = D.buildHtml(template, "", fixture(), "Test", { theme: { background: "#ffffff", accent: "#e11d48" } });
+  assert.ok(html.indexOf('<style id="docuclick-theme">') > html.indexOf("--bg-canvas: #090d16"));
+  assert.ok(html.indexOf('<style id="docuclick-theme">') < html.indexOf("</head>"));
+  assert.ok(!D.buildHtml(template, "", fixture(), "Test").includes("docuclick-theme"));
+  // Viewer exports keep the theme too.
+  assert.ok(D.buildHtml(template, "", fixture(), "Test", { readOnly: true, theme: { background: "#ffffff", accent: "#e11d48" } }).includes("--accent: #e11d48;"));
+});

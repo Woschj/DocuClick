@@ -26,6 +26,25 @@
     --radius-full: 9999px;
     --shadow-dock: 0 10px 30px -5px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1);
     --shadow-card: 0 8px 24px -4px rgba(0, 0, 0, 0.4);
+    /* Theme hooks (the Obsidian plugin overrides these; defaults are the
+       original dark look). RGB triplets are used as rgba(var(--x), a). */
+    --tint: 255, 255, 255;
+    --shade: 0, 0, 0;
+    --panel: 8, 12, 20;
+    --panel-drawer: 11, 15, 25;
+    --text-strong: #ffffff;
+    --primary-btn-text: #f8fafc;
+    --panel-alt: 15, 23, 42;
+    --accent-rgb: 59, 130, 246;
+    --accent-text: #60a5fa;
+    --on-accent: #ffffff;
+    --swatch-ring: #ffffff;
+    --brand-end: #6366f1;
+    --input-bg: #090d16;
+    --graph-label-text: #f8fafc;
+    --graph-label-bg: #0f172a;
+    --graph-label-border: rgba(255, 255, 255, 0.16);
+    --graph-node-border: rgba(255, 255, 255, 0.18);
     --font-stack: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Inter, Roboto, sans-serif;
   }
 
@@ -41,14 +60,14 @@
   #cy {
     width: 100%; height: 100%;
     background-color: var(--bg-canvas);
-    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1.2px, transparent 1.2px);
+    background-image: radial-gradient(rgba(var(--tint), 0.08) 1.2px, transparent 1.2px);
     background-size: 24px 24px;
   }
 
   #image-overlays { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 2; }
   .node-image-overlay {
     position: absolute; object-fit: cover; border-radius: 8px;
-    pointer-events: none; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+    pointer-events: none; box-shadow: 0 4px 14px rgba(var(--shade), 0.4);
   }
 
   #node-handles { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 1000; }
@@ -56,7 +75,7 @@
     position: absolute; width: 14px; height: 14px; margin: -7px;
     border-radius: 50%; background: var(--success); border: 2px solid #ffffff;
     cursor: crosshair; pointer-events: auto;
-    box-shadow: 0 0 10px rgba(16, 185, 129, 0.6), 0 2px 4px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.6), 0 2px 4px rgba(var(--shade), 0.4);
     opacity: 0; transition: opacity 0.15s, transform 0.15s;
   }
   .node-handle.visible { opacity: 1; }
@@ -79,8 +98,8 @@
     pointer-events: auto;
   }
   .brand-badge {
-    background: linear-gradient(135deg, #3b82f6, #6366f1);
-    color: #fff; font-size: 10px; font-weight: 800;
+    background: linear-gradient(135deg, var(--accent), var(--brand-end));
+    color: var(--on-accent); font-size: 10px; font-weight: 800;
     letter-spacing: 0.05em; text-transform: uppercase;
     padding: 2px 7px; border-radius: var(--radius-sm);
   }
@@ -92,7 +111,7 @@
     display: flex; align-items: center; gap: 6px; margin-left: 4px;
   }
   .meta-chip {
-    background: rgba(255, 255, 255, 0.07);
+    background: rgba(var(--tint), 0.07);
     padding: 2px 8px; border-radius: var(--radius-full);
     font-size: 11px; font-weight: 500; color: var(--text-sub);
   }
@@ -117,17 +136,17 @@
     font-family: inherit; font-size: 12px; font-weight: 600;
     cursor: pointer; transition: background 0.15s, transform 0.1s;
   }
-  .dock-btn:hover { background: rgba(255, 255, 255, 0.12); }
+  .dock-btn:hover { background: rgba(var(--tint), 0.12); }
   .dock-btn:active { transform: scale(0.96); }
-  .dock-btn-primary { background: var(--accent); }
+  .dock-btn-primary { background: var(--accent); color: var(--primary-btn-text); }
   .dock-btn-primary:hover { background: var(--accent-hover); }
-  .dock-btn-highlight { background: rgba(59, 130, 246, 0.18); color: #60a5fa; }
-  .dock-btn-highlight:hover { background: rgba(59, 130, 246, 0.3); }
+  .dock-btn-highlight { background: rgba(var(--accent-rgb), 0.18); color: var(--accent-text); }
+  .dock-btn-highlight:hover { background: rgba(var(--accent-rgb), 0.3); }
   .dock-sep { width: 1px; height: 18px; background: var(--border-glass); margin: 0 3px; }
 
   .search-wrapper {
     display: flex; align-items: center; gap: 6px;
-    padding: 0 8px; background: rgba(0, 0, 0, 0.35);
+    padding: 0 8px; background: rgba(var(--shade), 0.35);
     border-radius: var(--radius-full); border: 1px solid var(--border-subtle);
   }
   .search-input {
@@ -148,42 +167,43 @@
   /* SOP Guide Drawer */
   .guide-drawer {
     position: fixed; top: 0; right: 0; bottom: 0; width: 360px; max-width: 85vw;
-    background: rgba(11, 15, 25, 0.9);
+    background: rgba(var(--panel-drawer), 0.9);
     backdrop-filter: blur(24px);
     -webkit-backdrop-filter: blur(24px);
     border-left: 1px solid var(--border-glass);
-    box-shadow: -10px 0 40px rgba(0, 0, 0, 0.6);
     z-index: 80; display: flex; flex-direction: column;
     transform: translateX(100%); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   }
-  .guide-drawer.open { transform: translateX(0); }
+  /* Shadow only while open: when closed it would bleed in at the right
+     edge on light themes. */
+  .guide-drawer.open { transform: translateX(0); box-shadow: -10px 0 40px rgba(0, 0, 0, 0.6); }
   .guide-header {
     padding: 16px 18px; display: flex; align-items: center; justify-content: space-between;
     border-bottom: 1px solid var(--border-subtle);
   }
   .guide-title-box { display: flex; align-items: center; gap: 8px; }
   .guide-badge {
-    background: var(--accent); color: #fff; font-size: 10px; font-weight: 800;
+    background: var(--accent); color: var(--on-accent); font-size: 10px; font-weight: 800;
     padding: 2px 6px; border-radius: var(--radius-sm);
   }
   .guide-title { font-size: 14px; font-weight: 700; margin: 0; color: var(--text-main); }
   .icon-btn {
     width: 28px; height: 28px; border-radius: 50%; border: none;
-    background: rgba(255, 255, 255, 0.08); color: var(--text-sub);
+    background: rgba(var(--tint), 0.08); color: var(--text-sub);
     cursor: pointer; display: flex; align-items: center; justify-content: center;
     transition: background 0.15s, color 0.15s;
   }
-  .icon-btn:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+  .icon-btn:hover { background: rgba(var(--tint), 0.18); color: var(--text-strong); }
   .guide-list {
     flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
   }
   .guide-card {
     display: flex; gap: 10px; padding: 8px 10px; border-radius: var(--radius-md);
-    background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-subtle);
+    background: rgba(var(--tint), 0.03); border: 1px solid var(--border-subtle);
     cursor: pointer; transition: background 0.15s, border-color 0.15s, transform 0.1s;
   }
   .guide-card:hover {
-    background: rgba(255, 255, 255, 0.08); border-color: var(--border-glass);
+    background: rgba(var(--tint), 0.08); border-color: var(--border-glass);
     transform: translateX(-2px);
   }
   .guide-card-head { display: flex; gap: 8px; flex: 1; min-width: 0; align-items: flex-start; }
@@ -203,7 +223,7 @@
   }
 
   .guide-controls {
-    padding: 10px 14px; background: rgba(0, 0, 0, 0.25);
+    padding: 10px 14px; background: rgba(var(--shade), 0.25);
     border-bottom: 1px solid var(--border-subtle);
     display: flex; flex-direction: column; gap: 8px;
   }
@@ -213,13 +233,13 @@
     text-transform: uppercase; letter-spacing: 0.5px;
   }
   .guide-select {
-    flex: 1; background: rgba(15, 23, 42, 0.85); border: 1px solid var(--border-glass);
+    flex: 1; background: rgba(var(--panel-alt), 0.85); border: 1px solid var(--border-glass);
     color: var(--text-main); border-radius: var(--radius-sm);
     padding: 5px 8px; font-size: 12px; font-family: inherit; outline: none; cursor: pointer;
   }
   .guide-select:focus { border-color: var(--accent); }
   .guide-filter-tabs {
-    display: flex; gap: 4px; background: rgba(0, 0, 0, 0.35); padding: 3px; border-radius: var(--radius-sm);
+    display: flex; gap: 4px; background: rgba(var(--shade), 0.35); padding: 3px; border-radius: var(--radius-sm);
   }
   .guide-tab {
     flex: 1; background: transparent; border: none; color: var(--text-sub);
@@ -227,15 +247,15 @@
     transition: background 0.15s, color 0.15s; text-align: center;
   }
   .guide-tab:hover { color: var(--text-main); }
-  .guide-tab.active { background: var(--accent); color: #fff; }
+  .guide-tab.active { background: var(--accent); color: var(--on-accent); }
 
   /* Decision and Branch Cards in Guide */
   .guide-card.guide-card-decision {
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(15, 23, 42, 0.6));
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(var(--panel-alt), 0.6));
     border-color: rgba(245, 158, 11, 0.35);
   }
   .guide-card.guide-card-decision:hover {
-    border-color: rgba(245, 158, 11, 0.6); background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(15, 23, 42, 0.7));
+    border-color: rgba(245, 158, 11, 0.6); background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(var(--panel-alt), 0.7));
   }
   .guide-badge-decision {
     background: #f59e0b !important; color: #000 !important; font-weight: 800;
@@ -249,17 +269,17 @@
     display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; width: 100%;
   }
   .guide-branch-btn {
-    background: rgba(255, 255, 255, 0.08); border: 1px solid var(--border-glass);
+    background: rgba(var(--tint), 0.08); border: 1px solid var(--border-glass);
     color: var(--text-main); font-size: 11px; font-weight: 600; font-family: inherit;
     padding: 4px 8px; border-radius: var(--radius-sm); cursor: pointer;
     display: inline-flex; align-items: center; gap: 4px; transition: background 0.15s, transform 0.1s;
   }
   .guide-branch-btn:hover {
-    background: var(--accent); color: #fff; transform: translateY(-1px);
+    background: var(--accent); color: var(--on-accent); transform: translateY(-1px);
   }
   .guide-path-divider {
     display: flex; align-items: center; gap: 8px; padding: 6px 10px; margin-top: 6px;
-    background: rgba(255, 255, 255, 0.04); border-radius: var(--radius-sm);
+    background: rgba(var(--tint), 0.04); border-radius: var(--radius-sm);
     font-size: 11px; font-weight: 700; color: var(--text-sub);
   }
   .guide-path-badge {
@@ -273,7 +293,7 @@
   /* Lightbox Modal */
   #lightbox {
     position: fixed; inset: 0; z-index: 1000;
-    background: rgba(8, 12, 20, 0.88);
+    background: rgba(var(--panel), 0.88);
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -291,7 +311,7 @@
     position: fixed; top: 50%; transform: translateY(-50%);
     width: 44px; height: 44px; border-radius: 50%;
     background: var(--surface-glass); border: 1px solid var(--border-glass);
-    color: #fff; font-size: 24px; font-weight: bold;
+    color: var(--text-strong); font-size: 24px; font-weight: bold;
     display: flex; align-items: center; justify-content: center;
     cursor: pointer; transition: background 0.15s, transform 0.1s;
     user-select: none;
@@ -307,17 +327,17 @@
     font-size: 12px; color: var(--text-sub);
   }
   .lightbox-step-badge {
-    background: var(--accent); color: #fff; font-weight: 700;
+    background: var(--accent); color: var(--on-accent); font-weight: 700;
     padding: 2px 8px; border-radius: var(--radius-full); font-size: 11px;
   }
   .lightbox-title { font-weight: 600; color: var(--text-main); }
   .lightbox-close-btn {
     position: fixed; top: 20px; right: 24px; width: 36px; height: 36px;
     border-radius: 50%; background: var(--surface-glass); border: 1px solid var(--border-glass);
-    color: #fff; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    color: var(--text-strong); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;
     transition: background 0.15s;
   }
-  .lightbox-close-btn:hover { background: rgba(255, 255, 255, 0.2); }
+  .lightbox-close-btn:hover { background: rgba(var(--tint), 0.2); }
 
   /* Iframe & Obsidian Embed Adaptations */
   body.embedded-in-iframe .brand-bar { top: 10px; left: 10px; padding: 4px 10px; }
@@ -331,7 +351,7 @@
   /* Context Menu */
   .hud-menu {
     position: fixed; z-index: 1000;
-    background: rgba(15, 23, 42, 0.94);
+    background: rgba(var(--panel-alt), 0.94);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--border-glass);
@@ -356,10 +376,10 @@
     white-space: nowrap;
   }
   .hud-menu-item:hover {
-    background: rgba(59, 130, 246, 0.25); color: #ffffff;
+    background: rgba(var(--accent-rgb), 0.25); color: var(--text-strong);
   }
   .hud-menu-item.primary {
-    font-weight: 600; color: #60a5fa;
+    font-weight: 600; color: var(--accent-text);
   }
   .hud-menu-item.danger {
     color: #f87171;
@@ -372,27 +392,27 @@
   }
   .hud-menu-color-row {
     display: flex; align-items: center; justify-content: space-between;
-    gap: 5px; padding: 6px 8px; background: rgba(0, 0, 0, 0.25);
+    gap: 5px; padding: 6px 8px; background: rgba(var(--shade), 0.25);
     border-radius: var(--radius-sm); margin: 4px 2px;
   }
   .hud-color-dot {
     width: 18px; height: 18px; border-radius: 50%;
-    border: 2px solid rgba(255, 255, 255, 0.25); cursor: pointer;
+    border: 2px solid rgba(var(--tint), 0.25); cursor: pointer;
     padding: 0; transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
   }
   .hud-color-dot:hover {
-    transform: scale(1.22); border-color: #ffffff;
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+    transform: scale(1.22); border-color: var(--swatch-ring);
+    box-shadow: 0 0 8px rgba(var(--tint), 0.5);
   }
   .hud-color-dot.active {
-    border-color: #ffffff; box-shadow: 0 0 0 2px var(--accent);
+    border-color: var(--swatch-ring); box-shadow: 0 0 0 2px var(--accent);
   }
   .menu-icon { font-size: 13px; opacity: 0.9; }
 
   /* Rename Modal */
   #rename-modal {
     position: fixed; inset: 0; z-index: 1050;
-    background: rgba(8, 12, 20, 0.85);
+    background: rgba(var(--panel), 0.85);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     display: flex; align-items: center; justify-content: center;
@@ -407,7 +427,7 @@
     display: flex; align-items: center; gap: 8px;
   }
   .rename-textarea {
-    width: 100%; box-sizing: border-box; background: #090d16;
+    width: 100%; box-sizing: border-box; background: var(--input-bg);
     border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
     padding: 10px 12px; color: var(--text-main); font-family: inherit;
     font-size: 13px; resize: vertical; outline: none;
@@ -419,7 +439,7 @@
   /* Element Add/Edit Modal */
   #element-modal {
     position: fixed; inset: 0; z-index: 1060;
-    background: rgba(8, 12, 20, 0.85);
+    background: rgba(var(--panel), 0.85);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     display: flex; align-items: center; justify-content: center;
@@ -442,17 +462,17 @@
   }
   .shape-tile {
     display: flex; align-items: center; gap: 8px; padding: 8px 10px;
-    border-radius: var(--radius-md); background: rgba(255, 255, 255, 0.04);
+    border-radius: var(--radius-md); background: rgba(var(--tint), 0.04);
     border: 1.5px solid var(--border-subtle); cursor: pointer;
     transition: all 0.15s ease; font-size: 12px; font-weight: 600; color: var(--text-main);
     user-select: none;
   }
   .shape-tile:hover {
-    background: rgba(255, 255, 255, 0.09); border-color: rgba(255, 255, 255, 0.22);
+    background: rgba(var(--tint), 0.09); border-color: rgba(var(--tint), 0.22);
   }
   .shape-tile.active {
-    background: rgba(59, 130, 246, 0.22); border-color: var(--accent);
-    box-shadow: 0 0 10px rgba(59, 130, 246, 0.35);
+    background: rgba(var(--accent-rgb), 0.22); border-color: var(--accent);
+    box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.35);
   }
   .shape-icon { font-size: 14px; flex-shrink: 0; }
   .color-palette {
@@ -465,8 +485,8 @@
   }
   .color-swatch:hover { transform: scale(1.18); }
   .color-swatch.active {
-    border-color: #ffffff; transform: scale(1.15);
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
+    border-color: var(--swatch-ring); transform: scale(1.15);
+    box-shadow: 0 0 8px rgba(var(--tint), 0.6);
   }
 
   /* Guide list item highlight */
@@ -482,14 +502,14 @@
     padding: 12px 10px;
     text-align: center;
     cursor: pointer;
-    background: rgba(255, 255, 255, 0.02);
+    background: rgba(var(--tint), 0.02);
     transition: all 0.15s ease;
     margin-bottom: 12px;
     user-select: none;
   }
   .image-dropzone:hover, .image-dropzone.drag-over {
     border-color: var(--accent);
-    background: rgba(59, 130, 246, 0.12);
+    background: rgba(var(--accent-rgb), 0.12);
   }
   .image-dropzone-prompt {
     font-size: 11.5px;
@@ -511,7 +531,7 @@
     border-radius: var(--radius-md);
     overflow: hidden;
     border: 1px solid var(--border-glass);
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(var(--shade), 0.4);
     max-height: 130px;
     display: flex;
     align-items: center;
@@ -553,7 +573,7 @@
     inset: 0;
     pointer-events: none;
     border: 3px dashed var(--accent);
-    background: rgba(59, 130, 246, 0.15);
+    background: rgba(var(--accent-rgb), 0.15);
     z-index: 1040;
     display: flex;
     align-items: center;
@@ -741,13 +761,19 @@ let originalHtmlText = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
 // DOCUCLICK-EDITOR-END
 
 const flowData = @@FLOW@@;
-const cy = cytoscape({
-  container: document.getElementById("cy"),
-  elements: [
-    ...flowData.nodes.map((n) => ({ group: "nodes", data: n.data, position: n.position, grabbable: false })),
-    ...flowData.edges.map((e) => ({ group: "edges", data: e.data })),
-  ],
-  style: [
+// Graph colours come from the page's CSS theme variables (see :root), so
+// a host that overrides them (the Obsidian plugin's colour settings) also
+// restyles the graph; docuclickRefreshTheme() re-applies them live.
+function graphStyle() {
+  const css = getComputedStyle(document.documentElement);
+  const read = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
+  const theme = {
+    labelText: read("--graph-label-text", "#f8fafc"),
+    labelBg: read("--graph-label-bg", "#0f172a"),
+    labelBorder: read("--graph-label-border", "rgba(255,255,255,0.16)"),
+    nodeBorder: read("--graph-node-border", "rgba(255,255,255,0.18)"),
+  };
+  return [
     {
       selector: "node",
       style: {
@@ -755,21 +781,21 @@ const cy = cytoscape({
         shape: "data(shape)",
         width: 230,
         height: 175,
-        "border-color": "rgba(255,255,255,0.18)",
+        "border-color": theme.nodeBorder,
         "border-width": 1.5,
         label: "data(label)",
-        color: "#f8fafc",
+        color: theme.labelText,
         "font-size": 11,
         "font-weight": "600",
         "font-family": "system-ui, -apple-system, sans-serif",
         "text-valign": "top",
         "text-halign": "center",
         "text-margin-y": -26,
-        "text-background-color": "#0f172a",
+        "text-background-color": theme.labelBg,
         "text-background-opacity": 0.9,
         "text-background-padding": 5,
         "text-background-shape": "roundrectangle",
-        "text-border-color": "rgba(255,255,255,0.16)",
+        "text-border-color": theme.labelBorder,
         "text-border-width": 1,
         "text-border-opacity": 1,
         "text-wrap": "wrap",
@@ -853,12 +879,22 @@ const cy = cytoscape({
       selector: "edge.path-highlighted",
       style: { width: 4.5, opacity: 1 },
     },
+  ];
+}
+
+const cy = cytoscape({
+  container: document.getElementById("cy"),
+  elements: [
+    ...flowData.nodes.map((n) => ({ group: "nodes", data: n.data, position: n.position, grabbable: false })),
+    ...flowData.edges.map((e) => ({ group: "edges", data: e.data })),
   ],
+  style: graphStyle(),
   layout: { name: "preset" },
   minZoom: 0.1,
   maxZoom: 3,
   boxSelectionEnabled: false,
 });
+window.docuclickRefreshTheme = () => cy.style(graphStyle());
 function ensureViewFit() {
   cy.resize();
   cy.fit(undefined, 40);
