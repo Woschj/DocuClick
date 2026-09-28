@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- macOS app: Avalonia UI + the shared DocuClick.Core, with everything
+       OS-specific delegated to the Swift library in ../DocuClickMacNative
+       (built automatically on macOS and copied next to the executable).
+       macos/packaging/build-app.sh turns the publish output into a signed
+       DocuClick.app. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>osx-arm64</RuntimeIdentifier>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>DocuClick.Mac</RootNamespace>
+    <AssemblyName>DocuClick</AssemblyName>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="**/._*" />
+    <None Remove="**/._*" />
+    <AvaloniaResource Remove="**/._*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.3" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.3" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.3" />
+    <PackageReference Include="Avalonia.Controls.WebView" Version="12.1.0" />
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\core\DocuClick.Core\DocuClick.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Build the Swift library and ship it next to DocuClick (only possible on macOS). -->
+  <PropertyGroup>
+    <NativePackageDir>$(MSBuildThisFileDirectory)..\DocuClickMacNative</NativePackageDir>
+    <NativeLibrary>$(NativePackageDir)\.build\release\libDocuClickMac.dylib</NativeLibrary>
+  </PropertyGroup>
+
+  <Target Name="BuildDocuClickMacNative" BeforeTargets="AssignTargetPaths" Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <Exec Command="swift build -c release --package-path &quot;$(NativePackageDir)&quot;" />
+    <ItemGroup>
+      <None Include="$(NativeLibrary)" Link="libDocuClickMac.dylib"
+            CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+
+</Project>

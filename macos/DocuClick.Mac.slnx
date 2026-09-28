@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="../core/DocuClick.Core.Tests/DocuClick.Core.Tests.csproj" />
+  <Project Path="../core/DocuClick.Core/DocuClick.Core.csproj" />
+  <Project Path="DocuClick.Mac/DocuClick.Mac.csproj" />
+</Solution>
