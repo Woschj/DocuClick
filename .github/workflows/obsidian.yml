@@ -53,6 +53,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
+          # "Latest" stays with the Windows app (releases/latest links).
+          make_latest: false
           name: DocuClick Diagrams (Obsidian) ${{ github.ref_name }}
           # main.js/manifest.json/styles.css also as single assets, the
           # usual layout of Obsidian plugin releases.

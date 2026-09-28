@@ -91,6 +91,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
+          # "Latest" stays with the Windows app (releases/latest links).
+          make_latest: false
           name: DocuClick für macOS ${{ github.ref_name }}
           files: publish/DocuClick-macos-arm64.zip
           generate_release_notes: true

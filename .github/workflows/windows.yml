@@ -83,6 +83,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
+          name: DocuClick für Windows ${{ github.ref_name }}
           files: |
             publish/DocuClick-win-x64.zip
             publish/OutputTemplate.zip
