@@ -14,7 +14,7 @@ Plan-Datei bzw. `.claude-loop-prompt.md`.
    (Modell-Id exakt wie unter LM Studios `GET /v1/models`).
 3. Für den Judge (`tools/ai-test-loop/judge/judge.ps1`, entsteht erst in Task 12):
    `DOCUCLICK_JUDGE_MODEL`, Default `mistral-small-3.2-24b-instruct-2506`.
-4. .NET 8 SDK installiert (`dotnet build DocuClick.sln` muss lokal funktionieren).
+4. .NET 10 SDK installiert (`dotnet build windows/DocuClick.Windows.sln` muss lokal funktionieren).
 
 ## Manuell einen Durchlauf starten
 

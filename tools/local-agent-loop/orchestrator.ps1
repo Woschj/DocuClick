@@ -156,8 +156,8 @@ if (Test-Path $verdictsDir) {
             id                = "$baseId$suffix"
             title             = "Bugfix fuer Szenario $scenarioId"
             description       = "Das Test-Szenario '$scenarioId' ist FEHLGESCHLAGEN.`n`nJudge-Begruendung: $($verdict.reasoning)`n`nVermutete Ursache: $($verdict.suspectedRootCause)`n`nRohe Evidence (ScenarioResult):`n$evidenceExcerpt`n`nBehebe die zugrunde liegende Ursache im DocuClick-Quellcode (src/DocuClick/**). Verifiziere per 'dotnet build DocuClick.sln'; die eigentliche Szenario-Freigabe erfolgt im naechsten Testlauf durch den Judge, nicht durch dich."
-            allowedPaths      = @("src/DocuClick/**")
-            acceptanceCriteria = @("dotnet build DocuClick.sln")
+            allowedPaths      = @("windows/DocuClick/**", "core/**")
+            acceptanceCriteria = @("dotnet build windows/DocuClick.Windows.sln")
             maxAttempts       = 3
             status            = "pending"
             alwaysSpotReview  = $true
