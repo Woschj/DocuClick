@@ -1,0 +1,9 @@
+{
+  "id": "docuclick-diagrams",
+  "name": "DocuClick Diagrams",
+  "version": "0.1.1",
+  "minAppVersion": "1.5.0",
+  "description": "Ablaufdiagramme erstellen, bearbeiten und als eigenständiges HTML teilen. Importiert DocuClick-Aufnahmen; benötigt keine Screenshot-App.",
+  "author": "DocuClick",
+  "isDesktopOnly": true
+}

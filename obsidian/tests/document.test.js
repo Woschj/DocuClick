@@ -1,0 +1,77 @@
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
+const D = require("../src/document.js");
+const template = fs.readFileSync(path.join(__dirname, "../../core/DocuClick.Core/WebAssets/viewer.template.html"), "utf8");
+const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
+function fixture() {
+  const doc = D.emptyDocument();
+  doc.canvas.nodes.push({ id: "a", type: "text", text: "Schritt", x: 10, y: 20, width: 200, height: 60 }, { id: "image", type: "file", file: "Attachments/Test.png", x: 10, y: 90, width: 200, height: 100 });
+  doc.flow.nodes.push({ data: { id: "a", label: "Schritt", imageUrl: png, color: "#123456", shape: "rectangle" }, position: { x: 10, y: 20 } });
+  return doc;
+}
+test("HTML round trip preserves screenshots, full text, and literal script delimiters", () => {
+  const doc = fixture();
+  doc.canvas.nodes[0].text = '</script><script>throw new Error("injected")</script>\n@@FLOW@@';
+  doc.flow.nodes[0].data.label = doc.canvas.nodes[0].text;
+  const html = D.buildHtml(template, "/* bundled vendor */", doc, "A < B @@FLOW@@");
+  const imported = D.importHtml(html);
+  assert.equal(imported.canvas.nodes[0].text, doc.canvas.nodes[0].text);
+  assert.equal(imported.flow.nodes[0].data.imageUrl, png);
+  assert.equal(imported.canvas.nodes[1].file, png);
+  assert.ok(html.includes("A &lt; B @@FLOW@@"));
+  assert.ok(!html.includes('<script>throw new Error("injected")'));
+});
+test("unknown versions, duplicate nodes and dangling edges are rejected", () => {
+  assert.throws(() => D.parseDocument(JSON.stringify({ ...fixture(), version: 2 })), /Version/);
+  const duplicate = fixture(); duplicate.canvas.nodes.push(duplicate.canvas.nodes[0]);
+  assert.throws(() => D.validateDocument(duplicate), /Doppelte/);
+  const dangling = fixture(); dangling.canvas.edges.push({ fromNode: "a", toNode: "missing" });
+  assert.throws(() => D.validateDocument(dangling), /fehlenden/);
+});
+test("import strips save tokens and filesystem paths and refuses remote/SVG images", () => {
+  const doc = fixture(); doc.canvas.docuClickSaveToken = "old-secret";
+  assert.equal(D.validateDocument(doc).canvas.docuClickSaveToken, undefined);
+  doc.canvas.nodes[1].file = "../../private.txt"; delete doc.flow.nodes[0].data.imageUrl;
+  assert.equal(D.validateDocument(doc).canvas.nodes[1].file, undefined);
+  for (const url of ["https://example.com/pixel", "file:///etc/passwd", "data:image/svg+xml;base64,AAAA"]) {
+    doc.flow.nodes[0].data.imageUrl = url;
+    assert.throws(() => D.validateDocument(doc), /eingebettet/);
+  }
+});
+test("import parses data without executing surrounding HTML", () => {
+  const html = D.buildHtml(template, "throw new Error('never execute')", fixture(), "Test");
+  assert.equal(D.importHtml(html).flow.nodes.length, 1);
+  assert.throws(() => D.importHtml("<html>Not a diagram</html>"), /unterstützte/);
+});
+test("exported editor scripts parse as JavaScript and all template keys resolve", () => {
+  const html = D.buildHtml(template, "/* vendor */", D.emptyDocument(), "Test");
+  assert.ok(!/@@[A-Z_]+@@/.test(html));
+  for (const script of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) new vm.Script(script[1]);
+});
+test("edge styles survive import/export and graph endpoints come from the document", () => {
+  const doc = fixture();
+  doc.canvas.nodes.push({ id: "b", type: "text", text: "Ende", x: 300, y: 0, width: 100, height: 80 });
+  doc.flow.nodes.push({ data: { id: "b", label: "Ende" }, position: { x: 300, y: 0 } });
+  doc.canvas.edges.push({ fromNode: "a", toNode: "b", color: "#ff0000", lineStyle: "dashed", docuClickManual: true });
+  const result = D.importHtml(D.buildHtml(template, "", doc, "Test"));
+  assert.equal(result.flow.edges[0].data.lineStyle, "dashed");
+  assert.equal(result.flow.edges[0].data.color, "#ff0000");
+  assert.equal(result.flow.edges[0].data.target, "b");
+});
+module.exports = { fixture };
+
+test("viewer export omits editor code and UI but preserves data, search, guide and images", () => {
+  const doc = fixture();
+  const html = D.buildHtml(template, "/* vendor */", doc, "Ansicht", { readOnly: true });
+  for (const absent of ['id="add-element-btn"', 'id="dock-save-group"', 'id="rename-modal"', 'id="element-modal"', 'id="context-menu"', 'id="node-handles"', 'id="canvas-drop-overlay"', "function scheduleSave", "function addManualElement", "function deleteNode", "function restoreHistory", "127.0.0.1", "docuclickEditorHost"]) {
+    assert.ok(!html.includes(absent), `Viewer still contains ${absent}`);
+  }
+  for (const present of ['id="search-input"', 'id="guide-toggle-btn"', 'id="zoom-in-btn"', 'id="lightbox"', png]) assert.ok(html.includes(present));
+  for (const script of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) new vm.Script(script[1]);
+  assert.equal(D.importHtml(html).flow.nodes[0].data.imageUrl, png);
+  // The normal editor still has its tools after generating a viewer.
+  assert.ok(D.buildHtml(template, "", doc, "Editor").includes("function addManualElement"));
+});
