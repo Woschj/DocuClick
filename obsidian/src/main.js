@@ -1,8 +1,8 @@
 /* global DocuClickDocument, VIEWER_TEMPLATE, CYTOSCAPE */
-const { Plugin, PluginSettingTab, FileView, Modal, Setting, Notice, TFile, normalizePath } = require("obsidian");
+const { Plugin, PluginSettingTab, FileView, Modal, Setting, Notice, TFile, TFolder, AbstractInputSuggest, normalizePath } = require("obsidian");
 const VIEW_TYPE = "docuclick-diagram";
 const D = DocuClickDocument;
-const DEFAULT_SETTINGS = { themeMode: "docuclick", background: "#1e1e1e", accent: "#7c3aed", themeExport: true };
+const DEFAULT_SETTINGS = { themeMode: "docuclick", background: "#1e1e1e", accent: "#7c3aed", themeExport: true, defaultFolder: "", askFolder: true };
 
 // Runs only inside a sandboxed, opaque-origin iframe. There is no Obsidian
 // API, require(), filesystem access, or parent DOM access in this context.
@@ -42,20 +42,57 @@ function frameBridge(channel) {
   });
 }
 
+// Folder field with suggestions from the vault (Obsidian's own suggest popup).
+class FolderSuggest extends AbstractInputSuggest {
+  constructor(app, inputEl) { super(app, inputEl); this.inputEl = inputEl; }
+  getSuggestions(query) {
+    const q = query.toLowerCase();
+    return this.app.vault.getAllLoadedFiles()
+      .filter(file => file instanceof TFolder && file.path.toLowerCase().includes(q))
+      .sort((a, b) => a.path.localeCompare(b.path)).slice(0, 50);
+  }
+  renderSuggestion(folder, el) { el.setText(folder.isRoot?.() || folder.path === "/" ? "/ (Vault-Hauptordner)" : folder.path); }
+  selectSuggestion(folder) {
+    this.inputEl.value = folder.isRoot?.() || folder.path === "/" ? "" : folder.path;
+    this.inputEl.dispatchEvent(new Event("input"));
+    this.close();
+  }
+}
+
+/** Vault-relative folder path from user input: "" = vault root; null = invalid. */
+function cleanFolder(value) {
+  const trimmed = (value || "").trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  if (!trimmed) return "";
+  if (trimmed.split("/").some(part => !part.trim() || part === "." || part === ".." || /[:*?"<>|]/.test(part))) return null;
+  return normalizePath(trimmed);
+}
+
 class NameDialog extends Modal {
-  constructor(app, submit) { super(app); this.submit = submit; }
+  constructor(app, { folder, askFolder }, submit) { super(app); this.folder = folder; this.askFolder = askFolder; this.submit = submit; }
   onOpen() {
     this.titleEl.setText("Neues Ablaufdiagramm");
-    let name = "Neuer Ablauf";
+    let name = "Neuer Ablauf", folder = this.folder;
+    const enter = input => input.addEventListener("keydown", event => { if (event.key === "Enter" && !event.isComposing) accept(); });
     new Setting(this.contentEl).setName("Dateiname").addText(text => {
       text.setValue(name).onChange(value => name = value);
-      text.inputEl.addEventListener("keydown", event => { if (event.key === "Enter") accept(); });
+      enter(text.inputEl);
       setTimeout(() => { text.inputEl.focus(); text.inputEl.select(); }, 0);
     });
+    if (this.askFolder) {
+      new Setting(this.contentEl)
+        .setName("Ordner")
+        .setDesc("Leer = Vault-Hauptordner. Nicht vorhandene Ordner werden angelegt.")
+        .addText(text => {
+          text.setPlaceholder("z. B. Prozesse/Buchhaltung").setValue(folder).onChange(value => folder = value);
+          new FolderSuggest(this.app, text.inputEl);
+        });
+    }
     const accept = () => {
       name = name.trim();
       if (!name || /[\\/:*?"<>|]/.test(name) || name === "." || name === "..") { new Notice("Bitte einen gültigen Dateinamen eingeben."); return; }
-      this.close(); this.submit(name).catch(report);
+      const target = cleanFolder(folder);
+      if (target === null) { new Notice("Bitte einen gültigen Ordner angeben."); return; }
+      this.close(); this.submit(name, target).catch(report);
     };
     new Setting(this.contentEl).addButton(button => button.setButtonText("Erstellen").setCta().onClick(accept));
   }
@@ -79,6 +116,25 @@ class DocuClickSettingTab extends PluginSettingTab {
   display() {
     const { containerEl } = this, settings = this.plugin.settings;
     containerEl.empty();
+    new Setting(containerEl).setName("Neue Abläufe").setHeading();
+    new Setting(containerEl)
+      .setName("Standardordner")
+      .setDesc("Hier landen neue Abläufe und Importe über den Befehl „DocuClick-HTML importieren“. Leer = Ordner der gerade geöffneten Datei (sonst Vault-Hauptordner). Importe per Rechtsklick auf eine HTML-Datei landen neben dieser Datei.")
+      .addText(text => {
+        text.setPlaceholder("z. B. Prozesse").setValue(settings.defaultFolder)
+          .onChange(async value => {
+            const folder = cleanFolder(value);
+            text.inputEl.toggleClass?.("docuclick-invalid", folder === null);
+            if (folder === null) return;
+            settings.defaultFolder = folder; await this.plugin.saveData(settings);
+          });
+        new FolderSuggest(this.app, text.inputEl);
+      });
+    new Setting(containerEl)
+      .setName("Ordner beim Anlegen abfragen")
+      .setDesc("Zeigt im Dialog „Neues Ablaufdiagramm“ ein Ordnerfeld, vorausgefüllt mit dem Standardordner. Aus: direkt im Standardordner anlegen.")
+      .addToggle(toggle => toggle.setValue(settings.askFolder)
+        .onChange(async value => { settings.askFolder = value; await this.plugin.saveData(settings); }));
     new Setting(containerEl).setName("Darstellung").setHeading();
     new Setting(containerEl)
       .setName("Farbschema")
@@ -272,9 +328,28 @@ module.exports = class DocuClickPlugin extends Plugin {
     const theme = this.currentTheme();
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) leaf.view?.applyTheme?.(theme);
   }
+  /** Default target folder: the configured one, else the active file's folder (vault root without one). */
+  targetFolder() {
+    const configured = cleanFolder(this.settings.defaultFolder);
+    if (configured) return configured;
+    const active = this.app.workspace.getActiveFile()?.parent?.path;
+    return active && active !== "/" ? active : "";
+  }
+  async ensureFolder(path) {
+    if (!path) return;
+    let current = "";
+    for (const part of path.split("/")) {
+      current = current ? `${current}/${part}` : part;
+      const existing = this.app.vault.getAbstractFileByPath(current);
+      if (existing instanceof TFolder) continue;
+      if (existing) throw new Error(`„${current}“ ist eine Datei, kein Ordner.`);
+      try { await this.app.vault.createFolder(current); }
+      catch (error) { if (!(this.app.vault.getAbstractFileByPath(current) instanceof TFolder)) throw error; }
+    }
+  }
   newDiagram() {
-    new NameDialog(this.app, async name => {
-      const folder = this.app.workspace.getActiveFile()?.parent?.path;
+    new NameDialog(this.app, { folder: this.targetFolder(), askFolder: this.settings.askFolder }, async (name, folder) => {
+      await this.ensureFolder(folder);
       const file = await this.createUnique(folder, name, "docuclick", JSON.stringify(D.emptyDocument(), null, 2));
       await this.app.workspace.getLeaf("tab").openFile(file);
     }).open();
@@ -302,7 +377,9 @@ module.exports = class DocuClickPlugin extends Plugin {
       const file = input.files?.[0]; if (!file) return;
       try {
         if (file.size > D.MAX_BYTES) throw new Error("Datei ist größer als 64 MB.");
-        await this.importText(await file.text(), file.name.replace(/\.html$/i, ""), this.app.workspace.getActiveFile()?.parent?.path);
+        const folder = this.targetFolder();
+        await this.ensureFolder(folder);
+        await this.importText(await file.text(), file.name.replace(/\.html$/i, ""), folder);
       } catch (error) { report(error); }
     }, { once: true });
     input.click();

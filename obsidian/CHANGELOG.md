@@ -5,6 +5,16 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [0.3.0] - 2026-09-28
+
+- **Ordner für neue Abläufe**: Der Dialog „Neues Ablaufdiagramm“ fragt jetzt
+  neben dem Dateinamen auch den Ordner ab (mit Vorschlägen aus dem Vault;
+  fehlende Ordner werden angelegt).
+- Neue Einstellungen unter „Neue Abläufe“: **Standardordner** (vorausgefüllt
+  im Dialog, auch Ziel für „DocuClick-HTML importieren“) und **Ordner beim
+  Anlegen abfragen** (aus: direkt im Standardordner anlegen). Ohne
+  Standardordner gilt wie bisher der Ordner der geöffneten Datei.
+
 ## [0.2.0] - 2026-09-28
 
 - **Farbschema in den Plugin-Einstellungen**: „DocuClick (dunkel)“,

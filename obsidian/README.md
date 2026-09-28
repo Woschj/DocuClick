@@ -38,7 +38,8 @@ Alle Funktionen liegen in der schwebenden Werkzeugleiste unten im
 Diagramm-Tab.
 
 - Ribbon-Symbol oder Befehl **DocuClick Diagrams: Neues Ablaufdiagramm**:
-  Dateinamen eingeben, anschließend über **Element** Formen oder Bilder anlegen.
+  Dateinamen und Ordner eingeben (Vorschläge aus dem Vault, fehlende Ordner
+  werden angelegt), anschließend über **Element** Formen oder Bilder anlegen.
 - Eine `.docuclick`-Datei öffnet sich als Diagramm-Tab.
 - Knoten ziehen; Verbindungspunkte ziehen, um Knoten zu verbinden.
 - Rechtsklick auf Knoten, Verbindung oder Hintergrund öffnet die Bearbeitung.
@@ -67,6 +68,20 @@ für eine Datei außerhalb des Vaults). Es entsteht eine neue `.docuclick`-
 Datei mit allen Schritten und Screenshots; die HTML-Datei bleibt unverändert.
 Der Weg geht nur in diese Richtung: Die DocuClick-Apps öffnen keine
 `.docuclick`-Dateien. Zum Weitergeben dient die **HTML-Ansicht**.
+
+### Speicherort neuer Abläufe
+
+**Einstellungen → Community-Plugins → DocuClick Diagrams → Neue Abläufe**:
+
+- **Standardordner**: Ziel für neue Abläufe und für den Befehl „DocuClick-HTML
+  importieren“, z. B. `Prozesse`. Leer = Ordner der gerade geöffneten Datei
+  (ohne geöffnete Datei der Vault-Hauptordner).
+- **Ordner beim Anlegen abfragen** (Standard: an): Der Dialog zeigt ein
+  Ordnerfeld, vorausgefüllt mit dem Standardordner. Aus: Abläufe landen ohne
+  Nachfrage im Standardordner.
+
+Importe per Rechtsklick auf eine HTML-Datei im Vault landen immer neben dieser
+Datei.
 
 ### Farben an das eigene Theme anpassen
 
