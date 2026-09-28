@@ -760,7 +760,6 @@
 let originalHtmlText = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
 // DOCUCLICK-EDITOR-END
 
-const flowData = @@FLOW@@;
 // Graph colours come from the page's CSS theme variables (see :root), so
 // a host that overrides them (the Obsidian plugin's colour settings) also
 // restyles the graph; docuclickRefreshTheme() re-applies them live.
@@ -882,6 +881,7 @@ function graphStyle() {
   ];
 }
 
+const flowData = @@FLOW@@;
 const cy = cytoscape({
   container: document.getElementById("cy"),
   elements: [

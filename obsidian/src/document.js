@@ -68,7 +68,9 @@ function parseDocument(text) {
 function importHtml(html) {
   check(typeof html === "string" && html.length <= MAX_BYTES, "HTML-Datei ist zu groß.");
   const data = html.match(/<script\s+id="docuclick-data"\s+type="application\/json">([\s\S]*?)<\/script>/i);
-  const graph = html.match(/const flowData = (\{[\s\S]*?\});\s*const cy = cytoscape\(/);
+  // flowData is single-line JSON (older files: directly followed by the
+  // cytoscape() call; newer ones may have code in between).
+  const graph = html.match(/const flowData = (\{.*?\});\r?\n/) || html.match(/const flowData = (\{[\s\S]*?\});\s*const cy = cytoscape\(/);
   check(data && graph, "Keine unterstützte DocuClick-HTML-Datei. Bitte mit einer aktuellen DocuClick-Version speichern.");
   return validateDocument({ format: FORMAT, version: 1, canvas: JSON.parse(data[1]), flow: JSON.parse(graph[1]) });
 }

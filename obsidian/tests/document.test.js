@@ -50,6 +50,10 @@ test("exported editor scripts parse as JavaScript and all template keys resolve"
   const html = D.buildHtml(template, "/* vendor */", D.emptyDocument(), "Test");
   assert.ok(!/@@[A-Z_]+@@/.test(html));
   for (const script of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) new vm.Script(script[1]);
+  // The template's own "Kopie herunterladen" patches flowData with this
+  // pattern; freshly built files must still match it (and be importable).
+  assert.match(html, /const flowData = \{[\s\S]*?\};\s*const cy = cytoscape\(/);
+  assert.equal(D.importHtml(html).flow.nodes.length, 0);
 });
 test("edge styles survive import/export and graph endpoints come from the document", () => {
   const doc = fixture();
