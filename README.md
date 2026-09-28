@@ -24,6 +24,43 @@ Gemeinsam genutzt:
 
 Downloads: [Releases](https://github.com/Woschj/DocuClick/releases).
 
+## Installation
+
+Alle Downloads auf der [Release-Seite](https://github.com/Woschj/DocuClick/releases);
+jeder Teil hat eigene Releases (am Tag erkennbar).
+
+**Windows** (Release `v…`): `DocuClick-win-x64.zip` entpacken und
+`DocuClick.exe` starten. Kein .NET nötig. Bei der SmartScreen-Warnung
+„Weitere Informationen → Trotzdem ausführen“. DocuClick läuft danach als
+Tray-Icon. → [Anleitung](windows/README.md)
+
+**macOS** (Release `macos-v…`, Apple Silicon, ab macOS 14):
+`DocuClick-macos-arm64.zip` entpacken, `DocuClick.app` nach **Programme**
+ziehen, öffnen und einmalig unter **Systemeinstellungen → Datenschutz &
+Sicherheit → „Trotzdem öffnen“** freigeben. Danach Bedienungshilfen,
+Eingabeüberwachung und Bildschirmaufnahme erlauben. DocuClick läuft als
+Symbol in der Menüleiste. → [Anleitung](macos/README.md)
+
+**Obsidian** (Release `obsidian-v…`, Desktop): `docuclick-diagrams.zip`
+entpacken, den Ordner `docuclick-diagrams` nach
+`<Vault>/.obsidian/plugins/` kopieren, Obsidian neu laden und unter
+**Einstellungen → Community-Plugins** „DocuClick Diagrams“ aktivieren.
+→ [Anleitung](obsidian/README.md)
+
+## Nutzung in Kürze
+
+1. **Aufnehmen** (Windows/macOS): Aufnahme starten (Top-Leiste, Tray-/
+   Menüleisten-Symbol oder Tastenkürzel), Speicherort wählen und ganz normal
+   klicken. Jeder Klick wird ein Schritt mit Screenshot.
+2. **Nachbearbeiten**: in der Ablauf-Übersicht der App oder direkt im
+   Browser. Solange DocuClick läuft, speichert der Browser Änderungen direkt
+   in die `.html`-Datei.
+3. **Weitergeben**: Die `.html`-Datei ist eigenständig (Screenshots
+   eingebettet) und öffnet sich in jedem Browser. Optional als draw.io-
+   Diagramm exportieren.
+4. **Ohne Aufnahme** (Obsidian): Abläufe im Vault anlegen oder
+   DocuClick-HTML importieren, bearbeiten und als HTML-Ansicht weitergeben.
+
 ## Entwicklung
 
 ```bash

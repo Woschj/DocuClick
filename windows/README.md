@@ -256,6 +256,25 @@ als Base64 in die `.html`-Datei eingebettet — die Datei ist dadurch von
 Anfang an vollständig eigenständig (kein separater Export nötig) und lässt
 sich direkt weitergeben.
 
+### Im Browser bearbeiten und speichern
+
+Der Ablauf lässt sich auch direkt im Browser bearbeiten: Karten verschieben,
+umbenennen, verbinden, löschen, Elemente hinzufügen, **Zurück/Wiederholen**
+(`Strg+Z` / `Strg+Umschalt+Z`). Gespeichert wird **direkt in die geöffnete
+`.html`-Datei**, solange DocuClick läuft — in jedem Browser (Edge, Chrome,
+Firefox, Safari …), ohne „Mit Datei verbinden“ oder Dateiauswahl. Die
+Statusanzeige in der Werkzeugleiste unten zeigt, ob gespeichert wurde.
+
+- Voraussetzung: DocuClick läuft (Tray-Icon sichtbar). DocuClick nimmt die
+  Änderungen über einen nur lokal erreichbaren Dienst (`127.0.0.1:47811`)
+  entgegen und schreibt die Datei selbst.
+- Geschützt über einen Schlüssel, der in jeder Ablauf-Datei steckt: Nur wer
+  die Datei öffnen kann, kann sie ändern lassen. Abläufe aus älteren
+  Versionen bekommen den Schlüssel, sobald sie einmal in DocuClick geöffnet
+  bzw. fortgesetzt werden.
+- Läuft DocuClick nicht, bleibt **„Kopie herunterladen“**: speichert den
+  bearbeiteten Stand als neue Datei im Download-Ordner.
+
 Aus einer bestehenden Ablauf-Session lässt sich über das Tray-Menü zusätzlich
 ein Export erzeugen:
 
