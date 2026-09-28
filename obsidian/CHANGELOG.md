@@ -5,7 +5,7 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
-## [0.2.0] – unveröffentlicht
+## [0.2.0] - 2026-09-28
 
 - **Farbschema in den Plugin-Einstellungen**: „DocuClick (dunkel)“,
   „Obsidian-Theme übernehmen“ (folgt Hell/Dunkel und Akzentfarbe des Themes
@@ -17,13 +17,13 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 - Gemeinsame HTML-Vorlage: Farben laufen über CSS-Variablen; die Standard-
   darstellung der DocuClick-Apps bleibt unverändert.
 
-## [0.1.1] – unveröffentlicht
+## [0.1.1] – nicht einzeln veröffentlicht
 
 - Zusätzliche obere Menüleiste entfernt. Der neue Button „HTML-Ansicht“ in
   der Diagramm-Werkzeugleiste exportiert eigenständiges HTML mit Suche, Zoom,
   Bildansicht und Anleitung, ohne Bearbeitungs- und Speichercode.
 
-## [0.1.0] – unveröffentlicht
+## [0.1.0] – nicht einzeln veröffentlicht
 
 - Erstes eigenständiges Obsidian-Desktop-Plugin: Diagramme
   erstellen/bearbeiten, HTML-Import/-Export, versionierte `.docuclick`-Dateien,
