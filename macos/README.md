@@ -38,6 +38,58 @@ Nach dem Erteilen DocuClick neu starten (Menü **Berechtigungen … → Neu
 starten**). Weil jede Version mit demselben Zertifikat signiert ist, bleiben
 die Berechtigungen bei Updates erhalten.
 
+## Nutzung
+
+1. **Aufnahme starten**: Menüleisten-Symbol → **Aufnahme starten**, in der
+   Top-Leiste oben auf **Aufnahme** oder **⌃⌥R**. (**Neu** fragt immer nach
+   einer Zieldatei.) Beim ersten Start fragt
+   DocuClick nach Ordner und Dateiname des Ablaufs (oder nach einer
+   bestehenden Datei zum Fortsetzen).
+2. **Klicken**: Jeder Links- und Rechtsklick sowie Enter (beides in den
+   Einstellungen abschaltbar) wird ein Schritt mit Screenshot und
+   Beschreibung, z. B. „Linksklick auf Taste „Sichern“ im Fenster „…““. Klicks mit gedrückter **⌥**-Taste und
+   Klicks auf DocuClick selbst werden nicht aufgenommen.
+3. **Pausieren / Fortsetzen**: **Stopp** in der Top-Leiste oder **⌃⌥R**
+   pausiert nur; die Datei bleibt geladen. **Neu** schließt die Datei ab
+   und beginnt eine neue Session.
+4. **Ablauf-Übersicht**: schwebendes, durchscheinendes Fenster mit dem
+   Ablauf. Verschieben an der Kopfzeile, Größe an allen Rändern oder am
+   Griff unten rechts ändern, ⛶ passt die Ansicht ein, – klappt ein, ✕
+   schließt (über **Ablauf** in der Top-Leiste wieder öffnen). Karten
+   verschieben, per Doppelklick umbenennen, per Rechtsklick löschen,
+   verbinden oder Abzweigungen anlegen.
+5. **Abzweigung**: **⌃⌥D** fragt nach dem Namen des Pfads, setzt eine
+   Abzweigungs-Raute hinter den letzten Schritt, und die nächsten Klicks
+   landen im neuen Pfad. Weitere Pfade: Rechtsklick auf einen Schritt in
+   der Übersicht → „+ Neuer Pfad ab hier“.
+6. **Zoom-auf-Cursor**: **⌃⌥Z** oder **Zoom** in der Top-Leiste. Screenshots
+   zeigen dann nur den Bereich um den Mauszeiger.
+7. **Bestehenden Ablauf öffnen**: Menüleiste → **Ablauf öffnen …** (ohne
+   Aufnahme). **Nach draw.io exportieren …** erzeugt ein editierbares
+   draw.io-Diagramm.
+
+### Im Browser bearbeiten
+
+Die `.html`-Datei öffnet sich in jedem Browser (Safari, Firefox, Chrome …)
+und lässt sich dort bearbeiten. Solange DocuClick läuft, landen die
+Änderungen **direkt in der Datei**, ohne Dateiauswahl oder „Mit Datei
+verbinden“. Läuft DocuClick nicht, bleibt „Kopie herunterladen“. Details:
+[Windows-Anleitung](../windows/README.md#im-browser-bearbeiten-und-speichern).
+
+Ausführliche Beschreibung aller Funktionen (Abzweigungen, Anleitung/SOP-
+Ansicht, Fortsetzen an einem bestimmten Punkt, draw.io-Export): siehe
+[Windows-Anleitung](../windows/README.md#funktionsumfang). Die Funktionen
+sind auf dem Mac gleich, abgesehen von den folgenden Unterschieden.
+
+### Fehlersuche
+
+- **DocuClick fehlt in einer Berechtigungsliste**: Menüleiste →
+  **Berechtigungen …** öffnet die passende Einstellungsseite und fragt die
+  Berechtigung erneut an. Danach **Neu starten**.
+- **Screenshots zeigen nur den Hintergrund**: Bildschirmaufnahme ist nicht
+  erlaubt oder DocuClick wurde danach nicht neu gestartet.
+- **Log**: `~/Library/Logs/DocuClick/log.txt`.
+
 ## Unterschiede zu Windows
 
 - Bedienung über das Menüleisten-Symbol statt Tray-Icon; Top-Leiste und
