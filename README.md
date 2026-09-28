@@ -5,6 +5,13 @@ mit Markierung und einen Schritt in einem interaktiven **Ablauf**, einer
 eigenständigen `.html`-Datei, die sich in jedem Browser öffnen und bearbeiten
 lässt.
 
+![Ein aufgezeichneter Ablauf mit Abzweigung im Browser](docs/screenshots/ablauf.png)
+*Beispiel-Ablauf mit einer erfundenen Beispiel-App.*
+
+| Schritt-für-Schritt-Anleitung | Screenshot in voller Größe | Obsidian-Plugin mit eigenem Farbschema |
+|---|---|---|
+| ![Anleitung](docs/screenshots/anleitung.png) | ![Bildansicht](docs/screenshots/bildansicht.png) | ![Obsidian-Plugin, helles Farbschema](docs/screenshots/obsidian-hell.png) |
+
 Das Repository enthält drei eigenständige Teile mit jeweils eigener Version,
 eigenem Changelog, eigener CI und eigenen Releases:
 

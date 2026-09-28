@@ -70,6 +70,9 @@ Der Weg geht nur in diese Richtung: Die DocuClick-Apps öffnen keine
 
 ### Farben an das eigene Theme anpassen
 
+![Diagrammeditor mit hellem Farbschema](../docs/screenshots/obsidian-hell.png)
+*Beispiel-Ablauf mit hellem Hintergrund und violetter Detailfarbe.*
+
 **Einstellungen → Community-Plugins → DocuClick Diagrams** (Zahnrad):
 
 - **Farbschema**

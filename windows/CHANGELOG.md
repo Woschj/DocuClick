@@ -7,7 +7,7 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
-## [Unreleased]
+## [1.14.0] - 2026-09-28
 
 - **Speichern aus dem Browser ohne „Mit Datei verbinden“**: Ein im Browser
   geöffneter Ablauf speichert Änderungen direkt in seine eigene `.html`-Datei,

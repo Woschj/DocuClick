@@ -70,6 +70,9 @@ die Berechtigungen bei Updates erhalten.
 
 ### Im Browser bearbeiten
 
+![Ablauf im Browser](../docs/screenshots/ablauf.png)
+*Beispiel-Ablauf mit einer erfundenen Beispiel-App.*
+
 Die `.html`-Datei öffnet sich in jedem Browser (Safari, Firefox, Chrome …)
 und lässt sich dort bearbeiten. Solange DocuClick läuft, landen die
 Änderungen **direkt in der Datei**, ohne Dateiauswahl oder „Mit Datei

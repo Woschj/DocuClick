@@ -243,6 +243,9 @@ ausgeschlossen, tauchen also nie selbst im aufgenommenen Bild auf.
 
 ## Der Ablauf: interaktive HTML-Datei, draw.io als Export
 
+![Ablauf mit Abzweigung im Browser](../docs/screenshots/ablauf.png)
+*Beispiel-Ablauf mit einer erfundenen Beispiel-App.*
+
 Jeder Klick wird ein verbundener Knoten auf einer Fläche in einer
 einzigen, interaktiven `.html`-Datei — dem **Ablauf** (unterstützt
 Abzweigungen/Pfade, siehe [Abzweigungen im Ablauf](#abzweigungen-im-ablauf)).
@@ -332,6 +335,8 @@ einfach wieder aus der Datei ein, ohne dass ein separater Speicherzustand
 nötig wäre.
 
 ### Schritt-für-Schritt-Anleitung (SOP Guide)
+
+![Anleitung für einen einzelnen Pfad](../docs/screenshots/anleitung.png)
 
 Der **"Anleitung"**-Button in der Werkzeugleiste (App wie auch der
 exportierten/geöffneten `.html`-Datei im Browser — funktioniert identisch
