@@ -9,29 +9,40 @@ DocuClick-App. Erste Desktop-Version für Obsidian ab 1.5.
 
 ## Installation
 
-1. `python3 obsidian/build.py` im Repository ausführen (oder die ZIP aus einem
-   Release `obsidian-v…` verwenden).
-2. Aus `dist/obsidian-docuclick/docuclick-diagrams.zip` den Ordner
-   `docuclick-diagrams` nach `<Vault>/.obsidian/plugins/` kopieren.
-   Darin müssen `main.js`, `manifest.json` und `styles.css` liegen.
-3. Obsidian neu laden. Unter **Einstellungen → Community-Erweiterungen**
-   **DocuClick Diagrams** aktivieren.
+Das Plugin ist (noch) nicht im Community-Plugin-Verzeichnis von Obsidian;
+es wird von Hand installiert:
 
-Das Build benötigt nur Python 3; Cytoscape wird aus den vorhandenen lokalen
-WebAssets eingebunden. Es gibt keine CDN-Abhängigkeit. Das Plugin wird nicht
-automatisch in einen vorhandenen Vault installiert.
+1. Von der [Release-Seite](https://github.com/Woschj/DocuClick/releases) das
+   neueste Release **`obsidian-v…`** öffnen und `docuclick-diagrams.zip`
+   herunterladen.
+2. Entpacken und den Ordner `docuclick-diagrams` in den Plugin-Ordner des
+   Vaults kopieren: `<Vault>/.obsidian/plugins/docuclick-diagrams/`. Darin
+   müssen `main.js`, `manifest.json` und `styles.css` liegen. (`.obsidian`
+   ist ein versteckter Ordner: im Finder mit **⌘⇧.** einblenden, im
+   Windows-Explorer über **Ansicht → Ausgeblendete Elemente**.)
+3. Obsidian neu laden (oder **Einstellungen → Community-Plugins** →
+   Aktualisieren). Falls nötig zuerst den **eingeschränkten Modus**
+   ausschalten, dann **DocuClick Diagrams** aktivieren.
+
+Update: Ordnerinhalt durch die Dateien des neuen Releases ersetzen und
+Obsidian neu laden. Die `.docuclick`-Dateien im Vault bleiben unverändert.
+
+Selbst bauen statt Release: `python3 obsidian/build.py` im Repository
+ausführen (nur Python 3 nötig, keine Internetverbindung, Cytoscape kommt aus
+den lokalen WebAssets). Ergebnis: `dist/obsidian-docuclick/docuclick-diagrams/`
+bzw. die ZIP daneben.
 
 ## Benutzung
 
-Die zusätzliche Menüleiste über dem Diagramm ist seit 0.1.1 entfernt.
-Alle Diagrammfunktionen liegen in der bestehenden schwebenden Werkzeugleiste.
+Alle Funktionen liegen in der schwebenden Werkzeugleiste unten im
+Diagramm-Tab.
 
 - Ribbon-Symbol oder Befehl **DocuClick Diagrams: Neues Ablaufdiagramm**:
   Dateinamen eingeben, anschließend über **Element** Formen oder Bilder anlegen.
 - Eine `.docuclick`-Datei öffnet sich als Diagramm-Tab.
 - Knoten ziehen; Verbindungspunkte ziehen, um Knoten zu verbinden.
 - Rechtsklick auf Knoten, Verbindung oder Hintergrund öffnet die Bearbeitung.
-- **↶ / ↷**, `Strg+Z` / `Strg+Umschalt+Z` (Mac: `⌘`) machen Änderungen
+- **Zurück / Wiederholen**, `Strg+Z` / `Strg+Umschalt+Z` (Mac: `⌘`) machen Änderungen
   rückgängig bzw. wiederholen sie. Texteingaben behalten ihre eigene Historie.
 - Änderungen werden automatisch über die Obsidian-Vault-API gespeichert.
   `Strg+S` / `⌘S` wiederholt einen fehlgeschlagenen Speicherversuch.
@@ -46,6 +57,16 @@ Alle Diagrammfunktionen liegen in der bestehenden schwebenden Werkzeugleiste.
 Import und Export überschreiben keine vorhandenen Dateien. Gleichnamige Dateien
 erhalten eine laufende Nummer. Importierte HTML-Skripte werden nicht ausgeführt;
 nur die eingebetteten JSON-Daten und Rasterbilder werden übernommen.
+
+### DocuClick-Aufnahmen übernehmen
+
+Mit DocuClick für Windows oder macOS aufgenommene Abläufe (`.html`) lassen
+sich importieren: HTML-Datei in den Vault legen → Rechtsklick → **Als
+DocuClick-Diagramm importieren** (oder Befehl **DocuClick-HTML importieren**
+für eine Datei außerhalb des Vaults). Es entsteht eine neue `.docuclick`-
+Datei mit allen Schritten und Screenshots; die HTML-Datei bleibt unverändert.
+Der Weg geht nur in diese Richtung: Die DocuClick-Apps öffnen keine
+`.docuclick`-Dateien. Zum Weitergeben dient die **HTML-Ansicht**.
 
 ## Speicherung und Konflikte
 
