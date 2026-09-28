@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Never change the bundle identifier: macOS ties the granted
+       permissions to it (together with the signing certificate). -->
+  <key>CFBundleIdentifier</key><string>de.klann.docuclick</string>
+  <key>CFBundleName</key><string>DocuClick</string>
+  <key>CFBundleDisplayName</key><string>DocuClick</string>
+  <key>CFBundleExecutable</key><string>DocuClick</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>__VERSION__</string>
+  <key>CFBundleVersion</key><string>__BUILD__</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <!-- Menu-bar app: no Dock icon, no app menu. -->
+  <key>LSUIElement</key><true/>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSAccessibilityUsageDescription</key>
+  <string>DocuClick liest die Bezeichnung des angeklickten Elements für den Beschreibungstext.</string>
+  <key>NSHumanReadableCopyright</key><string>DocuClick</string>
+</dict>
+</plist>

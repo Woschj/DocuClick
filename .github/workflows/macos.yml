@@ -1,0 +1,91 @@
+name: macOS
+
+# macOS app (macos/) with the shared core (core/). Releases: tags macos-v*
+# (e.g. macos-v0.1.0), independent of the Windows versions. Pull requests
+# only run it when they touch these areas.
+#
+# Signed with the self-signed "DocuClick Signing" identity (macos/packaging/
+# create-signing-identity.sh) — no paid Apple Developer ID. Needs the
+# repository secrets MAC_SIGN_P12 (base64 of DocuClick-Signing.p12) and
+# MAC_SIGN_P12_PASSWORD; without them only the tests run.
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'macos-v*' ]
+  pull_request:
+    branches: [ main ]
+    paths: [ 'macos/**', 'core/**', 'global.json', '.github/workflows/macos.yml' ]
+
+jobs:
+  build:
+    runs-on: macos-15
+    env:
+      HAS_MAC_SIGNING: ${{ secrets.MAC_SIGN_P12 != '' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Test
+        run: dotnet test --project core/DocuClick.Core.Tests --configuration Release
+
+      # Also builds the Swift library (macos/DocuClickMacNative).
+      - name: Build
+        run: dotnet build macos/DocuClick.Mac/DocuClick.Mac.csproj --configuration Release
+
+      - name: Import signing identity
+        id: signing
+        if: env.HAS_MAC_SIGNING == 'true'
+        env:
+          MAC_SIGN_P12: ${{ secrets.MAC_SIGN_P12 }}
+          MAC_SIGN_P12_PASSWORD: ${{ secrets.MAC_SIGN_P12_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/docuclick-signing.keychain-db"
+          echo "$MAC_SIGN_P12" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security create-keychain -p "$MAC_SIGN_P12_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings "$KEYCHAIN"
+          security unlock-keychain -p "$MAC_SIGN_P12_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/signing.p12" -k "$KEYCHAIN" -P "$MAC_SIGN_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$MAC_SIGN_P12_PASSWORD" "$KEYCHAIN" >/dev/null
+          rm "$RUNNER_TEMP/signing.p12"
+          echo "keychain=$KEYCHAIN" >> "$GITHUB_OUTPUT"
+
+      - name: Build DocuClick.app
+        if: steps.signing.outputs.keychain != ''
+        env:
+          MAC_SIGN_KEYCHAIN: ${{ steps.signing.outputs.keychain }}
+          MAC_SIGN_KEYCHAIN_PASSWORD: ${{ secrets.MAC_SIGN_P12_PASSWORD }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/macos-v* ]]; then
+            macos/packaging/build-app.sh "${GITHUB_REF_NAME#macos-v}"
+          else
+            macos/packaging/build-app.sh
+          fi
+
+      - name: Upload build artifact
+        if: steps.signing.outputs.keychain != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: DocuClick-macos-arm64
+          path: dist/DocuClick-macos-arm64.zip
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/macos-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: DocuClick-macos-arm64
+          path: publish
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          name: DocuClick für macOS ${{ github.ref_name }}
+          files: publish/DocuClick-macos-arm64.zip
+          generate_release_notes: true
