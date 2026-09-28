@@ -1,0 +1,89 @@
+name: Windows
+
+# Windows app (windows/) with the shared core (core/). Releases: tags v*
+# (e.g. v1.14.0) — the historic tag scheme of the Windows app. Pull
+# requests only run it when they touch these areas (a path filter on push
+# would also swallow tag pushes).
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+    paths: [ 'windows/**', 'core/**', 'OutputTemplate/**', 'global.json', '.github/workflows/windows.yml' ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build windows/DocuClick/DocuClick.csproj --configuration Release
+
+      - name: Test
+        run: dotnet test --project core/DocuClick.Core.Tests --configuration Release
+
+      # Self-contained (non-single-file) build: runs on a bare Windows
+      # machine without a separate .NET runtime install. Single-file
+      # publish is deliberately avoided here — its self-extracting temp
+      # unpacking at startup is a common false-positive trigger for
+      # Windows Defender's ML heuristics (e.g. Wacatac.B!ml) on unsigned
+      # binaries.
+      - name: Publish
+        run: >
+          dotnet publish windows/DocuClick/DocuClick.csproj
+          -c Release -r win-x64 --self-contained true
+          -o publish
+
+      - name: Zip publish output
+        run: Compress-Archive -Path publish/* -DestinationPath DocuClick-win-x64.zip
+        shell: pwsh
+
+      # Separate zip (not merged into the app's own zip) so the app
+      # payload stays just the exe/DLLs — this is a blank output folder
+      # to copy out and use, not part of the program.
+      - name: Zip output template
+        run: Compress-Archive -Path OutputTemplate/* -DestinationPath OutputTemplate.zip
+        shell: pwsh
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: DocuClick-win-x64
+          path: DocuClick-win-x64.zip
+
+      - name: Upload output template artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: OutputTemplate
+          path: OutputTemplate.zip
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: DocuClick-win-x64
+          path: publish
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: OutputTemplate
+          path: publish
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: |
+            publish/DocuClick-win-x64.zip
+            publish/OutputTemplate.zip
+          generate_release_notes: true

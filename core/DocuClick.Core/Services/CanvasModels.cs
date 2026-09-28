@@ -1,0 +1,74 @@
+using System.Text.Json.Serialization;
+
+namespace DocuClick.Services;
+
+public sealed class CanvasNode
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = "";
+    [JsonPropertyName("type")] public string Type { get; set; } = "text";
+    [JsonPropertyName("text")] public string? Text { get; set; }
+    // Vault-relative path for type="file" nodes — Obsidian Canvas's native
+    // embed mechanism. Third-party tools that read/export .canvas files
+    // generally honor this documented field but don't replicate Obsidian's
+    // own "![[wikilink]]" resolution inside a text node's markdown, which
+    // is why images went missing on export before this was added.
+    [JsonPropertyName("file")] public string? File { get; set; }
+    [JsonPropertyName("x")] public double X { get; set; }
+    [JsonPropertyName("y")] public double Y { get; set; }
+    [JsonPropertyName("width")] public double Width { get; set; }
+    [JsonPropertyName("height")] public double Height { get; set; }
+    [JsonPropertyName("color")] public string? Color { get; set; }
+    [JsonPropertyName("shape")] public string? Shape { get; set; }
+    // type="group" only — the title bar Obsidian draws above the group's
+    // border. Left null (Canvas then omits any title bar at all) since the
+    // content text node sitting right below already names the card.
+    [JsonPropertyName("label")] public string? Label { get; set; }
+}
+
+public sealed class CanvasEdge
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = "";
+    [JsonPropertyName("fromNode")] public string FromNode { get; set; } = "";
+    [JsonPropertyName("toNode")] public string ToNode { get; set; } = "";
+    // Vertical flow: main line connects bottom-to-top by default.
+    [JsonPropertyName("fromSide")] public string FromSide { get; set; } = "bottom";
+    [JsonPropertyName("toSide")] public string ToSide { get; set; } = "top";
+    // Set only on edges added via ConnectNodes (the manual cross-connect
+    // gesture) — DeleteNode must never treat one of these as turning its
+    // source into a branching/fork node the way a second *structural*
+    // outgoing edge does, or deleting an ordinary node that happens to
+    // have an unrelated manual connection cascades into whatever that
+    // connection pointed at, deleting a whole separate part of the flow
+    // (confirmed as a real bug: see CanvasFlowWriter.DeleteNode). Omitted
+    // from the JSON entirely for the (vast majority) non-manual edges, so
+    // existing files/other tools reading this format see no difference.
+    [JsonPropertyName("docuClickManual")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Manual { get; set; }
+
+    [JsonPropertyName("color")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Color { get; set; }
+
+    [JsonPropertyName("lineStyle")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LineStyle { get; set; }
+}
+
+/// <summary>Mirrors the plain-JSON shape of an Obsidian .canvas file.</summary>
+public sealed class CanvasDocument
+{
+    [JsonPropertyName("nodes")] public List<CanvasNode> Nodes { get; set; } = new();
+    [JsonPropertyName("edges")] public List<CanvasEdge> Edges { get; set; } = new();
+
+    /// <summary>
+    /// Per-file secret that authorizes saving this file through DocuClick's
+    /// local save service (see <see cref="LocalSaveService"/>): the page
+    /// opened in a browser reads it from its own embedded data, a website
+    /// on the internet can't — so only someone who can already read the
+    /// file can have DocuClick write it. Created on the first save.
+    /// </summary>
+    [JsonPropertyName("docuClickSaveToken")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SaveToken { get; set; }
+}

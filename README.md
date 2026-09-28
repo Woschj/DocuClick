@@ -1,489 +1,76 @@
 # DocuClick
 
-Windows-Screenshot-Tool, das bei jedem Mausklick (optional auch bei
-Rechtsklick und Enter) automatisch einen Screenshot mit Klick-Markierung
-erstellt und samt Beschreibungstext als verbundenen Knoten in eine
-einzelne, interaktive `.html`-Datei schreibt — der **Ablauf**. Die Datei
-öffnet sich direkt in jedem Browser und lässt sich in DocuClicks eigener
-Ablauf-Übersicht bearbeiten, ganz ohne zusätzliche Software. Aus einer
-solchen Ablauf-Session lässt sich jederzeit zusätzlich ein voll
-editierbares draw.io-Flowchart exportieren. Details zum Aufnahme-Format
-und den Exporten weiter unten.
+Klick-Dokumentation per Screenshot: Jeder Mausklick erzeugt einen Screenshot
+mit Markierung und einen Schritt in einem interaktiven **Ablauf**, einer
+eigenständigen `.html`-Datei, die sich in jedem Browser öffnen und bearbeiten
+lässt.
 
-App-Icon: [Assets/app.ico](src/DocuClick/Assets/app.ico) (im selben
-Rot-auf-Dunkel-Stil wie das Tray-Icon).
+Das Repository enthält drei eigenständige Teile mit jeweils eigener Version,
+eigenem Changelog, eigener CI und eigenen Releases:
+
+| Bereich | Ordner | Release-Tags | Changelog |
+|---|---|---|---|
+| **DocuClick für Windows** (WPF) | [windows/](windows/README.md) | `v*` (z. B. `v1.14.0`) | [windows/CHANGELOG.md](windows/CHANGELOG.md) |
+| **DocuClick für macOS** (Avalonia + Swift) | [macos/](macos/README.md) | `macos-v*` | [macos/CHANGELOG.md](macos/CHANGELOG.md) |
+| **DocuClick Diagrams für Obsidian** (Plugin, ohne Screenshot-Aufnahme) | [obsidian/](obsidian/README.md) | `obsidian-v*` | [obsidian/CHANGELOG.md](obsidian/CHANGELOG.md) |
+
+Gemeinsam genutzt:
+
+- [core/](core/README.md): plattformunabhängiger Kern beider Apps
+  (Speicherformat, Ablauf-Editor, Session-Logik) mit Tests. Das Plugin
+  bündelt daraus die HTML-Vorlage, damit alle drei dasselbe Format sprechen.
+- [OutputTemplate/](OutputTemplate/README.md): leere Ordnerstruktur für einen
+  Dokumentations-Vault.
+
+Downloads: [Releases](https://github.com/Woschj/DocuClick/releases).
 
 ## Installation
 
-Fertige `.exe` von den [Releases](../../releases) herunterladen
-(`DocuClick-win-x64.zip`), entpacken und `DocuClick.exe` starten —
-self-contained, kein separat installiertes .NET nötig.
+Alle Downloads auf der [Release-Seite](https://github.com/Woschj/DocuClick/releases);
+jeder Teil hat eigene Releases (am Tag erkennbar).
 
-> **SmartScreen-Warnung beim ersten Start:** Die `.exe` ist aktuell nicht
-> code-signiert, daher zeigt Windows SmartScreen eine Warnung ("Windows
-> hat den Start dieser App verhindert" o. Ä.) — normal für unsignierte,
-> neue Software, keine Fehlfunktion. Wegklicken über "Weitere
-> Informationen" → "Trotzdem ausführen".
+**Windows** (Release `v…`): `DocuClick-win-x64.zip` entpacken und
+`DocuClick.exe` starten. Kein .NET nötig. Bei der SmartScreen-Warnung
+„Weitere Informationen → Trotzdem ausführen“. DocuClick läuft danach als
+Tray-Icon. → [Anleitung](windows/README.md)
 
-Nach dem Start läuft DocuClick als Tray-Icon im Infobereich der
-Taskleiste — kein sichtbares Fenster, siehe [Funktionsumfang](#funktionsumfang)
-für die Bedienung.
+**macOS** (Release `macos-v…`, Apple Silicon, ab macOS 14):
+`DocuClick-macos-arm64.zip` entpacken, `DocuClick.app` nach **Programme**
+ziehen, öffnen und einmalig unter **Systemeinstellungen → Datenschutz &
+Sicherheit → „Trotzdem öffnen“** freigeben. Danach Bedienungshilfen,
+Eingabeüberwachung und Bildschirmaufnahme erlauben. DocuClick läuft als
+Symbol in der Menüleiste. → [Anleitung](macos/README.md)
 
-## Speicherort
+**Obsidian** (Release `obsidian-v…`, Desktop): `docuclick-diagrams.zip`
+entpacken, den Ordner `docuclick-diagrams` nach
+`<Vault>/.obsidian/plugins/` kopieren, Obsidian neu laden und unter
+**Einstellungen → Community-Plugins** „DocuClick Diagrams“ aktivieren.
+→ [Anleitung](obsidian/README.md)
 
-Jede Session ist eine eigenständige `.html`-Datei mit einem
-`Attachments`-Unterordner direkt daneben — DocuClick verlangt keinen
-vorher festgelegten, global konfigurierten Ausgabeordner mehr. Beim
-Anlegen einer neuen Session wird der Speicherort frei über einen
-Ordner-Dialog gewählt (siehe [Zieldatei bei jedem
-Session-Start](#start-vs-neue-session-zieldatei)) — ein beliebiger Ordner
-reicht, DocuClick merkt sich zuletzt verwendete Ordner nur als Vorschlag
-für den nächsten Dialog, nicht als feste Vorgabe.
+## Nutzung in Kürze
 
-Für eine vorbereitete Ordnerstruktur mit Vorlage siehe [Ausgabeordner-Vorlage
-für Prozessdokumentation](#ausgabeordner-vorlage-für-prozessdokumentation)
-weiter unten — praktisch für eine Knowledge Base, aber kein Pflichtschritt.
+1. **Aufnehmen** (Windows/macOS): Aufnahme starten (Top-Leiste, Tray-/
+   Menüleisten-Symbol oder Tastenkürzel), Speicherort wählen und ganz normal
+   klicken. Jeder Klick wird ein Schritt mit Screenshot.
+2. **Nachbearbeiten**: in der Ablauf-Übersicht der App oder direkt im
+   Browser. Solange DocuClick läuft, speichert der Browser Änderungen direkt
+   in die `.html`-Datei.
+3. **Weitergeben**: Die `.html`-Datei ist eigenständig (Screenshots
+   eingebettet) und öffnet sich in jedem Browser. Optional als draw.io-
+   Diagramm exportieren.
+4. **Ohne Aufnahme** (Obsidian): Abläufe im Vault anlegen oder
+   DocuClick-HTML importieren, bearbeiten und als HTML-Ansicht weitergeben.
 
-Danach läuft die Aufnahme unabhängig von jedem anderen Programm — die App
-muss beim Aufzeichnen nicht mal geöffnet sein, DocuClick schreibt direkt in
-die Datei; DocuClicks eigene Ablauf-Übersicht zeigt den aktuellen Stand
-ohnehin live an.
-
-Alltags-Workflow:
-
-- Beim Start einer neuen Aufnahme fragt DocuClick nach Speicherort und
-  Dateiname (siehe [Zieldatei bei jedem
-  Session-Start](#start-vs-neue-session-zieldatei)) — jede Session landet
-  in ihrem eigenen, frei gewählten Ordner statt in einer gemeinsamen
-  Ordnerstruktur.
-- Für länger geplante Abläufe lohnt es sich, vorher eine Vorlage aus
-  `02 Vorlagen/` (siehe unten) zu kopieren und mit Titel/Zweck auszufüllen,
-  dann beim Session-Start "Bestehende Datei fortsetzen" wählen.
-- Verzweigt sich ein Ablauf (z. B. Fehlerfall vs. Erfolgsfall), über die
-  Ablauf-Übersicht einen Abzweigungspunkt setzen und benannte Pfade
-  anlegen (siehe [Abzweigungen im Ablauf](#abzweigungen-im-ablauf)).
-
-## Funktionsumfang
-
-Tray-Icon-Bedienung: **Linksklick öffnet die Einstellungen** (ein versehentlicher
-Klick darf nie ungefragt eine Aufnahme starten), **Rechtsklick öffnet das
-Kontextmenü** mit "Aufnahme starten/stoppen" — oder einfach den Start/Stop-Hotkey
-verwenden (Standard `Strg+Alt+R`).
-
-Solange die Aufnahme aktiv ist, löst jeder Links- **und Rechtsklick** aus
-(Rechtsklick-Erfassung abschaltbar in den Einstellungen, Standard: an;
-die Beschreibung unterscheidet "Linksklick auf ..." von "Rechtsklick
-auf ..."):
-
-1. UI-Automation-Lookup des Elements unter dem Cursor (abschaltbar in den
-   Einstellungen) inkl. Fallback auf Fenstertitel + Zeitstempel. Erkennt UI
-   Automation dabei ein Passwortfeld, wird die Erfassung komplett
-   übersprungen (kein Screenshot, kein Eintrag) — der einzige Fall, den die
-   App automatisch erkennen kann; für alles andere Sensible gibt es die
-   manuelle Skip-Taste (siehe [Klicks überspringen](#klicks-überspringen)).
-2. Screenshot **nur des Fensters, in dem geklickt wurde** (nicht des ganzen
-   Monitors) — ermittelt über das Fenster unter der Klickposition
-3. Markierung: Bounding-Box des Elements, falls vorhanden und deutlich
-   kleiner als das Fenster, sonst roter Kreis um die Klickposition (ein zu
-   großes UIA-Bounding-Rect — z. B. wenn die Automation die Fensterfläche
-   selbst zurückgibt — fällt automatisch auf den Kreis zurück, damit nicht
-   ganze Fenster rot eingerahmt werden)
-4. Speichern des Bilds im `Attachments`-Unterordner direkt neben der
-   Zieldatei (in einem weiteren Unterordner benannt nach der Zieldatei,
-   z. B. `Attachments/Onboarding-Flow/073934_321.png`, statt alles flach
-   zu sammeln) und Anhängen von Beschreibung + Screenshot als neuem,
-   verbundenem Knoten in der `.html`-Datei (siehe unten)
-
-Klicks auf DocuClicks eigene Fenster (Top-Leiste, Ablauf-Übersicht,
-Session-Start, Einstellungen, ...) sowie auf das Tray-Icon selbst zählen
-nie als Aufnahme — automatisch erkannt und gefiltert.
-
-Konfiguration über das Tray-Menü ("Einstellungen...") oder direkt in
-`%APPDATA%/DocuClick/config.json`.
-
-### Start vs. "Neue Session": Zieldatei
-
-**Start** (Tray-Menü, Start/Stop-Hotkey, Top-Leiste) setzt die zuletzt
-verwendete Aufnahme direkt fort — ohne Rückfrage. **Neue Session**
-(Top-Leiste) fragt dagegen immer nach der Zieldatei, egal ob gerade
-aufgezeichnet wird oder nicht — sie ist der einzige Weg, um bewusst zu
-einer anderen bzw. neuen Datei zu wechseln:
-
-- **Neue Datei anlegen**: Speicherort per **"Durchsuchen..."** frei wählen
-  (Vorschlag beim Öffnen: der zuletzt verwendete Ordner) — der native
-  Ordner-Dialog erlaubt auch direkt "Neuer Ordner". Ein Dateiname wird
-  automatisch vorgeschlagen (**Ordnername + Datum + laufende Nummer**,
-  z. B. `IT-Support 2026-08-04 (1)`, statt eines generischen
-  "Screenshots"), lässt sich aber frei überschreiben (Endung immer
-  `.html`). Die laufende Nummer verhindert, dass ein zweiter Klick auf
-  "Neue Session" am selben Tag versehentlich eine bestehende Datei
-  überschreibt. Die `.html`-Datei und ihr `Attachments`-Unterordner landen
-  direkt in diesem einen gewählten Ordner.
-- **Bestehende Datei fortsetzen**: Datei per **"Durchsuchen..."**
-  auswählen (ein normaler Datei-Öffnen-Dialog, gefiltert auf
-  `.html`/`.canvas`). Neue Klicks werden an diese Datei angehängt, ab dem
-  bisherigen Cursor-Stand (siehe Abzweigungs-Logik unten).
-
-Der Dialog erscheint außerdem beim allerersten "Start" nach Installation
-(noch keine Datei zum Fortsetzen vorhanden). Wird der Dialog abgebrochen,
-bleibt die Aufnahme aus (bzw. bei "Neue Session" während einer laufenden
-Aufnahme: die laufende Session bleibt unverändert bestehen).
-
-### Ausgabeordner-Vorlage für Prozessdokumentation
-
-[OutputTemplate/](OutputTemplate/) enthält eine leere, für DocuClick
-vorbereitete Ordnerstruktur (Zielordner, Attachments-Unterordner,
-Blanko-Vorlage für Abläufe) als Startpunkt für eine Knowledge Base.
-**Vor echter Nutzung außerhalb dieses Repos kopieren** — siehe
-[OutputTemplate/README.md](OutputTemplate/README.md) für Details und den
-Grund dafür (Screenshots landen sonst im öffentlichen Git-Verlauf).
-
-### Top-Leiste, Ablauf-Übersicht und "Neue Session"
-
-Eine kleine, mittig oben schwebende Pille (wie die TeamViewer-Session-Leiste
-— nicht bildschirmbreit, sonst würde sie Fenster ziehen/Menüs/Snap-Zonen
-blockieren) ist sichtbar, solange die App läuft, und zeigt auf einen Blick
-den Aufnahmestatus. Frei verschiebbar per Ziehen an der Kopfzeile. Sie
-enthält folgende Bereiche:
-
-- **Aufnahme / Stopp / Fortsetzen**: entspricht dem Tray-Menüpunkt bzw. dem
-  Start/Stop-Hotkey. Wichtig: Ein Klick auf "Stopp" während der Aufnahme
-  **pausiert** sie tatsächlich nur (Button wird zu orangem "Fortsetzen") —
-  Zieldatei, geladener Ablauf und Cursor-Position bleiben erhalten, damit
-  sich direkt im pausierten Zustand gefahrlos im Canvas weiterbearbeiten
-  lässt (siehe unten). Ein echtes Beenden der Session (Zieldatei wird
-  vergessen) passiert nur über "Neue Session".
-- **Übersicht**: öffnet die Ablauf-Übersicht wieder, falls sie über ihr
-  eigenes ✕ geschlossen wurde (siehe unten).
-- **Neue Session**: immer klickbar, fragt **immer** nach der Zieldatei
-  (anders als Start). Läuft gerade keine Aufnahme, startet sie damit neu.
-  Läuft eine Aufnahme, schließt es die aktuelle Datei ab und startet
-  direkt danach die neue (siehe vorheriger Abschnitt).
-- **Zoom: Aus/An** plus Radius-Schieberegler: schaltet "Zoom-auf-Cursor" um
-  (entspricht dem gleichnamigen Hotkey, siehe unten) — bei "An" erfassen
-  die nächsten Screenshots nur den Bereich um den Mauszeiger statt des
-  ganzen Fensters, direkt hier pro Screenshot umschaltbar statt nur global
-  über die Einstellungen; der Regler passt die Größe dieses Bereichs live
-  an (mit Vorschau-Rahmen um den Cursor).
-- **Ordner**: öffnet den Ordner der aktuellen Session (bzw. den zuletzt
-  verwendeten, falls gerade nichts geladen ist) im Explorer.
-
-Zusätzlich öffnet sich automatisch die
-**Ablauf-Übersicht** — ein frei verschiebbares, größenveränderliches
-Panel mit einer Miniaturkarte des gesamten Ablaufs (per Maus frei
-zoom-/schwenkbar): der aktuelle Knoten ist rot hervorgehoben und trägt ein
-gelbes, leicht pulsierendes "Nächster Klick hier ▶"-Schild, jeder Pfad
-bekommt seine eigene Farbe aus einer festen Palette. Im großen
-Editier-Fenster sitzt oben zusätzlich eine eigene Werkzeugleiste
-(Schrittzähler, Suchfeld zum Hervorheben/Ausgrauen von Knoten nach
-Text, "+ Element"-Button, Zoom-Buttons). Darüber/darin lässt sich der
-Ablauf direkt bearbeiten:
-
-- **Klick auf die Beschriftung eines Knotens**: öffnet sofort ein
-  mehrzeiliges Textfeld direkt an der Karte — <kbd>Shift</kbd>+<kbd>Enter</kbd>
-  fügt einen Zeilenumbruch ein, <kbd>Enter</kbd> oder ein Klick daneben
-  speichert. **Doppelklick auf den ganzen Knoten** öffnet stattdessen den
-  klassischen Umbenennen-Dialog (auch dieser jetzt mehrzeilig,
-  <kbd>Strg</kbd>+<kbd>Enter</kbd> zum Bestätigen).
-- **Rechtsklick auf einen Knoten**: Kontextmenü mit "→ Weiter" (Aufnahme
-  dorthin springen), "+ Neuer Pfad ab hier" (neuen benannten Pfad
-  abzweigen), allen bereits vorhandenen Pfaden ab diesem Punkt,
-  "Umbenennen" und "Löschen" (löscht bei mehreren abzweigenden Pfaden
-  nach Rückfrage den gesamten nachfolgenden Ast).
-- **Verbinden per Ziehpunkt**: jede Karte zeigt beim Herannähern des
-  Mauszeigers vier kleine Ziehpunkte (oben/rechts/unten/links) — von einem
-  davon auf eine andere Karte ziehen erstellt eine manuelle Querverbindung
-  (großzügiger Einrast-Radius, fühlt sich an wie in draw.io/Visio). Rein
-  additiv (verändert nichts an der bestehenden Struktur), standardmäßig
-  durchgezogen und in der Akzentfarbe des Ausgangsknotens statt gestrichelt
-  grau. Per Rechtsklick auf die Verbindungslinie öffnet sich ein Menü mit
-  9 Akzentfarben, "Linienstil: Durchgezogen/Gestrichelt" zum Umschalten,
-  "⇄ Richtung umkehren" und "Verbindung löschen" — Farbe/Linienstil bleiben
-  dauerhaft in der Datei gespeichert. Löschen geht auch per <kbd>Entf</kbd>/
-  <kbd>Rücktaste</kbd> bei ausgewählter Verbindung — das gilt für **jede**
-  Verbindung, nicht nur manuell hinzugefügte: auch eine strukturelle Kante
-  aus der eigentlichen Aufnahme lässt sich so auftrennen (der abgetrennte
-  Knoten wird dadurch zu einer neuen, eigenständigen Wurzel im Baum statt
-  gelöscht zu werden), nur die Kanten rund um Abzweigungspunkte/Pfad-Anfänge
-  bleiben geschützt.
-- **Rechtsklick auf die leere Fläche** oder der **"+ Element"-Button** in
-  der Werkzeugleiste (nur im großen Editier-Fenster): fügt eines von sechs
-  Flowchart-Elementen an dieser Stelle ein — 🟢 Start/Ende, 🟦 Prozessschritt,
-  🔶 Entscheidung (Raute), 🔷 Eingabe/Ausgabe (Parallelogramm), 📑 Dokument,
-  📝 Notiz — jeweils mit eigener Akzentfarbe. Ganz ohne Screenshot und ohne
-  Verbindungen angelegt, danach ganz normal umbenennbar, verschiebbar und
-  verbindbar wie jeder aufgezeichnete Knoten auch; erscheinen auch im
-  draw.io-Export als passende Vektorform.
-- **"📷 Bild einfügen..."** im selben Rechtsklick-Menü: fügt statt eines
-  leeren Flowchart-Elements einen Schritt mit einem selbst gewählten
-  Bild ein (öffnet einen Datei-Dialog für PNG/JPG/JPEG/WEBP/BMP) — nützlich
-  für Screenshots, die nicht live mit DocuClick aufgenommen wurden, oder
-  Diagramme/Fotos, die einen Schritt illustrieren sollen.
-- **Umschalt+Ziehen** wählt mehrere Knoten per Rahmen aus — Ziehen an
-  irgendeiner der ausgewählten Karten verschiebt danach alle gemeinsam.
-  <kbd>Entf</kbd>/<kbd>Rücktaste</kbd> löscht die Auswahl (Knoten wie
-  Verbindungen) gesammelt.
-
-Ein Klick auf einen Knoten in der Ablauf-Übersicht springt sofort dorthin
-— egal ob gerade aufgezeichnet wird oder die Session nur **pausiert** ist
-(siehe [Ablauf nachträglich
-fortsetzen](#ablauf-nachträglich-fortsetzen-an-einem-bestimmten-punkt-statt-am-dateiende)):
-der nächste Klick knüpft danach genau dort an, statt am Dateiende.
-
-Anders als die Ablauf-Übersicht ist die Top-Leiste **nicht**
-klick-durchlässig, da sie echte Buttons hostet — deshalb ist sie bewusst
-content-groß statt bildschirmbreit. Klicks auf die Top-Leiste, die
-Ablauf-Übersicht oder auf das Tray-Icon selbst werden nie als Aufnahme
-gewertet (kein Screenshot, kein Eintrag) — die App erkennt und filtert
-das automatisch, und beide Fenster werden aktiv aus Screenshots
-ausgeschlossen, tauchen also nie selbst im aufgenommenen Bild auf.
-
-## Der Ablauf: interaktive HTML-Datei, draw.io als Export
-
-Jeder Klick wird ein verbundener Knoten auf einer Fläche in einer
-einzigen, interaktiven `.html`-Datei — dem **Ablauf** (unterstützt
-Abzweigungen/Pfade, siehe [Abzweigungen im Ablauf](#abzweigungen-im-ablauf)).
-Die Datei ist sofort in jedem Browser lesbar (Diagramm frei
-zoom-/schwenkbar, Klick auf eine Karte zeigt den Screenshot in voller
-Größe) — Bearbeiten (umbenennen, löschen, verbinden, springen) geht über
-das Tray-Menü **"Ablauf öffnen..."**, das die Datei in DocuClicks eigener
-Ablauf-Übersicht aufmacht, ganz ohne laufende Aufnahme. Screenshots werden
-zusätzlich im Attachments-Ordner als eigene Dateien gesichert, aber direkt
-als Base64 in die `.html`-Datei eingebettet — die Datei ist dadurch von
-Anfang an vollständig eigenständig (kein separater Export nötig) und lässt
-sich direkt weitergeben.
-
-Aus einer bestehenden Ablauf-Session lässt sich über das Tray-Menü zusätzlich
-ein Export erzeugen:
-
-- **"Nach draw.io exportieren..."**: ein voll editierbares
-  draw.io-Flowchart — nicht als eigener Aufnahme-Modus (frühere Versionen
-  schrieben draw.io live mit; das wurde durch diesen Ein-Schritt-Export
-  ersetzt, da das Neuschreiben der kompletten XML-Datei bei jedem
-  einzelnen Klick mit wachsender Sitzungslänge spürbar langsamer wurde).
-  Baut ein echtes Flussdiagramm: jeder Klick wird eine "Karte"
-  (abgerundeter Rahmen mit Schatten, nummeriertes Badge, Beschriftung und
-  Screenshot als eine zusammen verschiebbare Einheit), jeder Pfad bekommt
-  eine eigene Akzentfarbe (Rahmen, Nummer-Badge und Pfeile),
-  Abzweigungspunkte werden als Raute markiert, manuelle Querverbindungen
-  als graue Linie. Manuell per "+ Element" eingefügte Flowchart-Elemente
-  (siehe oben) landen jeweils als passende native draw.io-Vektorform
-  (Ellipse, Raute, Parallelogramm, Dokument-/Notiz-Symbol) mit ihrer
-  eigenen Akzentfarbe. Screenshots werden direkt als Base64 eingebettet und im
-  Kartenlayout klein dargestellt — **einfach mit der Maus über den
-  Screenshot fahren**, um ihn sofort deutlich größer als Vorschau angezeigt
-  zu bekommen (kein Klick nötig); für die volle Original-Auflösung
-  zusätzlich auf das kleine Link-Symbol klicken, das draw.io beim
-  Überfahren am Rand der Karte einblendet (öffnet in einem neuen Tab).
-  Öffnet in der kostenlosen
-  [draw.io-/diagrams.net-App](https://www.drawio.com/) (Desktop, Web oder
-  VS-Code-Extension), lässt sich von dort aus auch nach Visio (`.vsdx`)
-  exportieren.
-
-### Abzweigungen im Ablauf
-
-Ein Ablauf verzweigt sich in der Realität oft (z. B. Fehlerfall vs.
-Erfolgsfall) — das lässt sich direkt abbilden:
-
-- **Abzweigungspunkt setzen** (Hotkey, Standard `F9`): fragt sofort nach
-  dem Namen des ersten Pfads (z. B. "Login-Fehler") und legt eine kleine,
-  sichtbare **"◆ Abzweigung"**-Raute an, verbunden mit dem zuletzt
-  aufgezeichneten Knoten, plus direkt den ersten benannten Pfad als eigene
-  Spalte — der nächste Klick knüpft dort an. Es gibt bewusst keine
-  unbenannte "einfach weiter"-Fortsetzung: jeder von einer Abzweigung
-  ausgehende Pfad ist von Anfang an ein echtes, benanntes, in der
-  Ablauf-Übersicht auswählbares Objekt.
-- **Weitere Pfade**: über die Ablauf-Übersicht (Rechtsklick auf die Raute
-  oder einen beliebigen anderen Knoten → "+ Neuer Pfad ab hier") lassen
-  sich jederzeit zusätzliche benannte Pfade abzweigen — nicht nur von
-  einer Abzweigungs-Raute aus, sondern von jedem beliebigen bereits
-  aufgezeichneten Knoten.
-- **Einen Pfad fortsetzen**: Rechtsklick auf den Ursprungsknoten in der
-  Ablauf-Übersicht zeigt alle davon abzweigenden Pfade zur Auswahl — die
-  Aufnahme knüpft dann genau dort an, wo dieser Pfad zuletzt endete, egal
-  wie viele andere Klicks zwischenzeitlich aufgezeichnet wurden.
-
-Da Pfade und Abzweigungspunkte als echte, sichtbare Knoten in der Datei
-stehen, übersteht die Struktur auch ein Stoppen und erneutes Starten der
-Aufnahme (auf derselben Datei) — DocuClick liest sie beim nächsten Start
-einfach wieder aus der Datei ein, ohne dass ein separater Speicherzustand
-nötig wäre.
-
-### Schritt-für-Schritt-Anleitung (SOP Guide)
-
-Der **"Anleitung"**-Button in der Werkzeugleiste (App wie auch der
-exportierten/geöffneten `.html`-Datei im Browser — funktioniert identisch
-ohne laufende DocuClick-Instanz) blendet eine Seitenleiste ein, die den
-Ablauf als lineare, lesbare Schritt-für-Schritt-Anleitung statt als
-Diagramm aufbereitet:
-
-- **Pfad-Filter** (Dropdown oben): "🌐 Gesamter Ablauf" zeigt alle
-  Schritte; ein einzelner Pfad zeigt nur dessen Schritte und hebt sie im
-  Diagramm hervor (`path-highlighted`), während der Rest abgeblendet wird
-  — die Ansicht zentriert sich automatisch auf den gewählten Pfad.
-- **Entscheidungskarten**: Ein Abzweigungspunkt erscheint als eigene
-  Bernstein-Karte mit einem Direkt-Button pro abgehendem Pfad (z. B.
-  "↳ Login-Fehler") — anklicken springt zum ersten Schritt dieses Pfads
-  und stellt den Filter automatisch darauf um.
-- **Pfad-Banner & Zusammenführungen**: farbige Trenner markieren, wo ein
-  neuer Pfad beginnt; ein "⇄ Zusammenführung"-Abzeichen markiert Knoten,
-  in denen mehrere Pfade wieder zusammenlaufen.
-- **Filter-Tabs**: "Alle Schritte" vs. "Nur Screenshots" (blendet reine
-  Flowchart-/Text-Knoten ohne Bild aus).
-
-Gedacht als druckbare/vorlesbare Kurzanleitung für jemanden, der den
-aufgezeichneten Ablauf einfach nachvollziehen will, ohne selbst im
-Diagramm herumzuklicken.
-
-Änderungen an den Hotkeys gelten sofort nach "Speichern" in den
-Einstellungen (kein Neustart nötig).
-
-### Ablauf nachträglich fortsetzen (an einem bestimmten Punkt statt am Dateiende)
-
-Ein Klick auf einen beliebigen Knoten in der Ablauf-Übersicht springt
-sofort dorthin — der nächste aufgezeichnete Klick knüpft danach genau an
-diesem Punkt an statt am Dateiende, unabhängig davon, wie viele andere
-Klicks zwischenzeitlich woanders aufgezeichnet wurden. Das funktioniert
-jederzeit, solange irgendein Ablauf aktiv geladen ist: während einer
-laufenden Aufnahme, bei **pausierter** Aufnahme (siehe
-["Aufnahme/Stopp/Fortsetzen" oben](#top-leiste-ablauf-übersicht-und-neue-session))
-oder in einer per Tray-Menü **"Ablauf öffnen..."** geladenen Datei ganz
-ohne laufende Aufnahme. Eine eigene "Ansatzpunkt für die nächste Session"-
-Markierung ist dafür nicht mehr nötig — praktisch bedeutet das: zum
-gezielten Fortsetzen einfach pausieren statt stoppen, den gewünschten
-Knoten anklicken und mit "Fortsetzen" weiteraufnehmen.
-
-## Start/Stopp per Hotkey
-
-Neben dem Tray-Menü/Icon-Klick lässt sich die Aufnahme auch über einen
-globalen Hotkey starten/stoppen (Standard: `Strg+Alt+R`, änderbar in den
-Einstellungen).
-
-## Feedback beim Aufzeichnen
-
-Der eigentliche Screenshot läuft absichtlich unsichtbar im Hintergrund
-(kein Bildschirm-Flackern). Damit trotzdem klar ist, dass etwas passiert,
-spielt DocuClick bei aktivierter Option "Signalton bei jedem aufgezeichneten
-Klick" (Standard: an) einen kurzen Ton:
-
-- normaler Klick aufgezeichnet → ein synthetischer Kamera-Klick (zwei
-  kurze, schnell abklingende Impulse) statt eines Windows-Systemtons, damit
-  es sich nach Bestätigung statt nach Fehlermeldung anhört
-- Klick übersprungen (Modifier-Taste gedrückt oder Passwortfeld erkannt) →
-  dezenter Windows-Systemton
-- Fehler bei der Verarbeitung → Fehler-Systemton + Balloon-Tip am Tray-Icon
-
-## Rechtsklick und Enter-Taste als weitere Trigger
-
-Neben Linksklicks kann DocuClick auch bei **Rechtsklicks** auslösen
-(Einstellungen → "Auch bei Rechtsklick aufzeichnen", Standard: an) — z. B.
-um das Öffnen eines Kontextmenüs zu dokumentieren. Die Beschreibung
-unterscheidet "Rechtsklick auf ..." von "Linksklick auf ...".
-
-Zusätzlich kann DocuClick bei jedem Druck der **Enter-Taste** auslösen
-(Einstellungen → "Auch bei Enter-Taste aufzeichnen", Standard: an).
-Erfasst wird dann das aktive Fenster plus das aktuell fokussierte
-UI-Automation-Element (z. B. ein abgeschicktes Formularfeld) statt einer
-Klickposition — ohne Bounding-Box wird der Screenshot unmarkiert
-gespeichert, es gibt keinen "Blindkreis".
-
-## Hotkeys per Tastendruck festlegen
-
-In den Einstellungen auf "Ändern" neben einem Hotkey klicken und die
-gewünschte Tastenkombination drücken (statt Text einzutippen) — Esc bricht
-die Aufnahme ab. Betrifft Start/Stop, "Abzweigungspunkt setzen" und
-"Zoom-auf-Cursor umschalten".
-
-## Klicks überspringen
-
-In den Einstellungen lässt sich eine Modifier-Taste (Umschalt/Strg/Alt)
-festlegen: Ist sie bei einem Linksklick gedrückt, wird dieser Klick
-komplett ignoriert (kein Screenshot, kein Notiz-Eintrag). Nützlich, um
-z. B. sensible Inhalte gezielt aus der Aufzeichnung auszuschließen.
-Erkennt UI Automation den Klick dagegen selbst als Passwortfeld, wird er
-automatisch übersprungen, ganz ohne gedrückte Taste (siehe
-[Funktionsumfang](#funktionsumfang)) — deckt aber nur echte, bei UI
-Automation als solche registrierte Passwortfelder ab, keine
-selbstgebauten "versteckten" Eingabefelder.
-
-## Fehlersuche
-
-Alle Ereignisse (Session-Start/-Stop, erkannte Klicks, geschriebene Einträge,
-Fehler) landen in `%APPDATA%/DocuClick/log.txt`. Bei einem Fehler pro Klick
-erscheint zusätzlich ein Balloon-Tip am Tray-Icon. Wenn nach einem Klick
-weder im Log noch als Notiz etwas ankommt, wurde der Klick vom Mouse-Hook gar
-nicht erst erkannt (Session nicht gestartet, oder der Hook konnte nicht
-registriert werden — siehe Log-Zeile "Session gestartet").
-
-### Bilder fehlen in einem bestehenden Ablauf ("... konnte nicht gefunden werden")
-
-Bis zur entsprechenden Fix-Version enthielt der automatische Namensvorschlag
-beim Session-Start ein `#` (z. B. `IT-Support 2026-08-04 #1`). Da dieser Name
-auch als Attachments-Unterordner verwendet wird und das Dateiformat intern
-weiterhin die Obsidian-Canvas-Schreibweise für Bild-Referenzen verwendet
-(kompatibel mit Drittanbieter-Tools), gilt `#` dort als Trenner für
-Überschriften-/Block-Anker — alles danach wurde als Anker statt als Teil
-des Pfads interpretiert, die Bild-Referenz zeigt dann ins Leere, obwohl die
-Datei tatsächlich am angezeigten Ort liegt. Ab der Fix-Version wird `(1)`
-statt `#1` vorgeschlagen und ein manuell eingegebenes `#` zusätzlich
-automatisch ersetzt; **bereits erzeugte Dateien und Ordner mit `#` im
-Namen bleiben davon unberührt** und müssen händisch repariert werden:
-
-1. Den betroffenen Attachments-Unterordner (z. B.
-   `Attachments/Mein Ablauf 2026-08-05 #1`) umbenennen — `#` durch z. B.
-   `(1)` ersetzen.
-2. Die zugehörige `.html`-Datei in einem Texteditor öffnen und den alten
-   Ordnernamen per Suchen-und-Ersetzen durch den neuen ersetzen.
-
----
-
-## Für Entwickler
-
-Voraussetzung: .NET 8 SDK (WPF/XAML-Compiler ist Windows-only, lässt sich
-also nur unter Windows bauen).
+## Entwicklung
 
 ```bash
-dotnet build DocuClick.sln
-dotnet run --project src/DocuClick/DocuClick.csproj
+dotnet test --project core/DocuClick.Core.Tests          # gemeinsamer Kern
+dotnet build windows/DocuClick.Windows.sln               # Windows-App
+dotnet build macos/DocuClick.Mac.slnx                    # macOS-App (nur auf dem Mac)
+python3 obsidian/build.py                                # Obsidian-Plugin
 ```
 
-Es wird keine kompilierte `.exe` im Repo mitversioniert — stattdessen baut
-[.github/workflows/build.yml](.github/workflows/build.yml) bei jedem Push
-nach `main` automatisch auf einem Windows-Runner (Artefakt im jeweiligen
-[Actions-Lauf](../../actions)). Bewusst kein Single-File-Publish: Der
-Self-Extract-Mechanismus ist bei unsignierten Binaries ein häufiger
-Auslöser für Windows-Defender-ML-Fehlalarme.
-
-Neues Release erstellen (baut automatisch und hängt das Zip an ein neues
-GitHub Release):
-
-```bash
-git tag v1.12.4
-git push origin v1.12.4
-```
-
-Offene Punkte: Feinschliff bei Multi-Monitor/DPI-Kantenfällen, robustere
-Fehlerbehandlung in Randfällen.
-
-### Ablauf-Übersicht: Performance
-
-Die Ablauf-Übersicht (WebView2 + Cytoscape.js) aktualisiert bei jeder
-Aktion nur noch die tatsächlich geänderten Knoten/Kanten/DOM-Overlays
-statt bei jedem Klick den kompletten Graphen neu aufzubauen — merklich
-flüssiger bei langen Sessions. Verschieben und neue Elemente platzieren
-speichert zusätzlich leicht entprellt (150 ms) im Hintergrund statt
-synchron bei jedem einzelnen Zwischenschritt, damit Ziehen nicht ruckelt;
-"Pausieren"/"Neue Session"/App-Ende erzwingen weiterhin einen sofortigen,
-vollständigen Speichervorgang. Alle Bild-/Beschriftungs-/Ziehpunkt-Overlays
-laufen zusätzlich über einen gemeinsamen `requestAnimationFrame`-Takt statt
-unabhängig voneinander, und Overlays außerhalb des sichtbaren Bereichs
-werden bei schnellem Pan/Zoom übersprungen (Viewport-Culling); das
-Verschieben mehrerer ausgewählter Knoten sendet dafür nur eine einzige
-Nachricht statt einer pro Knoten.
-
-### `tools/`
-
-[tools/local-agent-loop/](tools/local-agent-loop/) ist internes
-Entwickler-Tooling (PowerShell-Skripte, die ein lokal gehostetes LLM
-autonom an DocuClicks eigener Testinfrastruktur arbeiten lassen) — kein
-Teil der App selbst, siehe die Datei-eigene README für Details.
+Die CI-Workflows in [.github/workflows/](.github/workflows/) sind nach
+Bereich getrennt (`windows.yml`, `macos.yml`, `obsidian.yml`). Bei Pull
+Requests läuft jeder nur, wenn sein Bereich oder der gemeinsame Kern
+betroffen ist.

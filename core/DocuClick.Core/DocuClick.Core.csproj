@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Platform-independent core shared by the Windows (WPF) and macOS
+       (Avalonia) apps: output writers, capture pipeline (SessionManager),
+       config, and the platform interfaces each app implements. Must never
+       reference System.Drawing, System.Windows or any OS-specific API. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>DocuClick</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="**/._*" />
+    <None Remove="**/._*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The Ablauf page (Cytoscape.js + flow.js): HtmlViewerBuilder inlines
+         cytoscape.min.js into every recorded .html file, and both apps'
+         Ablauf-Übersicht load index.html/flow.js in a web view — so these
+         ship as loose files next to every app that references the core. -->
+    <Content Include="WebAssets\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 3.x, not 4.x: Avalonia 12 (macOS UI) is built against SkiaSharp 3. -->
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
+    <InternalsVisibleTo Include="DocuClick.Core.Tests" />
+  </ItemGroup>
+
+</Project>
