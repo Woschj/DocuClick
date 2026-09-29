@@ -42,20 +42,29 @@ function validateDocument(input) {
   });
   check(renderedIds.size === textIds.size, "Die Diagrammansicht enthält nicht alle Textknoten.");
   const pairs = new Set();
+  const flowEdgeColors = new Map();
+  for (const x of flow.edges) { const key = `${x.data?.source}->${x.data?.target}`; if (x.data && !flowEdgeColors.has(key)) flowEdgeColors.set(key, x.data.color); }
   const edges = canvas.edges.map((e, index) => {
     check(textIds.has(e.fromNode) && textIds.has(e.toNode), "Verbindung verweist auf fehlenden Knoten.");
     const pair = `${e.fromNode}->${e.toNode}`;
     check(!pairs.has(pair), "Doppelte Verbindung."); pairs.add(pair);
-    return { id: `edge-${index}`, fromNode: e.fromNode, toNode: e.toNode, fromSide: "bottom", toSide: "top", docuClickManual: !!e.docuClickManual, color: color(e.color || flow.edges.find(x => x.data?.source === e.fromNode && x.data?.target === e.toNode)?.data?.color), lineStyle: ["solid", "dashed", "dotted"].includes(e.lineStyle) ? e.lineStyle : "solid" };
+    return { id: `edge-${index}`, fromNode: e.fromNode, toNode: e.toNode, fromSide: "bottom", toSide: "top", docuClickManual: !!e.docuClickManual, color: color(e.color || flowEdgeColors.get(pair)), lineStyle: ["solid", "dashed", "dotted"].includes(e.lineStyle) ? e.lineStyle : "solid" };
   });
   // Rebuild edges from the document, never trust a second conflicting graph.
   const renderedEdges = edges.map(e => ({ data: { id: `${e.docuClickManual ? "manual-" : ""}${e.fromNode}->${e.toNode}`, source: e.fromNode, target: e.toNode, color: e.color, manual: e.docuClickManual, lineStyle: e.lineStyle } }));
   // Preserve imported screenshots even after the original attachment folder is gone.
+  const nodeById = new Map(nodes.map(x => [x.id, x]));
+  // File nodes bucketed by rounded position (tolerance .5 is checked on the candidates).
+  const fileAt = new Map();
+  for (const x of nodes) if (x.type === "file") { const key = `${Math.round(x.x)},${Math.round(x.y)}`; (fileAt.get(key) || fileAt.set(key, []).get(key)).push(x); }
   for (const n of rendered) {
-    const text = nodes.find(x => x.id === n.data.id);
+    const text = nodeById.get(n.data.id);
     text.x = n.position.x; text.y = n.position.y;
     if (n.data.imageUrl) {
-      const sibling = nodes.find(x => x.type === "file" && Math.abs(x.x - text.x) < .5 && Math.abs(x.y - text.y - 70) < .5);
+      let sibling;
+      for (const dx of [-1, 0, 1]) for (const dy of [-1, 0, 1]) {
+        sibling ||= fileAt.get(`${Math.round(text.x) + dx},${Math.round(text.y + 70) + dy}`)?.find(x => Math.abs(x.x - text.x) < .5 && Math.abs(x.y - text.y - 70) < .5);
+      }
       if (sibling) sibling.file = n.data.imageUrl;
     }
   }
