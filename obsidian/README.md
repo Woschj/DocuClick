@@ -86,6 +86,45 @@ Gleichzeitig in App und Obsidian dieselbe Stelle ändern sollte man
 vermeiden: Schreiben beide im selben Moment, sichert das Plugin seine
 Fassung als `… – lokale Änderungen.docuclick` (siehe unten).
 
+### Notiz zum Ablauf: durchsuchbar, verlinkbar, mit eingebettetem Diagramm
+
+Ein `.docuclick`-Diagramm ist für Obsidian selbst undurchsichtig: Die Suche
+findet seine Schritte nicht, Links und Backlinks gibt es nicht. Dafür gibt
+es zu jedem Ablauf auf Wunsch eine normale Notiz:
+
+- Im Diagramm-Tab oben rechts **Notiz zum Ablauf** (oder Rechtsklick auf die
+  `.docuclick`-Datei → **Notiz zum Ablauf**, oder Befehl **Notiz zum Ablauf
+  öffnen oder erstellen**). Beim ersten Mal entsteht `<Ablauf>.md` neben dem
+  Diagramm, danach öffnet sich diese Notiz.
+- Die Notiz enthält:
+  - die Eigenschaft `docuclick: "[[…/Ablauf.docuclick]]"`: verknüpft Notiz
+    und Diagramm (Backlinks, Graph) und wird beim Umbenennen oder
+    Verschieben des Diagramms von Obsidian mit angepasst;
+  - das **eingebettete Diagramm** (Codeblock `docuclick`), mit derselben
+    Optik wie die HTML-Ansicht: Zoom, Suche, Bildansicht, Anleitung.
+    Bearbeitet wird weiterhin im Diagramm-Tab („Im Editor öffnen“);
+  - eine **Schrittliste als Text**, die Obsidian durchsucht. Abzweigungen
+    erscheinen als Unterlisten je Pfad.
+- Die Schrittliste wird automatisch aktualisiert, sobald sich das Diagramm
+  ändert, auch während einer Aufnahme mit der DocuClick-App. Ersetzt wird
+  nur der Abschnitt zwischen den beiden `%% DocuClick … %%`-Markierungen;
+  eigener Text darüber oder darunter bleibt. Wer die Markierungen löscht,
+  schaltet die Aktualisierung für diese Notiz ab.
+
+Ein Diagramm lässt sich auch in jede andere Notiz einbetten:
+
+````markdown
+```docuclick
+Prozesse/Rechnung stornieren.docuclick
+hoehe: 700
+```
+````
+
+Die erste Zeile ist der Pfad im Vault (oder `[[Link]]`); ohne Zeile gilt die
+Eigenschaft `docuclick` der Notiz. `hoehe` ist optional (Standard 520 Pixel).
+Hinweis: Im Codeblock angegebene Pfade passt Obsidian beim Umbenennen nicht
+an, die Eigenschaft schon.
+
 ### Ältere DocuClick-Aufnahmen übernehmen
 
 Abläufe, die außerhalb eines Vaults als `.html` aufgenommen wurden, lassen
@@ -189,7 +228,7 @@ Eine Content Security Policy blockiert Netzwerkzugriffe. Nachrichten sind an
 das konkrete Frame-Fenster und einen zufälligen Kanal gebunden; der Editor kann
 keinen Zielpfad angeben. Die Host-Seite validiert jedes gespeicherte Dokument.
 
-Noch nicht enthalten: native Obsidian-Notizlinks/Backlinks, Einbettung in Markdown,
+Noch nicht enthalten: Links aus einzelnen Schritten auf andere Notizen,
 Mobile-/Touch-Anpassung, draw.io-Export im Plugin und separate Bildanhänge.
 Die Desktop-App verwendet für ihre eigene Ablaufübersicht weiterhin `flow.js`; deren vollständige Zusammenführung ist ein weiterer Umbau.
 

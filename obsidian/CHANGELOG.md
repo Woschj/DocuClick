@@ -7,6 +7,16 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ## [Unreleased]
 
+- **Notiz zum Ablauf**: Knopf im Diagramm-Tab, Datei-Kontextmenü und Befehl.
+  Legt neben dem Diagramm eine Notiz an mit Eigenschaft `docuclick`
+  (Link aufs Diagramm), eingebettetem Diagramm und einer Schrittliste als
+  Text. So finden Obsidian-Suche, Links und Backlinks einen Ablauf. Die
+  Schrittliste folgt automatisch jeder Änderung des Diagramms (auch
+  während einer App-Aufnahme); eigener Text in der Notiz bleibt.
+- **Diagramm in Notizen einbetten** mit einem Codeblock `docuclick`
+  (Pfad, optional `hoehe`): nur lesen, mit Zoom, Suche, Bildansicht und
+  Anleitung; aktualisiert sich bei Änderungen.
+
 - **Zusammenspiel mit den DocuClick-Apps**: Die Apps für Windows und macOS
   nehmen direkt in `.docuclick`-Diagramme im Vault auf. Ein geöffnetes
   Diagramm zeigt neue Klicks live an.

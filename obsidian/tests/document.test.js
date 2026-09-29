@@ -157,3 +157,28 @@ test("a diagram recorded by the DocuClick apps is a valid plugin document", () =
   assert.ok(!JSON.stringify(raw).includes("base64"));
   assert.ok(D.buildHtml(template, "/* vendor */", doc, "Aufnahme").includes("Linksklick auf „Anmelden“"));
 });
+test("the step list follows the main line and each named path, as plain searchable text", () => {
+  const doc = D.emptyDocument();
+  const node = (id, text, x, y) => { doc.canvas.nodes.push({ id, type: "text", text, x, y, width: 380, height: 60 }); doc.flow.nodes.push({ data: { id, label: text }, position: { x, y } }); };
+  const edge = (fromNode, toNode, manual) => doc.canvas.edges.push({ fromNode, toNode, docuClickManual: !!manual });
+  node("a", "Linksklick auf „Start“", 0, 0); node("d", "◆ Abzweigung", 0, 100);
+  node("p1", "↳ Pfad: Erfolg", 0, 200); node("s1", "Speichern #wichtig [[Link]]", 0, 300);
+  node("p2", "↳ Pfad: Fehler", 500, 200); node("s2", "Meldung\nschließen", 500, 300);
+  edge("a", "d"); edge("d", "p2"); edge("d", "p1"); edge("p1", "s1"); edge("p2", "s2"); edge("s2", "a", true);
+  assert.equal(D.stepsMarkdown(doc), [
+    "1. Linksklick auf „Start“",
+    "2. Abzweigung:",
+    "\t- **Pfad: Erfolg**",
+    "\t\t1. Speichern \\#wichtig \\[\\[Link\\]\\]",
+    "\t- **Pfad: Fehler**",
+    "\t\t1. Meldung schließen",
+  ].join("\n"));
+  assert.equal(D.stepsMarkdown(D.emptyDocument()), "_Noch keine Schritte._");
+});
+test("only the generated section of a note is replaced", () => {
+  const note = D.noteMarkdown("Prozesse/A.docuclick", "A", "1. Alt").replace("## Schritte", "Eigener Text\n\n## Schritte") + "\nNachwort\n";
+  const updated = D.replaceSteps(note, "1. Neu");
+  assert.ok(updated.includes("Eigener Text") && updated.includes("Nachwort") && updated.includes("1. Neu") && !updated.includes("1. Alt"));
+  assert.ok(updated.startsWith('---\ndocuclick: "[[Prozesse/A.docuclick]]"\n---\n'));
+  assert.equal(D.replaceSteps("Notiz ohne Abschnitt", "1. Neu"), null);
+});

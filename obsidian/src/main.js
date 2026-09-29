@@ -1,5 +1,5 @@
 /* global DocuClickDocument, VIEWER_TEMPLATE, CYTOSCAPE */
-const { Plugin, PluginSettingTab, FileView, Modal, Setting, Notice, TFile, TFolder, AbstractInputSuggest, normalizePath } = require("obsidian");
+const { Plugin, PluginSettingTab, FileView, Modal, Setting, Notice, TFile, TFolder, AbstractInputSuggest, MarkdownRenderChild, normalizePath } = require("obsidian");
 const VIEW_TYPE = "docuclick-diagram";
 const D = DocuClickDocument;
 const DEFAULT_SETTINGS = { themeMode: "docuclick", background: "#1e1e1e", accent: "#7c3aed", themeExport: true, defaultFolder: "", askFolder: true, imageStorage: "embedded", imageFolder: "DocuClick-Bilder" };
@@ -65,6 +65,63 @@ function cleanFolder(value) {
   if (!trimmed) return "";
   if (trimmed.split("/").some(part => !part.trim() || part === "." || part === ".." || /[:*?"<>|]/.test(part))) return null;
   return normalizePath(trimmed);
+}
+
+// A CSP additionally prevents imported image links or editor code from
+// contacting a network endpoint. Only bundled code and raster data run.
+const CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src 'none'; connect-src 'none'; frame-src 'none'; form-action 'none'">`;
+
+/** Vault path from a property/code block value: `[[Pfad]]`, `[[Pfad|Alias]]` or a plain path. */
+function linkTarget(value) {
+  const text = String(value ?? "").trim();
+  const link = /^\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]$/.exec(text);
+  return (link ? link[1] : text).trim();
+}
+
+/**
+ * ```docuclick``` code block in a note: the diagram as read-only viewer (same look,
+ * zoom, search, image view and guide as the HTML export). Empty block = the
+ * diagram linked in the note's `docuclick` property. Follows diagram changes live.
+ */
+class DiagramEmbed extends MarkdownRenderChild {
+  constructor(plugin, el, source, sourcePath) { super(el); this.plugin = plugin; this.source = source; this.sourcePath = sourcePath; }
+  onload() {
+    this.plugin.embeds.add(this);
+    const later = () => { clearTimeout(this.timer); this.timer = setTimeout(() => this.render().catch(report), 400); };
+    this.registerEvent(this.plugin.app.vault.on("modify", file => { if (file.path === this.file?.path) later(); }));
+    // The property may be added (or its link renamed) after the block renders.
+    this.registerEvent(this.plugin.app.metadataCache.on("changed", file => { if (file.path === this.sourcePath && !this.explicit) later(); }));
+    this.render().catch(report);
+  }
+  onunload() { clearTimeout(this.timer); this.plugin.embeds.delete(this); }
+  resolve() {
+    const { app } = this.plugin;
+    const lines = this.source.split("\n").map(line => line.trim()).filter(Boolean);
+    const option = lines.find(line => /^(hoehe|höhe|height)\s*:/i.test(line));
+    this.height = Math.min(Math.max(parseInt(option?.split(":")[1], 10) || 520, 200), 3000);
+    const target = lines.find(line => line !== option);
+    this.explicit = !!target;
+    const path = linkTarget(target ?? app.metadataCache.getCache(this.sourcePath)?.frontmatter?.docuclick);
+    if (!path) return null;
+    const direct = app.vault.getAbstractFileByPath(normalizePath(path));
+    return direct instanceof TFile ? direct : app.metadataCache.getFirstLinkpathDest(path, this.sourcePath);
+  }
+  async render() {
+    const el = this.containerEl, file = this.resolve();
+    this.file = file;
+    el.empty(); el.addClass("docuclick-embed");
+    if (!(file instanceof TFile) || file.extension !== "docuclick") {
+      el.createDiv({ cls: "docuclick-error", text: "DocuClick: Kein Diagramm angegeben oder gefunden. In den Codeblock den Pfad der .docuclick-Datei schreiben oder die Eigenschaft „docuclick“ der Notiz setzen." });
+      return;
+    }
+    const header = el.createDiv({ cls: "docuclick-embed-header" });
+    header.createSpan({ text: file.basename });
+    header.createEl("button", { text: "Im Editor öffnen" }).addEventListener("click", () => this.plugin.app.workspace.getLeaf("tab").openFile(file));
+    const doc = await this.plugin.loadDocument(await this.plugin.app.vault.read(file));
+    const frame = el.createEl("iframe", { cls: "docuclick-embed-frame", attr: { sandbox: "allow-scripts", title: `Ablauf ${file.basename}` } });
+    frame.style.height = `${this.height}px`;
+    frame.srcdoc = D.buildHtml(VIEWER_TEMPLATE, CYTOSCAPE, doc, file.basename, { readOnly: true, theme: this.plugin.currentTheme() }).replace("<head>", () => `<head>${CSP}`);
+  }
 }
 
 const IMAGE_TYPES = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", bmp: "image/bmp" };
@@ -225,7 +282,10 @@ class DiagramView extends FileView {
   getViewType() { return VIEW_TYPE; }
   getDisplayText() { return this.file?.basename || "Ablaufdiagramm"; }
   getIcon() { return "workflow"; }
-  async onOpen() { this.contentEl.addClass("docuclick-view"); }
+  async onOpen() {
+    this.contentEl.addClass("docuclick-view");
+    this.addAction?.("file-text", "Notiz zum Ablauf", () => { if (this.file) this.plugin.openNote(this.file).catch(report); });
+  }
   async onLoadFile(file) {
     this.contentEl.empty();
     try {
@@ -251,11 +311,8 @@ class DiagramView extends FileView {
       const ownerWindow = this.contentEl.ownerDocument.defaultView;
       ownerWindow.addEventListener("message", onMessage);
       this.removeListener = () => ownerWindow.removeEventListener("message", onMessage);
-      // A CSP additionally prevents imported image links or editor code from
-      // contacting a network endpoint. Only bundled code and raster data run.
-      const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src 'none'; connect-src 'none'; frame-src 'none'; form-action 'none'">`;
       const bridge = `<script>(${frameBridge.toString()})(${D.safeJson(channel)});</script>`;
-      frame.srcdoc = D.buildHtml(VIEWER_TEMPLATE, CYTOSCAPE, doc, file.basename, { theme: this.plugin.currentTheme() }).replace("<head>", () => `<head>${csp}${bridge}`);
+      frame.srcdoc = D.buildHtml(VIEWER_TEMPLATE, CYTOSCAPE, doc, file.basename, { theme: this.plugin.currentTheme() }).replace("<head>", () => `<head>${CSP}${bridge}`);
     } catch (error) {
       this.contentEl.createDiv({ cls: "docuclick-error", text: `Diagramm konnte nicht geöffnet werden. Die Datei wurde nicht verändert.\n\n${error.message}` });
       report(error);
@@ -398,14 +455,29 @@ module.exports = class DocuClickPlugin extends Plugin {
     this.registerView(VIEW_TYPE, leaf => new DiagramView(leaf, this));
     // Follow Obsidian theme switches (light/dark, other theme, accent colour).
     this.registerEvent(this.app.workspace.on("css-change", () => { if (this.settings.themeMode === "obsidian") this.refreshThemes(); }));
+    this.embeds = new Set(); this.noteTimers = new Map();
     this.registerEvent(this.app.vault.on("modify", file => {
       for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) leaf.view?.externalChange?.(file)?.catch(report);
+      if (file instanceof TFile && file.extension === "docuclick") this.scheduleNoteUpdate(file);
     }));
+    this.registerMarkdownCodeBlockProcessor("docuclick", (source, el, ctx) => ctx.addChild(new DiagramEmbed(this, el, source, ctx.sourcePath)));
+    this.addCommand({
+      id: "open-note", name: "Notiz zum Ablauf öffnen oder erstellen",
+      checkCallback: checking => {
+        const file = this.app.workspace.getActiveFile();
+        if (file?.extension !== "docuclick") return false;
+        if (!checking) this.openNote(file).catch(report);
+        return true;
+      }
+    });
     this.registerExtensions(["docuclick"], VIEW_TYPE);
     this.addRibbonIcon("workflow", "Neues Ablaufdiagramm", () => this.newDiagram());
     this.addCommand({ id: "new-diagram", name: "Neues Ablaufdiagramm", callback: () => this.newDiagram() });
     this.addCommand({ id: "import-html", name: "DocuClick-HTML importieren", callback: () => this.pickHtml() });
     this.registerEvent(this.app.workspace.on("file-menu", (menu, file) => {
+      if (file instanceof TFile && file.extension === "docuclick") {
+        menu.addItem(item => item.setTitle("Notiz zum Ablauf").setIcon("file-text").onClick(() => this.openNote(file).catch(report)));
+      }
       if (file instanceof TFile && file.extension.toLowerCase() === "html") {
         menu.addItem(item => item.setTitle("Als DocuClick-Diagramm importieren").setIcon("workflow").onClick(() => this.importFile(file).catch(report)));
       }
@@ -426,7 +498,46 @@ module.exports = class DocuClickPlugin extends Plugin {
   refreshThemes() {
     const theme = this.currentTheme();
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) leaf.view?.applyTheme?.(theme);
+    for (const embed of this.embeds) embed.render().catch(report);
   }
+  /** Notes whose `docuclick` property links to this diagram. */
+  notesFor(file) {
+    const { metadataCache } = this.app;
+    return this.app.vault.getMarkdownFiles().filter(note => {
+      const value = metadataCache.getFileCache(note)?.frontmatter?.docuclick;
+      const path = typeof value === "string" && linkTarget(value);
+      return path && (path === file.path || metadataCache.getFirstLinkpathDest(path, note.path)?.path === file.path);
+    });
+  }
+  /** Opens the note about a diagram; creates it next to the diagram the first time. */
+  async openNote(file) {
+    let note = this.notesFor(file)[0];
+    if (!note) {
+      const steps = D.stepsMarkdown(JSON.parse(await this.app.vault.read(file)));
+      note = await this.createUnique(file.parent?.path, file.basename, "md", D.noteMarkdown(file.path, file.basename, steps));
+      new Notice(`Notiz angelegt: ${note.path}`);
+    }
+    await this.app.workspace.getLeaf("tab").openFile(note);
+  }
+  /** Diagram changed (in the editor, by the DocuClick app, by sync): refresh the step lists of its notes. */
+  scheduleNoteUpdate(file) {
+    clearTimeout(this.noteTimers.get(file.path));
+    this.noteTimers.set(file.path, setTimeout(() => { this.noteTimers.delete(file.path); this.updateNotes(file).catch(report); }, 800));
+  }
+  async updateNotes(file) {
+    const notes = this.notesFor(file);
+    if (!notes.length) return;
+    let steps;
+    try { steps = D.stepsMarkdown(JSON.parse(await this.app.vault.read(file))); }
+    catch { return; } // half-written by sync, say; the next change updates again
+    for (const note of notes) {
+      const current = await this.app.vault.read(note);
+      const next = D.replaceSteps(current, steps);
+      if (next === null || next === current) continue;
+      await this.app.vault.process(note, text => D.replaceSteps(text, steps) ?? text);
+    }
+  }
+  onunload() { for (const timer of this.noteTimers?.values() ?? []) clearTimeout(timer); }
   /** Default target folder: the configured one, else the active file's folder (vault root without one). */
   targetFolder() {
     const configured = cleanFolder(this.settings.defaultFolder);

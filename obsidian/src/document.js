@@ -176,4 +176,74 @@ function buildHtml(template, cytoscape, document, title, { readOnly = false, the
   const values = { TITLE: escapeHtml(title), NODE_COUNT: String(doc.flow.nodes.length), EDGE_COUNT: String(doc.flow.edges.length), DOCUMENT: `<script id="docuclick-data" type="application/json">${safeJson(doc.canvas)}</script>`, CYTOSCAPE: cytoscape, FLOW: safeJson(doc.flow), SAVE_PORT: "47811" };
   return template.replace(/@@([A-Z_]+)@@/g, (_, key) => { check(key in values, `Unbekannter Vorlagenwert: ${key}`); return values[key]; });
 }
-module.exports = { compactForStorage, FORMAT, MAX_BYTES, validateDocument, parseDocument, importHtml, emptyDocument, buildHtml, safeJson, themeCss };
+// ---- Step list for Markdown notes -----------------------------------------
+// A note about a flow embeds the diagram and carries the steps as plain text,
+// so Obsidian's search, links and backlinks find a flow by what happens in it.
+const DECISION_POINT = "◆ Abzweigung", PATH_START = "↳ Pfad: ";
+const STEPS_START = "%% DocuClick: Schritte werden aus dem Diagramm erzeugt, Änderungen hier gehen verloren. %%";
+const STEPS_END = "%% DocuClick: Ende der Schritte %%";
+/** Step text safe for a Markdown list item: one line, no tags, links or formatting. */
+function markdownText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().replace(/[\\`*_[\]#<>|~=$^]/g, c => "\\" + c) || "(ohne Beschreibung)";
+}
+/**
+ * The flow as nested Markdown lists: the main line numbered, each path of a
+ * decision point as its own sub-list. Manual cross-connections are left out
+ * (they are references, not the order of steps).
+ */
+function stepsMarkdown(document) {
+  const doc = validateDocument(document);
+  const texts = new Map(doc.canvas.nodes.filter(n => n.type === "text").map(n => [n.id, n]));
+  const children = new Map(), hasParent = new Set();
+  for (const e of doc.canvas.edges) {
+    if (e.docuClickManual) continue;
+    (children.get(e.fromNode) || children.set(e.fromNode, []).get(e.fromNode)).push(e.toNode);
+    hasParent.add(e.toNode);
+  }
+  const byPosition = (a, b) => texts.get(a).x - texts.get(b).x || texts.get(a).y - texts.get(b).y;
+  for (const list of children.values()) list.sort(byPosition);
+  const lines = [], seen = new Set();
+  // Next steps after a node: one = same list, several = one sub-list per branch.
+  const continueWith = (next, depth) => {
+    if (next.length === 1) { chain(next[0], depth); return; }
+    for (const branch of next) {
+      if ((texts.get(branch).text || "").startsWith(PATH_START)) chain(branch, depth);
+      else if (!seen.has(branch)) { lines.push(`${"\t".repeat(depth)}- **Weiter mit:**`); chain(branch, depth + 1); }
+    }
+  };
+  const chain = (start, depth) => {
+    let number = 1, id = start;
+    while (id && !seen.has(id)) {
+      seen.add(id);
+      const text = texts.get(id).text || "", next = children.get(id) || [], indent = "\t".repeat(depth);
+      if (text.startsWith(PATH_START)) {
+        lines.push(`${indent}- **Pfad: ${markdownText(text.slice(PATH_START.length))}**`);
+        continueWith(next, depth + 1);
+        return;
+      }
+      if (text === DECISION_POINT || next.length > 1) {
+        lines.push(`${indent}${number++}. ${text === DECISION_POINT ? "Abzweigung:" : `${markdownText(text)}, dann je nach Fall:`}`);
+        continueWith(next, depth + 1);
+        return;
+      }
+      lines.push(`${indent}${number++}. ${markdownText(text)}`);
+      id = next[0];
+    }
+  };
+  const roots = [...texts.keys()].filter(id => !hasParent.has(id)).sort((a, b) => texts.get(a).y - texts.get(b).y || texts.get(a).x - texts.get(b).x);
+  roots.forEach((root, index) => { if (index) lines.push(""); chain(root, 0); });
+  // Anything only reachable through a cycle.
+  for (const id of texts.keys()) if (!seen.has(id)) { lines.push(""); chain(id, 0); }
+  return lines.length ? lines.join("\n") : "_Noch keine Schritte._";
+}
+/** Replaces the generated section of a note; null if the note has none (then it is left alone). */
+function replaceSteps(note, steps) {
+  const start = note.indexOf(STEPS_START), end = note.indexOf(STEPS_END, start + 1);
+  if (start < 0 || end < 0) return null;
+  return `${note.slice(0, start)}${STEPS_START}\n${steps}\n${note.slice(end)}`;
+}
+/** A new note for a diagram: property link (renames stay in sync), embedded diagram, generated steps. */
+function noteMarkdown(diagramPath, title, steps) {
+  return `---\ndocuclick: "[[${diagramPath}]]"\n---\n# ${markdownText(title)}\n\n\`\`\`docuclick\n\`\`\`\n\n## Schritte\n\n${STEPS_START}\n${steps}\n${STEPS_END}\n`;
+}
+module.exports = { stepsMarkdown, replaceSteps, noteMarkdown, STEPS_START, STEPS_END, compactForStorage, FORMAT, MAX_BYTES, validateDocument, parseDocument, importHtml, emptyDocument, buildHtml, safeJson, themeCss };

@@ -4,3 +4,8 @@
 .docuclick-invalid { border-color: var(--text-error) !important; }
 .docuclick-banner { display: flex; gap: 12px; align-items: center; padding: 6px 12px; background: var(--background-modifier-error); color: var(--text-on-accent); }
 .docuclick-banner span { flex: 1; }
+.docuclick-embed { border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m, 8px); overflow: hidden; margin: 8px 0; }
+.docuclick-embed-header { display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 12px; background: var(--background-secondary); font-size: var(--font-ui-small); color: var(--text-muted); }
+.docuclick-embed-header span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.docuclick-embed-frame { display: block; width: 100%; border: 0; background: #090d16; }
+.docuclick-embed .docuclick-error { padding: 12px; }
