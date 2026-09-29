@@ -9,6 +9,15 @@ DocuClick-App. Erste Desktop-Version für Obsidian ab 1.5.
 
 ## Installation
 
+**Mit DocuClick für Windows/macOS**: nichts zu tun. Startet man in der App
+eine Aufnahme in einem Vault, installiert die App das Plugin dort (oder
+aktualisiert es auf die mitgelieferte Version; nie auf eine ältere), schaltet
+es beim ersten Mal ein und meldet das. Danach Obsidian einmal neu starten;
+fragt Obsidian nach dem eingeschränkten Modus bzw. ob man dem Vault vertraut,
+Community-Plugins erlauben. Plugin-Einstellungen bleiben bei Updates erhalten.
+
+**Von Hand** (ohne App):
+
 Das Plugin ist (noch) nicht im Community-Plugin-Verzeichnis von Obsidian;
 es wird von Hand installiert:
 
@@ -25,7 +34,7 @@ es wird von Hand installiert:
    ausschalten, dann **DocuClick Diagrams** aktivieren.
 
 Update: Ordnerinhalt durch die Dateien des neuen Releases ersetzen und
-Obsidian neu laden. Die `.docuclick`-Dateien im Vault bleiben unverändert.
+Obsidian neu laden. Diagramm-Notizen und `.docuclick`-Dateien im Vault bleiben unverändert.
 
 Selbst bauen statt Release: `python3 obsidian/build.py` im Repository
 ausführen (nur Python 3 nötig, keine Internetverbindung, Cytoscape kommt aus
@@ -40,7 +49,8 @@ Diagramm-Tab.
 - Ribbon-Symbol oder Befehl **DocuClick Diagrams: Neues Ablaufdiagramm**:
   Dateinamen und Ordner eingeben (Vorschläge aus dem Vault, fehlende Ordner
   werden angelegt), anschließend über **Element** Formen oder Bilder anlegen.
-- Eine `.docuclick`-Datei öffnet sich als Diagramm-Tab.
+  Es entsteht eine Diagramm-Notiz (siehe unten).
+- Eine Diagramm-Notiz (oder ältere `.docuclick`-Datei) öffnet sich als Diagramm-Tab.
 - Knoten ziehen; Verbindungspunkte ziehen, um Knoten zu verbinden.
 - Rechtsklick auf Knoten, Verbindung oder Hintergrund öffnet die Bearbeitung.
 - **Zurück / Wiederholen**, `Strg+Z` / `Strg+Umschalt+Z` (Mac: `⌘`) machen Änderungen
@@ -59,15 +69,102 @@ Import und Export überschreiben keine vorhandenen Dateien. Gleichnamige Dateien
 erhalten eine laufende Nummer. Importierte HTML-Skripte werden nicht ausgeführt;
 nur die eingebetteten JSON-Daten und Rasterbilder werden übernommen.
 
-### DocuClick-Aufnahmen übernehmen
+### Ein Ablauf = eine Notiz (Diagramm-Notiz)
 
-Mit DocuClick für Windows oder macOS aufgenommene Abläufe (`.html`) lassen
+Jeder Ablauf ist **eine normale Markdown-Notiz**, die das Plugin als
+**Diagramm-Tab** öffnet, im ganzen Tab wie bisher, mit allen Funktionen und der
+HTML-Ansicht zum Weitergeben. Weil es eine Notiz ist, funktionieren Suche,
+Links, Backlinks, Tags und Umbenennen wie bei jeder Notiz; es entsteht keine
+zweite Datei.
+
+```markdown
+---
+docuclick: diagramm          ← kennzeichnet die Notiz als Diagramm
+---
+Eigener Text: Zweck, Zuständigkeit, Hinweise …
+
+## Schritte
+%% DocuClick: Schritte werden aus dem Diagramm erzeugt … %%
+1. Linksklick auf „Rechnungen“
+2. Abzweigung:
+	- **Pfad: Erfolg**
+		1. …
+%% DocuClick: Ende der Schritte %%
+
+%% DocuClick-Diagrammdaten (nicht von Hand ändern)
+{ … }
+%%
+```
+
+- **Diagramm ↔ Text**: Oben rechts im Diagramm-Tab **Als Notiz anzeigen**
+  zeigt den Text (eigene Notizen, Schrittliste); in der Textansicht führt
+  **Als Diagramm anzeigen** zurück. Befehl: **Zwischen Diagramm und Notiz
+  umschalten**.
+- **Eigener Text** und eigene Eigenschaften (Tags …) bleiben bei jedem
+  Speichern erhalten, auch während einer Aufnahme mit der App.
+- **Schrittliste**: wird bei jeder Änderung des Diagramms neu erzeugt, als
+  durchsuchbarer Text, Abzweigungen als Unterlisten je Pfad. Ersetzt wird nur
+  der Bereich zwischen den `%% DocuClick … %%`-Zeilen; wer ihn löscht,
+  verzichtet auf die Liste.
+- **Diagrammdaten** stehen am Ende in einem Obsidian-Kommentar (`%% … %%`)
+  und sind in der Lese- und Live-Vorschau unsichtbar. Die Obsidian-Suche
+  findet auch Begriffe daraus; die Treffer führen zur richtigen Notiz.
+- **Ohne Plugin** (Obsidian Mobile, andere Editoren) bleibt die Notiz mit
+  Text und Schrittliste lesbar.
+
+Ältere `.docuclick`-Dateien öffnen sich weiterhin als Diagramm-Tab;
+**Als Notiz anzeigen** bzw. Rechtsklick → **In Diagramm-Notiz umwandeln**
+macht daraus eine Diagramm-Notiz (die alte Datei kommt in den Papierkorb).
+
+### Mit DocuClick für Windows/macOS direkt in den Vault aufnehmen
+
+Das Plugin ist der Ort, an dem Abläufe liegen und bearbeitet werden; die
+Apps [DocuClick für Windows](../windows/README.md) und
+[für macOS](../macos/README.md) liefern die Aufnahme dazu:
+
+1. In der App eine neue Session starten und als **Speicherort einen Ordner
+   im Vault** wählen. Die App erkennt den Vault (am Ordner `.obsidian`) und
+   legt statt einer `.html`-Datei eine **Diagramm-Notiz** (`.md`) an; der
+   Hinweis im Dialog zeigt das an.
+2. Die Notiz in Obsidian öffnen, gern schon während der Aufnahme: Jeder
+   Klick erscheint nach kurzer Zeit im Diagramm-Tab, die Schrittliste wächst mit.
+3. In Obsidian bearbeiten (umbenennen, verschieben, verbinden, eigenen Text
+   schreiben …). Die App übernimmt diese Änderungen vor dem nächsten Klick;
+   sie werden nicht überschrieben. Zum Weiteraufnehmen in der App
+   „Bestehende Datei fortsetzen“ und die Notiz wählen.
+
+Screenshots legt die App als PNG-Dateien in `Attachments/<Ablaufname>/`
+neben der Notiz ab; das Diagramm verweist darauf (`images`), die Notiz bleibt
+klein. Diese Bilder bleiben auch bei der Einstellung „In der Datei“ Dateien.
+Zum Weitergeben dient wie immer die **HTML-Ansicht**.
+
+Gleichzeitig in App und Diagramm-Tab dasselbe ändern sollte man vermeiden:
+Schreiben beide im selben Moment, sichert das Plugin seine Fassung als
+`… – lokale Änderungen.docuclick` (siehe unten).
+
+### Diagramm in eine andere Notiz einbetten
+
+Etwa für eine Übersichtsseite: ein Codeblock `docuclick` mit dem Pfad der
+Diagramm-Notiz zeigt das Diagramm zum Anschauen (Zoom, Suche, Bildansicht,
+Anleitung; **Im Editor öffnen** springt in den Diagramm-Tab):
+
+````markdown
+```docuclick
+[[Prozesse/Rechnung stornieren.md]]
+hoehe: 700
+```
+````
+
+`hoehe` ist optional (Standard 520 Pixel). Im Codeblock angegebene Pfade
+passt Obsidian beim Umbenennen nicht an.
+
+### Ältere DocuClick-Aufnahmen übernehmen
+
+Abläufe, die außerhalb eines Vaults als `.html` aufgenommen wurden, lassen
 sich importieren: HTML-Datei in den Vault legen → Rechtsklick → **Als
 DocuClick-Diagramm importieren** (oder Befehl **DocuClick-HTML importieren**
-für eine Datei außerhalb des Vaults). Es entsteht eine neue `.docuclick`-
-Datei mit allen Schritten und Screenshots; die HTML-Datei bleibt unverändert.
-Der Weg geht nur in diese Richtung: Die DocuClick-Apps öffnen keine
-`.docuclick`-Dateien. Zum Weitergeben dient die **HTML-Ansicht**.
+für eine Datei außerhalb des Vaults). Es entsteht eine neue Diagramm-Notiz
+mit allen Schritten und Screenshots; die HTML-Datei bleibt unverändert.
 
 ### Speicherort neuer Abläufe
 
@@ -126,16 +223,22 @@ einzelnen Schritte und Pfade gehören zum Diagramm und bleiben erhalten.
 
 ## Speicherung und Konflikte
 
-`.docuclick` ist JSON mit `format: "docuclick-diagram"`, `version: 1`, dem
+Die Diagrammdaten (im Datenblock einer Diagramm-Notiz, in älteren Dateien die
+ganze `.docuclick`-Datei) sind JSON mit `format: "docuclick-diagram"`, `version: 1`, dem
 Canvas-Dokument und den Darstellungsdaten (`flow`). Die Darstellungsdaten sichern
 insbesondere die bereits eingebetteten Screenshots aus bestehenden HTML-Dateien.
 Bilder liegen standardmäßig einmal als Data-URI in der Datei; optional können
 sie als Vault-Dateien ausgelagert werden (dann steht in `images` je Schritt der
-Pfad, siehe „Screenshots speichern“). Grenze: 64 MB pro Datei, maximal 10.000
+Pfad relativ zum Vault, siehe „Screenshots speichern“). Die DocuClick-Apps
+schreiben dasselbe Format samt Schrittliste (`core/DocuClick.Core/Services/DiagramNote.cs`,
+`DocuClickDiagramIo.cs`); `tests/fixtures/app-recording.md` ist eine echte
+App-Aufnahme, die beide Testsuiten prüfen. In der Notiz ist `%` in den Daten als
+`\u0025` geschrieben, damit der Kommentar nie vorzeitig endet. Grenze: 64 MB pro Datei, maximal 10.000
 sichtbare Knoten.
 
 Jeder Schreibvorgang vergleicht innerhalb von `Vault.process()` den bisherigen
-Dateistand. Wurde die Datei in einem anderen Tab oder extern geändert, bleibt
+Dateistand. Hat sich bei einer Diagramm-Notiz nur der Text geändert (z. B. in der
+Textansicht), werden Diagramm und Schrittliste in den neuen Stand eingesetzt. Wurde die Datei in einem anderen Tab oder extern geändert, bleibt
 das Original erhalten; lokale Änderungen werden in einer neuen Datei
 `… – lokale Änderungen.docuclick` gesichert. Die Ansicht zeigt den Konflikt an.
 Beide Fassungen können dann verglichen werden. Es gibt kein automatisches
@@ -161,7 +264,7 @@ Eine Content Security Policy blockiert Netzwerkzugriffe. Nachrichten sind an
 das konkrete Frame-Fenster und einen zufälligen Kanal gebunden; der Editor kann
 keinen Zielpfad angeben. Die Host-Seite validiert jedes gespeicherte Dokument.
 
-Noch nicht enthalten: native Obsidian-Notizlinks/Backlinks, Einbettung in Markdown,
+Noch nicht enthalten: Links aus einzelnen Schritten auf andere Notizen,
 Mobile-/Touch-Anpassung, draw.io-Export im Plugin und separate Bildanhänge.
 Die Desktop-App verwendet für ihre eigene Ablaufübersicht weiterhin `flow.js`; deren vollständige Zusammenführung ist ein weiterer Umbau.
 

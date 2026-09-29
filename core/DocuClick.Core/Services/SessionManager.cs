@@ -165,6 +165,9 @@ public sealed class SessionManager : IDisposable
         {
             try
             {
+                // A .docuclick diagram may have been edited in Obsidian
+                // meanwhile: act on its current content, not a stale copy.
+                _writer.SyncWithDisk();
                 tcs.SetResult(work());
             }
             catch (Exception ex)
@@ -234,6 +237,12 @@ public sealed class SessionManager : IDisposable
             return new StatusSnapshot(BuildStatusText(), _writer.GetPreview());
         });
         _currentTargetFileName = targetFilePath;
+
+        // Recording into a vault: the plugin that opens the diagram note comes along.
+        if (ObsidianVault.FindRoot(targetDirectory) is { } vaultRoot && ObsidianPluginInstaller.EnsureInstalled(vaultRoot) is { } installMessage)
+        {
+            InfoOccurred?.Invoke(installMessage);
+        }
 
         StartCapturing();
 

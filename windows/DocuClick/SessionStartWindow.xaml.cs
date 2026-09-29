@@ -16,7 +16,8 @@ namespace DocuClick;
 /// </summary>
 public partial class SessionStartWindow : Window
 {
-    private readonly string _extension;
+    // .docuclick inside an Obsidian vault (the plugin's diagram), else .html.
+    private string TargetExtension => ObsidianVault.OutputExtensionFor(_selectedTargetFolder);
 
     // Absolute path, or "" until the user has actually browsed for one —
     // Starten refuses until this is set (see OnStartClicked). Defaults to
@@ -41,11 +42,11 @@ public partial class SessionStartWindow : Window
     {
         InitializeComponent();
 
-        _extension = SessionManager.OutputExtension;
         _selectedTargetFolder = config.RecentOutputPaths.FirstOrDefault(Directory.Exists) ?? "";
         TargetFolderBox.Text = string.IsNullOrEmpty(_selectedTargetFolder) ? "" : _selectedTargetFolder;
 
         SetSuggestedFileName();
+        UpdateTargetHint();
 
         NewFileNameBox.TextChanged += (_, _) =>
         {
@@ -82,7 +83,7 @@ public partial class SessionStartWindow : Window
         var datePart = DateTime.Now.ToString("yyyy-MM-dd");
 
         var existingNames = Directory.Exists(_selectedTargetFolder)
-            ? Directory.GetFiles(_selectedTargetFolder, "*" + _extension)
+            ? Directory.GetFiles(_selectedTargetFolder, "*" + TargetExtension)
                 .Select(f => Path.GetFileNameWithoutExtension(f)!)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase)
             : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -143,14 +144,17 @@ public partial class SessionStartWindow : Window
         _selectedTargetFolder = dialog.SelectedPath;
         TargetFolderBox.Text = _selectedTargetFolder;
         SetSuggestedFileName();
+        UpdateTargetHint();
     }
+
+    private void UpdateTargetHint() => TargetHintText.Text = ObsidianVault.TargetHint(_selectedTargetFolder);
 
     private void OnBrowseExistingFileClicked(object sender, RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
             Title = "Bestehenden Ablauf auswählen",
-            Filter = "DocuClick-Ablauf (*.html;*.canvas)|*.html;*.canvas|HTML-Abläufe (*.html)|*.html|Obsidian Canvas (*.canvas)|*.canvas|Alle Dateien (*.*)|*.*",
+            Filter = "DocuClick-Ablauf (*.md;*.html;*.docuclick;*.canvas)|*.md;*.html;*.docuclick;*.canvas|Diagramm-Notizen in Obsidian (*.md)|*.md|HTML-Abläufe (*.html)|*.html|Ältere Obsidian-Diagramme (*.docuclick)|*.docuclick|Obsidian Canvas (*.canvas)|*.canvas|Alle Dateien (*.*)|*.*",
             CheckFileExists = true,
         };
 
@@ -180,7 +184,7 @@ public partial class SessionStartWindow : Window
                 return;
             }
 
-            var fileName = SanitizeFileNameSegment(Path.GetFileNameWithoutExtension(name)) + _extension;
+            var fileName = SanitizeFileNameSegment(Path.GetFileNameWithoutExtension(name)) + TargetExtension;
             SelectedFileName = Path.Combine(_selectedTargetFolder, fileName);
         }
         else

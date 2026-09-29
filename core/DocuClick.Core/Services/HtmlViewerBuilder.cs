@@ -29,19 +29,20 @@ public static class HtmlViewerBuilder
 
     public sealed record EdgeSpec(string Source, string Target, string Color, bool Manual, string LineStyle = "solid");
 
-    /// <param name="embeddedDataJson">
-    /// Embedded verbatim in a `&lt;script id="docuclick-data"
-    /// type="application/json"&gt;` block for <see cref="CanvasDocumentIo.Load"/>
-    /// to read back later.
-    /// </param>
-    public static string BuildPage(string title, IReadOnlyList<NodeSpec> nodes, IReadOnlyList<EdgeSpec> edges, string embeddedDataJson)
+    /// <summary>
+    /// The rendered graph (Cytoscape elements) — the page's <c>flowData</c>
+    /// and the <c>flow</c> part of a <c>.docuclick</c> diagram
+    /// (<see cref="DocuClickDiagramIo"/>). Serialize with null values
+    /// omitted (see <see cref="BuildPage"/>).
+    /// </summary>
+    public static object FlowData(IReadOnlyList<NodeSpec> nodes, IReadOnlyList<EdgeSpec> edges) => new
     {
-        var jsNodes = nodes.Select((n, idx) => new
+        nodes = nodes.Select((n, idx) => new
         {
             data = new { id = n.Id, label = n.Label, color = n.Color, shape = n.Shape, imageUrl = n.ImageSrc, stepIndex = idx + 1 },
             position = new { x = n.X, y = n.Y },
-        });
-        var jsEdges = edges.Select(e => new
+        }),
+        edges = edges.Select(e => new
         {
             data = new
             {
@@ -52,14 +53,23 @@ public static class HtmlViewerBuilder
                 manual = e.Manual,
                 lineStyle = string.IsNullOrEmpty(e.LineStyle) ? "solid" : e.LineStyle,
             },
-        });
+        }),
+    };
+
+    /// <param name="embeddedDataJson">
+    /// Embedded verbatim in a `&lt;script id="docuclick-data"
+    /// type="application/json"&gt;` block for <see cref="CanvasDocumentIo.Load"/>
+    /// to read back later.
+    /// </param>
+    public static string BuildPage(string title, IReadOnlyList<NodeSpec> nodes, IReadOnlyList<EdgeSpec> edges, string embeddedDataJson)
+    {
         // WhenWritingNull: a node without a screenshot (decision points,
         // path-start markers) must omit "imageUrl" entirely rather than
         // serialize it as null — Cytoscape's `[imageUrl]` selector matches a
         // data field that's merely *present*, null value and all, which
         // would wrongly create an image overlay (src "null") for it too.
         var jsonOptions = new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
-        var dataJson = JsonSerializer.Serialize(new { nodes = jsNodes, edges = jsEdges }, jsonOptions);
+        var dataJson = JsonSerializer.Serialize(FlowData(nodes, edges), jsonOptions);
         var cytoscapeJs = CytoscapeJs.Value;
         var saveServicePort = LocalSaveService.Port;
         // type="application/json" is never executed by the browser — purely

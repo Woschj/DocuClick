@@ -78,7 +78,7 @@ internal static class Ui
 
     public static readonly Avalonia.Platform.Storage.FilePickerFileType AblaufFileType = new("DocuClick-Ablauf")
     {
-        Patterns = new[] { "*.html", "*.canvas" }
+        Patterns = new[] { "*.md", "*.html", "*.docuclick", "*.canvas" }
     };
 
     public static Button Button(string text, bool primary = false)

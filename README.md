@@ -65,8 +65,14 @@ entpacken, den Ordner `docuclick-diagrams` nach
 3. **Weitergeben**: Die `.html`-Datei ist eigenständig (Screenshots
    eingebettet) und öffnet sich in jedem Browser. Optional als draw.io-
    Diagramm exportieren.
-4. **Ohne Aufnahme** (Obsidian): Abläufe im Vault anlegen oder
-   DocuClick-HTML importieren, bearbeiten und als HTML-Ansicht weitergeben.
+4. **Mit Obsidian** (empfohlen für eine Wissenssammlung): Das Plugin ist die
+   Basis, die Apps nehmen dafür auf. Liegt der Speicherort in einem Vault,
+   ist jeder Ablauf eine einzige Notiz: im Plugin ein Diagramm-Tab, für
+   Obsidian eine durchsuchbare Notiz mit Schrittliste. Sie lässt sich schon
+   während der Aufnahme öffnen und bearbeiten; Screenshots liegen als
+   Dateien im Vault. Ohne App: Abläufe im Vault anlegen oder ältere
+   DocuClick-HTML importieren. Weitergeben als HTML-Ansicht.
+   → [Direkt in den Vault aufnehmen](obsidian/README.md#mit-docuclick-für-windowsmacos-direkt-in-den-vault-aufnehmen)
 
 ## Entwicklung
 

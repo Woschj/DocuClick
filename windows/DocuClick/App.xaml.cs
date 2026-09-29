@@ -615,7 +615,7 @@ public partial class App : Application
         {
             Title = "Ablauf für den draw.io-Export wählen",
             InitialDirectory = ResolveStartingFolder(),
-            Filter = "DocuClick-Ablauf (*.html;*.canvas)|*.html;*.canvas|HTML-Abläufe (*.html)|*.html|Obsidian Canvas (*.canvas)|*.canvas|Alle Dateien (*.*)|*.*",
+            Filter = "DocuClick-Ablauf (*.md;*.html;*.docuclick;*.canvas)|*.md;*.html;*.docuclick;*.canvas|Diagramm-Notizen in Obsidian (*.md)|*.md|HTML-Abläufe (*.html)|*.html|Ältere Obsidian-Diagramme (*.docuclick)|*.docuclick|Obsidian Canvas (*.canvas)|*.canvas|Alle Dateien (*.*)|*.*",
             CheckFileExists = true
         };
         if (openDialog.ShowDialog() != true)
@@ -664,7 +664,7 @@ public partial class App : Application
         {
             Title = "Ablauf zum Ansehen/Bearbeiten wählen",
             InitialDirectory = ResolveStartingFolder(),
-            Filter = "DocuClick-Ablauf (*.html;*.canvas)|*.html;*.canvas|HTML-Abläufe (*.html)|*.html|Obsidian Canvas (*.canvas)|*.canvas|Alle Dateien (*.*)|*.*",
+            Filter = "DocuClick-Ablauf (*.md;*.html;*.docuclick;*.canvas)|*.md;*.html;*.docuclick;*.canvas|Diagramm-Notizen in Obsidian (*.md)|*.md|HTML-Abläufe (*.html)|*.html|Ältere Obsidian-Diagramme (*.docuclick)|*.docuclick|Obsidian Canvas (*.canvas)|*.canvas|Alle Dateien (*.*)|*.*",
             CheckFileExists = true
         };
         if (openDialog.ShowDialog() != true)

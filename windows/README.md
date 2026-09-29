@@ -47,6 +47,23 @@ Für eine vorbereitete Ordnerstruktur mit Vorlage siehe [Ausgabeordner-Vorlage
 für Prozessdokumentation](#ausgabeordner-vorlage-für-prozessdokumentation)
 weiter unten — praktisch für eine Knowledge Base, aber kein Pflichtschritt.
 
+**Obsidian-Vault als Speicherort**: Liegt der gewählte Ordner in einem
+Obsidian-Vault (erkennbar am Ordner `.obsidian` in ihm oder darüber), legt
+DocuClick statt der `.html`-Datei eine **Diagramm-Notiz** (`.md`) an: eine
+normale Obsidian-Notiz mit Schrittliste als Text, die das Plugin
+[DocuClick Diagrams](../obsidian/README.md) als Diagramm öffnet. Der Hinweis
+unter dem Dateinamen im Session-Dialog zeigt das an. Das Diagramm lässt sich
+schon während der Aufnahme in Obsidian öffnen und bearbeiten; die Screenshots
+liegen als PNG-Dateien im `Attachments`-Unterordner und werden nicht bei
+jedem Klick neu eingebettet. Änderungen aus Obsidian übernimmt DocuClick vor
+dem nächsten Klick, eigener Text in der Notiz bleibt erhalten. Das Plugin
+muss nicht von Hand installiert werden: Beim Start einer Aufnahme in einem
+Vault installiert (bzw. aktualisiert) DocuClick es dort selbst und meldet
+das; danach Obsidian einmal neu starten und, falls Obsidian fragt,
+Community-Plugins erlauben. Zum
+Weitergeben erzeugt das Plugin eine eigenständige HTML-Ansicht; der
+draw.io-Export der App funktioniert auch mit Diagramm-Notizen.
+
 Danach läuft die Aufnahme unabhängig von jedem anderen Programm — die App
 muss beim Aufzeichnen nicht mal geöffnet sein, DocuClick schreibt direkt in
 die Datei; DocuClicks eigene Ablauf-Übersicht zeigt den aktuellen Stand

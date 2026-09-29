@@ -68,6 +68,14 @@ die Berechtigungen bei Updates erhalten.
    Aufnahme). **Nach draw.io exportieren …** erzeugt ein editierbares
    draw.io-Diagramm.
 
+### Aufnehmen in einen Obsidian-Vault
+
+Liegt der Speicherort in einem Obsidian-Vault, legt DocuClick eine
+Diagramm-Notiz (`.md`) für das Plugin [DocuClick Diagrams](../obsidian/README.md)
+an statt einer `.html`-Datei; bearbeitet wird dann in Obsidian, auch schon
+während der Aufnahme. Details:
+[Windows-Anleitung](../windows/README.md#speicherort).
+
 ### Im Browser bearbeiten
 
 ![Ablauf im Browser](../docs/screenshots/ablauf.png)

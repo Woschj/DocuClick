@@ -1,5 +1,5 @@
 /* global DocuClickDocument, VIEWER_TEMPLATE, CYTOSCAPE */
-const { Plugin, PluginSettingTab, FileView, Modal, Setting, Notice, TFile, TFolder, AbstractInputSuggest, normalizePath } = require("obsidian");
+const { Plugin, PluginSettingTab, FileView, Modal, Setting, Notice, TFile, TFolder, AbstractInputSuggest, MarkdownRenderChild, WorkspaceLeaf, normalizePath } = require("obsidian");
 const VIEW_TYPE = "docuclick-diagram";
 const D = DocuClickDocument;
 const DEFAULT_SETTINGS = { themeMode: "docuclick", background: "#1e1e1e", accent: "#7c3aed", themeExport: true, defaultFolder: "", askFolder: true, imageStorage: "embedded", imageFolder: "DocuClick-Bilder" };
@@ -65,6 +65,61 @@ function cleanFolder(value) {
   if (!trimmed) return "";
   if (trimmed.split("/").some(part => !part.trim() || part === "." || part === ".." || /[:*?"<>|]/.test(part))) return null;
   return normalizePath(trimmed);
+}
+
+// A CSP additionally prevents imported image links or editor code from
+// contacting a network endpoint. Only bundled code and raster data run.
+const CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src 'none'; connect-src 'none'; frame-src 'none'; form-action 'none'">`;
+
+/** Vault path from a property/code block value: `[[Pfad]]`, `[[Pfad|Alias]]` or a plain path. */
+function linkTarget(value) {
+  const text = String(value ?? "").trim();
+  const link = /^\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]$/.exec(text);
+  return (link ? link[1] : text).trim();
+}
+
+/**
+ * ```docuclick``` code block in any note: another diagram as read-only viewer
+ * (same look, zoom, search, image view and guide as the HTML export). First
+ * line = the diagram's path or [[link]]. Follows diagram changes live.
+ */
+class DiagramEmbed extends MarkdownRenderChild {
+  constructor(plugin, el, source, sourcePath) { super(el); this.plugin = plugin; this.source = source; this.sourcePath = sourcePath; }
+  onload() {
+    this.plugin.embeds.add(this);
+    const later = () => { clearTimeout(this.timer); this.timer = setTimeout(() => this.render().catch(report), 400); };
+    this.registerEvent(this.plugin.app.vault.on("modify", file => { if (file.path === this.file?.path) later(); }));
+    this.render().catch(report);
+  }
+  onunload() { clearTimeout(this.timer); this.plugin.embeds.delete(this); }
+  resolve() {
+    const { app } = this.plugin;
+    const lines = this.source.split("\n").map(line => line.trim()).filter(Boolean);
+    const option = lines.find(line => /^(hoehe|höhe|height)\s*:/i.test(line));
+    this.height = Math.min(Math.max(parseInt(option?.split(":")[1], 10) || 520, 200), 3000);
+    const path = linkTarget(lines.find(line => line !== option));
+    if (!path) return null;
+    const direct = app.vault.getAbstractFileByPath(normalizePath(path));
+    return direct instanceof TFile ? direct : app.metadataCache.getFirstLinkpathDest(path, this.sourcePath);
+  }
+  async render() {
+    const el = this.containerEl, file = this.resolve();
+    this.file = file;
+    el.empty(); el.addClass("docuclick-embed");
+    if (!(file instanceof TFile) || !["md", "docuclick"].includes(file.extension) || file.path === this.sourcePath) {
+      el.createDiv({ cls: "docuclick-error", text: "DocuClick: Kein Diagramm gefunden. In den Codeblock den Pfad der Diagramm-Notiz schreiben, z. B. Prozesse/Rechnung stornieren.md" });
+      return;
+    }
+    const header = el.createDiv({ cls: "docuclick-embed-header" });
+    header.createSpan({ text: file.basename });
+    header.createEl("button", { text: "Im Editor öffnen" }).addEventListener("click", () => this.plugin.openDiagram(file).catch(report));
+    let doc;
+    try { doc = await this.plugin.loadDocument(await this.plugin.app.vault.read(file)); }
+    catch (error) { el.createDiv({ cls: "docuclick-error", text: `DocuClick: ${error.message}` }); return; }
+    const frame = el.createEl("iframe", { cls: "docuclick-embed-frame", attr: { sandbox: "allow-scripts", title: `Ablauf ${file.basename}` } });
+    frame.style.height = `${this.height}px`;
+    frame.srcdoc = D.buildHtml(VIEWER_TEMPLATE, CYTOSCAPE, doc, file.basename, { readOnly: true, theme: this.plugin.currentTheme() }).replace("<head>", () => `<head>${CSP}`);
+  }
 }
 
 const IMAGE_TYPES = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", bmp: "image/bmp" };
@@ -225,13 +280,19 @@ class DiagramView extends FileView {
   getViewType() { return VIEW_TYPE; }
   getDisplayText() { return this.file?.basename || "Ablaufdiagramm"; }
   getIcon() { return "workflow"; }
-  async onOpen() { this.contentEl.addClass("docuclick-view"); }
+  async onOpen() {
+    this.contentEl.addClass("docuclick-view");
+    // Diagram notes: switch to the note's text (own notes, step list); old .docuclick files: convert.
+    this.noteAction = this.addAction?.("file-text", "Als Notiz anzeigen", () => { if (this.file) this.plugin.toggleView(this.leaf, this.file).catch(report); });
+  }
   async onLoadFile(file) {
     this.contentEl.empty();
+    this.noteAction?.setAttribute?.("aria-label", file.extension === "md" ? "Als Notiz anzeigen" : "In Diagramm-Notiz umwandeln (ersetzt diese .docuclick-Datei)");
     try {
       const base = await this.app.vault.read(file);
-      const doc = await this.plugin.loadDocument(base);
-      const state = { file, base, doc, queue: Promise.resolve(), recovery: null, blocked: false, error: null, inbox: [], inboxTimer: null, pendingWrite: null, banner: null, pristineKey: JSON.stringify(doc) };
+      const imagePaths = new Map();
+      const doc = await this.plugin.loadDocument(base, imagePaths);
+      const state = { file, base, doc, imagePaths, queue: Promise.resolve(), recovery: null, blocked: false, error: null, inbox: [], inboxTimer: null, pendingWrite: null, banner: null, pristineKey: JSON.stringify(doc) };
       this.state = state;
       const frame = this.contentEl.createEl("iframe", { cls: "docuclick-editor", attr: { sandbox: "allow-scripts allow-downloads", title: "DocuClick Diagrammeditor" } });
       this.frame = frame;
@@ -250,11 +311,8 @@ class DiagramView extends FileView {
       const ownerWindow = this.contentEl.ownerDocument.defaultView;
       ownerWindow.addEventListener("message", onMessage);
       this.removeListener = () => ownerWindow.removeEventListener("message", onMessage);
-      // A CSP additionally prevents imported image links or editor code from
-      // contacting a network endpoint. Only bundled code and raster data run.
-      const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src 'none'; connect-src 'none'; frame-src 'none'; form-action 'none'">`;
       const bridge = `<script>(${frameBridge.toString()})(${D.safeJson(channel)});</script>`;
-      frame.srcdoc = D.buildHtml(VIEWER_TEMPLATE, CYTOSCAPE, doc, file.basename, { theme: this.plugin.currentTheme() }).replace("<head>", () => `<head>${csp}${bridge}`);
+      frame.srcdoc = D.buildHtml(VIEWER_TEMPLATE, CYTOSCAPE, doc, file.basename, { theme: this.plugin.currentTheme() }).replace("<head>", () => `<head>${CSP}${bridge}`);
     } catch (error) {
       this.contentEl.createDiv({ cls: "docuclick-error", text: `Diagramm konnte nicht geöffnet werden. Die Datei wurde nicht verändert.\n\n${error.message}` });
       report(error);
@@ -305,6 +363,8 @@ class DiagramView extends FileView {
     if (state !== this.state) return;
     const text = await this.app.vault.read(file);
     if (text === state.base || text === state.pendingWrite) return;
+    // A diagram note whose text part changed (typing in the note view): nothing to reload.
+    if (file.extension === "md" && D.noteData(text) === D.noteData(state.base)) { state.base = text; return; }
     let unchanged = false;
     try { unchanged = JSON.stringify(state.doc) === JSON.stringify(await this.plugin.loadDocument(state.base)); } catch { /* keep the warning path */ }
     if (unchanged && !state.blocked) { await this.reload(); return; }
@@ -332,19 +392,26 @@ class DiagramView extends FileView {
   post(kind, extra = {}) { this.frame?.contentWindow?.postMessage({ channel: this.channel, kind, ...extra }, "*"); }
   enqueueSave(state, stored) {
     state.queue = state.queue.then(async () => {
-      let next;
+      let next, storage;
       try {
-        next = await this.plugin.storageText(state, stored);
+        storage = await this.plugin.storageDoc(state, stored);
+        next = this.plugin.fileText(state.file, state.base, storage);
       } catch (error) {
         state.error = error.message; report(error); return;
       }
       if (next.length > D.MAX_BYTES) { state.error = "Diagramm ist zu groß."; report(new Error(state.error)); return; }
       if (next === state.base && !state.blocked) return;
+      const isNote = state.file.extension === "md";
       try {
         if (state.blocked) throw new Error("Die Datei wurde außerhalb dieser Ansicht geändert.");
         state.pendingWrite = next;
         await this.app.vault.process(state.file, current => {
-          if (current !== state.base) { state.blocked = true; throw new Error("Die Datei wurde außerhalb dieser Ansicht geändert."); }
+          if (current !== state.base) {
+            // Only the note's own text changed (edited as text meanwhile): keep it, replace the diagram.
+            if (!isNote || D.noteData(current) !== D.noteData(state.base)) { state.blocked = true; throw new Error("Die Datei wurde außerhalb dieser Ansicht geändert."); }
+            next = this.plugin.fileText(state.file, current, storage);
+            state.pendingWrite = next;
+          }
           return next;
         });
         state.base = next; state.error = null;
@@ -397,14 +464,48 @@ module.exports = class DocuClickPlugin extends Plugin {
     this.registerView(VIEW_TYPE, leaf => new DiagramView(leaf, this));
     // Follow Obsidian theme switches (light/dark, other theme, accent colour).
     this.registerEvent(this.app.workspace.on("css-change", () => { if (this.settings.themeMode === "obsidian") this.refreshThemes(); }));
+    this.embeds = new Set();
+    // Leaves where the user chose to see a diagram note as text (leaf -> path).
+    this.textLeaves = new WeakMap(); this.textActions = new WeakSet();
     this.registerEvent(this.app.vault.on("modify", file => {
       for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) leaf.view?.externalChange?.(file)?.catch(report);
     }));
+    this.registerMarkdownCodeBlockProcessor("docuclick", (source, el, ctx) => ctx.addChild(new DiagramEmbed(this, el, source, ctx.sourcePath)));
+    // Diagram notes open as diagram tab, like any .docuclick file: a leaf asked to
+    // show one as Markdown shows the diagram instead, before anything renders
+    // (same approach as the Excalidraw plugin). Tabs switched to text stay text.
+    const leafPrototype = WorkspaceLeaf?.prototype, originalSetViewState = leafPrototype?.setViewState, plugin = this;
+    if (originalSetViewState) {
+      const patched = function (viewState, ...rest) {
+        const path = viewState?.state?.file;
+        if (viewState?.type === "markdown" && typeof path === "string" && plugin.textLeaves.get(this) !== path && plugin.isDiagramNoteCached(path)) {
+          viewState = { ...viewState, type: VIEW_TYPE };
+        }
+        return originalSetViewState.call(this, viewState, ...rest);
+      };
+      leafPrototype.setViewState = patched;
+      this.register(() => { if (leafPrototype.setViewState === patched) leafPrototype.setViewState = originalSetViewState; });
+    }
+    // Fallback for notes Obsidian has not indexed yet (just created or synced).
+    this.registerEvent(this.app.workspace.on("file-open", () => this.showDiagramNotes().catch(report)));
+    this.app.workspace.onLayoutReady?.(() => this.showDiagramNotes().catch(report));
+    this.addCommand({
+      id: "toggle-view", name: "Zwischen Diagramm und Notiz umschalten",
+      checkCallback: checking => {
+        const leaf = this.app.workspace.getMostRecentLeaf?.(), file = leaf?.view?.file;
+        if (!(file instanceof TFile) || !["md", "docuclick"].includes(file.extension) || (leaf.view.getViewType() !== VIEW_TYPE && file.extension !== "md")) return false;
+        if (!checking) this.toggleView(leaf, file).catch(report);
+        return true;
+      }
+    });
     this.registerExtensions(["docuclick"], VIEW_TYPE);
     this.addRibbonIcon("workflow", "Neues Ablaufdiagramm", () => this.newDiagram());
     this.addCommand({ id: "new-diagram", name: "Neues Ablaufdiagramm", callback: () => this.newDiagram() });
     this.addCommand({ id: "import-html", name: "DocuClick-HTML importieren", callback: () => this.pickHtml() });
     this.registerEvent(this.app.workspace.on("file-menu", (menu, file) => {
+      if (file instanceof TFile && file.extension === "docuclick") {
+        menu.addItem(item => item.setTitle("In Diagramm-Notiz umwandeln").setIcon("file-text").onClick(() => this.convertToNote(file).catch(report)));
+      }
       if (file instanceof TFile && file.extension.toLowerCase() === "html") {
         menu.addItem(item => item.setTitle("Als DocuClick-Diagramm importieren").setIcon("workflow").onClick(() => this.importFile(file).catch(report)));
       }
@@ -425,6 +526,63 @@ module.exports = class DocuClickPlugin extends Plugin {
   refreshThemes() {
     const theme = this.currentTheme();
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) leaf.view?.applyTheme?.(theme);
+    for (const embed of this.embeds) embed.render().catch(report);
+  }
+  /** Synchronous check from Obsidian's metadata cache (false while not indexed yet). */
+  isDiagramNoteCached(path) {
+    return typeof path === "string" && path.endsWith(".md") && this.app.metadataCache.getCache?.(path)?.frontmatter?.docuclick === "diagramm";
+  }
+  /** Opens a diagram (note or .docuclick) as diagram tab in a new tab. */
+  async openDiagram(file) {
+    await this.app.workspace.getLeaf("tab").setViewState({ type: VIEW_TYPE, state: { file: file.path }, active: true });
+  }
+  /** True for a Markdown note marked as diagram (`docuclick: diagramm`). */
+  async isDiagramNote(file) {
+    if (!(file instanceof TFile) || file.extension !== "md") return false;
+    const value = this.app.metadataCache.getFileCache(file)?.frontmatter?.docuclick;
+    if (value !== undefined) return value === "diagramm";
+    return D.isDiagramNote(await this.app.vault.cachedRead(file)); // cache not ready yet (new file)
+  }
+  /** Shows diagram notes opened as Markdown as diagram tab, unless the user switched that tab to text. */
+  async showDiagramNotes() {
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      const file = leaf.view?.file;
+      if (!await this.isDiagramNote(file)) continue;
+      if (this.textLeaves.get(leaf) === file.path) { this.addDiagramAction(leaf); continue; }
+      await leaf.setViewState({ type: VIEW_TYPE, state: { file: file.path } });
+    }
+  }
+  addDiagramAction(leaf) {
+    if (this.textActions.has(leaf.view)) return;
+    this.textActions.add(leaf.view);
+    leaf.view.addAction?.("workflow", "Als Diagramm anzeigen", () => { if (leaf.view?.file) this.toggleView(leaf, leaf.view.file).catch(report); });
+  }
+  /** Diagram tab <-> note text for a diagram note; an old .docuclick file is converted instead. */
+  async toggleView(leaf, file) {
+    if (file.extension === "docuclick") { await this.convertToNote(file); return; }
+    if (leaf.view?.getViewType() === VIEW_TYPE) {
+      this.textLeaves.set(leaf, file.path);
+      // Reading mode: the note is for reading; editing text is one click away.
+      await leaf.setViewState({ type: "markdown", state: { file: file.path, mode: "preview" } });
+      this.addDiagramAction(leaf);
+    } else {
+      this.textLeaves.delete(leaf);
+      await leaf.setViewState({ type: VIEW_TYPE, state: { file: file.path } });
+    }
+  }
+  /** Text of a diagram file: `.docuclick` JSON, or a diagram note (own text of `previous` kept). */
+  fileText(file, previous, storage) {
+    if (file.extension !== "md") return JSON.stringify(storage, null, 2);
+    return D.composeNote(previous, D.noteJson(storage), D.stepsMarkdown(storage));
+  }
+  /** Turns an old `.docuclick` file into a diagram note next to it; the old file goes to the trash. */
+  async convertToNote(file) {
+    const text = await this.app.vault.read(file);
+    await this.loadDocument(text); // refuse invalid content before creating anything
+    const note = await this.createUnique(file.parent?.path, file.basename, "md", this.fileText({ extension: "md" }, null, JSON.parse(text)));
+    await this.openDiagram(note);
+    await this.app.fileManager.trashFile(file);
+    new Notice(`In Diagramm-Notiz umgewandelt: ${note.path}`);
   }
   /** Default target folder: the configured one, else the active file's folder (vault root without one). */
   targetFolder() {
@@ -448,24 +606,33 @@ module.exports = class DocuClickPlugin extends Plugin {
   newDiagram() {
     new NameDialog(this.app, { folder: this.targetFolder(), askFolder: this.settings.askFolder }, async (name, folder) => {
       await this.ensureFolder(folder);
-      const file = await this.createUnique(folder, name, "docuclick", JSON.stringify(D.emptyDocument(), null, 2));
-      await this.app.workspace.getLeaf("tab").openFile(file);
+      const file = await this.createUnique(folder, name, "md", this.fileText({ extension: "md" }, null, D.emptyDocument()));
+      await this.openDiagram(file);
     }).open();
   }
-  /** Text of a `.docuclick` file; screenshots go to vault files when that setting is on. */
-  async storageText(state, doc) {
-    if (this.settings.imageStorage !== "attachments") return JSON.stringify(doc, null, 2);
+  /**
+   * Storage form of a diagram. Screenshots that already are vault files
+   * (recorded by the DocuClick apps, or saved earlier) stay files; new ones
+   * go to vault files only when that setting is on, else they are embedded.
+   */
+  async storageDoc(state, doc) {
+    const attach = this.settings.imageStorage === "attachments";
+    const known = state?.imagePaths ?? new Map();
+    if (!attach && !known.size) return doc;
     const folder = cleanFolder(this.settings.imageFolder) || DEFAULT_SETTINGS.imageFolder;
-    const known = state?.imagePaths ?? new Map(), used = new Map(), images = {};
+    const used = new Map(), images = {};
     const nodes = [];
     for (const n of doc.flow.nodes) {
-      if (!n.data.imageUrl) { nodes.push(n); continue; }
-      const path = known.get(n.data.imageUrl) ?? await this.saveImage(folder, n.data.imageUrl);
-      used.set(n.data.imageUrl, path); images[n.data.id] = path;
+      // Keyed by step: two steps may show identical screenshots stored in different files.
+      const previous = known.get(n.data.id);
+      const path = n.data.imageUrl && (previous?.url === n.data.imageUrl ? previous.path : attach ? await this.saveImage(folder, n.data.imageUrl) : null);
+      if (!path) { nodes.push(n); continue; }
+      used.set(n.data.id, { url: n.data.imageUrl, path }); images[n.data.id] = path;
       const { imageUrl, ...data } = n.data; nodes.push({ ...n, data });
     }
     if (state) state.imagePaths = used;
-    return JSON.stringify({ ...doc, flow: { ...doc.flow, nodes }, images }, null, 2);
+    if (!used.size) return doc;
+    return { ...doc, flow: { ...doc.flow, nodes }, images };
   }
   async saveImage(folder, dataUri) {
     const match = /^data:image\/(png|jpeg|jpg|webp|gif|bmp);base64,([a-z0-9+/=\s]+)$/i.exec(dataUri);
@@ -480,10 +647,15 @@ module.exports = class DocuClickPlugin extends Plugin {
     }
     return path;
   }
-  /** Parses a `.docuclick` text and resolves screenshot files back into embedded images. */
-  async loadDocument(text) {
+  /**
+   * Parses a diagram (`.docuclick` JSON or diagram note) and resolves screenshot files back into
+   * embedded images; `paths` (optional Map) receives step id → { url, path }.
+   */
+  async loadDocument(text, paths) {
     check_(typeof text === "string" && text.length <= D.MAX_BYTES, "Datei ist zu groß.");
-    const raw = JSON.parse(text);
+    const json = text.trimStart().startsWith("{") ? text : D.noteData(text);
+    check_(json, "Diese Notiz enthält keine DocuClick-Diagrammdaten.");
+    const raw = JSON.parse(json);
     if (raw?.images && typeof raw.images === "object") {
       const missing = [];
       for (const [nodeId, path] of Object.entries(raw.images)) {
@@ -493,6 +665,7 @@ module.exports = class DocuClickPlugin extends Plugin {
         const file = type && this.app.vault.getAbstractFileByPath(clean);
         if (!node?.data || !(file instanceof TFile) || (file.stat?.size ?? 0) > MAX_IMAGE_BYTES) { missing.push(String(path)); continue; }
         node.data.imageUrl = `data:${type};base64,${toBase64(await this.app.vault.readBinary(file))}`;
+        paths?.set(nodeId, { url: node.data.imageUrl, path: clean });
       }
       if (missing.length) new Notice(`DocuClick: ${missing.length} Bilddatei(en) fehlen oder sind ungültig, z. B. ${missing[0]}`, 10000);
     }
@@ -514,8 +687,8 @@ module.exports = class DocuClickPlugin extends Plugin {
   }
   async importText(text, name, folder) {
     const doc = D.importHtml(text);
-    const file = await this.createUnique(folder, name, "docuclick", await this.storageText(null, D.compactForStorage(doc)));
-    await this.app.workspace.getLeaf("tab").openFile(file);
+    const file = await this.createUnique(folder, name, "md", this.fileText({ extension: "md" }, null, await this.storageDoc(null, D.compactForStorage(doc))));
+    await this.openDiagram(file);
   }
   pickHtml() {
     const input = document.createElement("input");

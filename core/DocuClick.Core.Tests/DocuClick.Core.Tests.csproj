@@ -20,6 +20,12 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
   </ItemGroup>
 
+  <!-- SkiaSharp brings its native library for Windows and macOS only; Linux
+       (tests in a container/CI) needs it separately. -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\DocuClick.Core\DocuClick.Core.csproj" />
     <Using Include="Xunit" />

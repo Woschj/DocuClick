@@ -37,6 +37,13 @@ public static class CanvasDocumentIo
     /// </summary>
     public static CanvasDocument Load(string path)
     {
+        // A .docuclick diagram (recorded into an Obsidian vault) has its own
+        // JSON layout; every reader (writer, draw.io export) goes through here.
+        if (ObsidianVault.IsDiagramFile(path))
+        {
+            return DocuClickDiagramIo.Load(path);
+        }
+
         if (!File.Exists(path))
         {
             return new CanvasDocument();

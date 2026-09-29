@@ -25,6 +25,12 @@
     <Content Include="WebAssets\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Sources of the Obsidian plugin: ObsidianPluginInstaller assembles and
+         installs it into a vault the app records into (same as build.py). -->
+    <Content Include="..\..\obsidian\src\document.js;..\..\obsidian\src\main.js;..\..\obsidian\manifest.json;..\..\obsidian\styles.css">
+      <Link>ObsidianPlugin\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
