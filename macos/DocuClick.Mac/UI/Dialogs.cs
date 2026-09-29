@@ -88,7 +88,8 @@ internal sealed class ConfirmWindow : DialogWindow<bool>
 /// </summary>
 internal sealed class SessionStartWindow : DialogWindow<string>
 {
-    private readonly string _extension = SessionManager.OutputExtension;
+    // .docuclick inside an Obsidian vault (the plugin's diagram), else .html.
+    private string TargetExtension => ObsidianVault.OutputExtensionFor(_folder);
     private readonly RadioButton _newFileRadio;
     private readonly TextBox _folderBox = new() { IsReadOnly = true, PlaceholderText = "Speicherort wählen …" };
     private readonly TextBox _nameBox = new();
@@ -96,6 +97,7 @@ internal sealed class SessionStartWindow : DialogWindow<string>
     private readonly Button _browseFolder = Ui.Button("Auswählen …");
     private readonly Button _browseFile = Ui.Button("Auswählen …");
     private readonly TextBlock _error = Ui.Error();
+    private readonly TextBlock _targetHint = Ui.Hint("");
     private string _folder;
     private string? _existingFile;
     private bool _nameEditedByUser;
@@ -142,7 +144,7 @@ internal sealed class SessionStartWindow : DialogWindow<string>
                     _newFileRadio,
                     Indent(Ui.Label("Speicherort")), Indent(Ui.PathRow(_folderBox, _browseFolder)),
                     Indent(Ui.Label("Dateiname")), Indent(_nameBox),
-                    Indent(Ui.Hint("Die .html-Datei und ihr Attachments-Unterordner werden direkt in diesem Ordner angelegt.")),
+                    Indent(_targetHint),
                     existingRadio,
                     Indent(Ui.Label("Datei")), Indent(Ui.PathRow(_existingBox, _browseFile))),
                 _error,
@@ -151,6 +153,7 @@ internal sealed class SessionStartWindow : DialogWindow<string>
         };
 
         SuggestFileName();
+        _targetHint.Text = ObsidianVault.TargetHint(_folder);
         ApplyMode();
         Opened += (_, _) => Dispatcher.UIThread.Post(() =>
         {
@@ -182,7 +185,7 @@ internal sealed class SessionStartWindow : DialogWindow<string>
 
         var label = Path.GetFileName(_folder.TrimEnd(Path.DirectorySeparatorChar)) is { Length: > 0 } name ? name : "Session";
         var taken = Directory.Exists(_folder)
-            ? Directory.GetFiles(_folder, "*" + _extension).Select(f => Path.GetFileNameWithoutExtension(f)!).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            ? Directory.GetFiles(_folder, "*" + TargetExtension).Select(f => Path.GetFileNameWithoutExtension(f)!).ToHashSet(StringComparer.OrdinalIgnoreCase)
             : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var date = DateTime.Now.ToString("yyyy-MM-dd");
         var n = 1;
@@ -210,6 +213,7 @@ internal sealed class SessionStartWindow : DialogWindow<string>
             _folder = path;
             _folderBox.Text = path;
             SuggestFileName();
+            _targetHint.Text = ObsidianVault.TargetHint(_folder);
         }
     }
 
@@ -251,7 +255,7 @@ internal sealed class SessionStartWindow : DialogWindow<string>
                 fileName = fileName.Replace(invalid, '_');
             }
 
-            Complete(Path.Combine(_folder, fileName + _extension));
+            Complete(Path.Combine(_folder, fileName + TargetExtension));
         }
         else if (_existingFile is not null)
         {

@@ -1,0 +1,193 @@
+{
+  "format": "docuclick-diagram",
+  "version": 1,
+  "canvas": {
+    "nodes": [
+      {
+        "id": "ed488b3495a543aeaa3a00170f12954a",
+        "type": "group",
+        "x": -8,
+        "y": -8,
+        "width": 396,
+        "height": 356
+      },
+      {
+        "id": "970935b53c0548a99dccc626f18371ce",
+        "type": "text",
+        "text": "Linksklick auf „Anmelden“",
+        "x": 0,
+        "y": 0,
+        "width": 380,
+        "height": 60
+      },
+      {
+        "id": "7a5ee8d46e764749bd49206ce9a04d74",
+        "type": "file",
+        "x": 0,
+        "y": 70,
+        "width": 380,
+        "height": 270
+      },
+      {
+        "id": "ea7a4378c75640c69076030885118b83",
+        "type": "text",
+        "text": "◆ Abzweigung",
+        "x": 0,
+        "y": 400,
+        "width": 380,
+        "height": 60,
+        "color": "6"
+      },
+      {
+        "id": "24643faadb274283bb7113a5a580b459",
+        "type": "text",
+        "text": "↳ Pfad: Erfolg",
+        "x": 460,
+        "y": 520,
+        "width": 380,
+        "height": 60,
+        "color": "4"
+      },
+      {
+        "id": "4a7aac96e28e4043a5c95dee5393bf76",
+        "type": "group",
+        "x": 452,
+        "y": 632,
+        "width": 396,
+        "height": 356
+      },
+      {
+        "id": "9d559e874d924e14a10d216470d46b73",
+        "type": "text",
+        "text": "Linksklick auf „Weiter“",
+        "x": 460,
+        "y": 640,
+        "width": 380,
+        "height": 60
+      },
+      {
+        "id": "09d8bc51f3f041ec907a5c02e2dabcfd",
+        "type": "file",
+        "x": 460,
+        "y": 710,
+        "width": 380,
+        "height": 270
+      }
+    ],
+    "edges": [
+      {
+        "id": "afbbe06cb0e44ee58ed361fc8dd6cae9",
+        "fromNode": "970935b53c0548a99dccc626f18371ce",
+        "toNode": "ea7a4378c75640c69076030885118b83",
+        "fromSide": "bottom",
+        "toSide": "top"
+      },
+      {
+        "id": "5fa1bbc384f0410396edc270acc43d2e",
+        "fromNode": "ea7a4378c75640c69076030885118b83",
+        "toNode": "24643faadb274283bb7113a5a580b459",
+        "fromSide": "bottom",
+        "toSide": "top"
+      },
+      {
+        "id": "2ca42307395d41859c167a6b824d81cf",
+        "fromNode": "24643faadb274283bb7113a5a580b459",
+        "toNode": "9d559e874d924e14a10d216470d46b73",
+        "fromSide": "bottom",
+        "toSide": "top"
+      }
+    ]
+  },
+  "flow": {
+    "nodes": [
+      {
+        "data": {
+          "id": "970935b53c0548a99dccc626f18371ce",
+          "label": "Linksklick auf „Anmelden“",
+          "color": "#2563EB",
+          "shape": "round-rectangle",
+          "stepIndex": 1
+        },
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "data": {
+          "id": "ea7a4378c75640c69076030885118b83",
+          "label": "◆ Abzweigung",
+          "color": "#6B7280",
+          "shape": "diamond",
+          "stepIndex": 2
+        },
+        "position": {
+          "x": 0,
+          "y": 400
+        }
+      },
+      {
+        "data": {
+          "id": "24643faadb274283bb7113a5a580b459",
+          "label": "↳ Pfad: Erfolg",
+          "color": "#0891B2",
+          "shape": "round-rectangle",
+          "stepIndex": 3
+        },
+        "position": {
+          "x": 460,
+          "y": 520
+        }
+      },
+      {
+        "data": {
+          "id": "9d559e874d924e14a10d216470d46b73",
+          "label": "Linksklick auf „Weiter“",
+          "color": "#0891B2",
+          "shape": "round-rectangle",
+          "stepIndex": 4
+        },
+        "position": {
+          "x": 460,
+          "y": 640
+        }
+      }
+    ],
+    "edges": [
+      {
+        "data": {
+          "id": "970935b53c0548a99dccc626f18371ce->ea7a4378c75640c69076030885118b83",
+          "source": "970935b53c0548a99dccc626f18371ce",
+          "target": "ea7a4378c75640c69076030885118b83",
+          "color": "#6B7280",
+          "manual": false,
+          "lineStyle": "solid"
+        }
+      },
+      {
+        "data": {
+          "id": "ea7a4378c75640c69076030885118b83->24643faadb274283bb7113a5a580b459",
+          "source": "ea7a4378c75640c69076030885118b83",
+          "target": "24643faadb274283bb7113a5a580b459",
+          "color": "#0891B2",
+          "manual": false,
+          "lineStyle": "solid"
+        }
+      },
+      {
+        "data": {
+          "id": "24643faadb274283bb7113a5a580b459->9d559e874d924e14a10d216470d46b73",
+          "source": "24643faadb274283bb7113a5a580b459",
+          "target": "9d559e874d924e14a10d216470d46b73",
+          "color": "#0891B2",
+          "manual": false,
+          "lineStyle": "solid"
+        }
+      }
+    ]
+  },
+  "images": {
+    "970935b53c0548a99dccc626f18371ce": "Prozesse/Attachments/Ablauf/144532_639.png",
+    "9d559e874d924e14a10d216470d46b73": "Prozesse/Attachments/Ablauf/144532_645.png"
+  }
+}

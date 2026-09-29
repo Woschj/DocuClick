@@ -140,6 +140,7 @@ public sealed class CanvasFlowWriter
         _canvasPath = fullPath;
         _sessionName = Path.GetFileNameWithoutExtension(canvasFilePath);
         _doc = loadedDoc;
+        RememberDiskState(File.Exists(fullPath) && ObsidianVault.IsDiagramFile(fullPath) ? File.ReadAllText(fullPath) : null);
         _nextColumnX = _doc.Nodes.Count > 0 ? _doc.Nodes.Max(n => n.X) + NodeWidth + BranchColumnSpacing : 0;
 
         // An Ablauf from before browser saving existed has no save token
@@ -304,6 +305,8 @@ public sealed class CanvasFlowWriter
         {
             throw new InvalidOperationException("Canvas-Session wurde nicht gestartet.");
         }
+
+        SyncWithDisk();
 
         // Screenshots land in Attachments/<session>/ instead of flat in
         // Attachments/, inside the session's own folder (wherever its .html
@@ -1184,6 +1187,13 @@ public sealed class CanvasFlowWriter
         }
 
         document.SaveToken = _doc.SaveToken ?? document.SaveToken;
+        AdoptDocument(document);
+        Save();
+    }
+
+    /// <summary>Makes <paramref name="document"/> the loaded one; keeps the cursor if its node still exists, else moves it to the main flow's tip.</summary>
+    private void AdoptDocument(CanvasDocument document)
+    {
         _doc = document;
         _nextColumnX = _doc.Nodes.Count > 0 ? _doc.Nodes.Max(n => n.X) + NodeWidth + BranchColumnSpacing : 0;
 
@@ -1202,8 +1212,6 @@ public sealed class CanvasFlowWriter
                 (_cursorNodeId, _cursorX, _cursorY) = (tip.Id, tip.X, tip.Y);
             }
         }
-
-        Save();
     }
 
     public void FlushPendingSave()
@@ -1252,8 +1260,7 @@ public sealed class CanvasFlowWriter
 
                 try
                 {
-                    var html = BuildLiveHtml();
-                    FileSaveRetry.Save(_canvasPath!, () => File.WriteAllText(_canvasPath!, html));
+                    WriteFile();
                 }
                 catch (Exception ex)
                 {
@@ -1292,8 +1299,103 @@ public sealed class CanvasFlowWriter
             _saveCts = null;
         }
 
-        var html = BuildLiveHtml();
-        FileSaveRetry.Save(_canvasPath!, () => File.WriteAllText(_canvasPath!, html));
+        WriteFile();
+    }
+
+    /// <summary>Writes the loaded document in its file's format: a .docuclick diagram or an .html Ablauf.</summary>
+    private void WriteFile()
+    {
+        var path = _canvasPath!;
+        var text = ObsidianVault.IsDiagramFile(path) ? BuildDiagramText() : BuildLiveHtml();
+        FileSaveRetry.Save(path, () => File.WriteAllText(path, text));
+        RememberDiskState(text);
+    }
+
+    // What this writer last wrote to (or read from) a .docuclick file, to
+    // notice when the Obsidian plugin (or sync) changed it in between.
+    private string? _diskText;
+    private (DateTime WriteTime, long Length) _diskStamp;
+
+    private void RememberDiskState(string? text)
+    {
+        if (_canvasPath is null || !ObsidianVault.IsDiagramFile(_canvasPath))
+        {
+            _diskText = null;
+            return;
+        }
+
+        _diskText = text;
+        _diskStamp = ReadStamp(_canvasPath);
+    }
+
+    private static (DateTime, long) ReadStamp(string path)
+    {
+        var info = new FileInfo(path);
+        return info.Exists ? (info.LastWriteTimeUtc, info.Length) : (default, -1);
+    }
+
+    /// <summary>
+    /// A .docuclick diagram can be edited in Obsidian while DocuClick has it
+    /// loaded (the plugin saves every edit right away). Before the next
+    /// change here, adopt the file's current content instead of silently
+    /// writing the stale in-memory copy over the plugin's edit. The cursor
+    /// stays where it was if that node still exists. No-op for .html files
+    /// and when nothing changed (cheap: timestamp and length first).
+    /// </summary>
+    /// <returns>True if the document was reloaded from disk.</returns>
+    public bool SyncWithDisk()
+    {
+        if (_canvasPath is null || _diskText is null || !ObsidianVault.IsDiagramFile(_canvasPath))
+        {
+            return false;
+        }
+
+        var stamp = ReadStamp(_canvasPath);
+        if (stamp == _diskStamp || stamp.Item2 < 0)
+        {
+            return false;
+        }
+
+        string text;
+        try
+        {
+            text = File.ReadAllText(_canvasPath);
+        }
+        catch (IOException ex)
+        {
+            LogService.Log($"Diagramm konnte nicht neu eingelesen werden: {ex.Message}");
+            return false;
+        }
+
+        _diskStamp = stamp;
+        if (text == _diskText)
+        {
+            return false;
+        }
+
+        CanvasDocument document;
+        try
+        {
+            document = DocuClickDiagramIo.Parse(text, _canvasPath);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Half-written by a sync tool, say: keep working on the loaded
+            // copy; the next change here writes a complete file again.
+            LogService.Log($"Extern geändertes Diagramm nicht lesbar, behalte geladenen Stand: {ex.Message}");
+            return false;
+        }
+
+        lock (_saveLock)
+        {
+            _saveCts?.Cancel();
+            _saveCts = null;
+        }
+
+        _diskText = text;
+        AdoptDocument(document);
+        LogService.Log($"Diagramm wurde extern geändert (z. B. in Obsidian) und neu eingelesen: {_canvasPath}");
+        return true;
     }
 
     // Hex colors for the live Ablauf-Übersicht-in-a-browser viewer's own
@@ -1328,6 +1430,24 @@ public sealed class CanvasFlowWriter
     {
         _doc.SaveToken ??= CanvasDocumentIo.NewSaveToken();
         var dataJson = JsonSerializer.Serialize(_doc, _jsonOptions);
+        var (nodeSpecs, edgeSpecs) = BuildSpecs(ResolveImageSrc);
+        return HtmlViewerBuilder.BuildPage(_sessionName, nodeSpecs, edgeSpecs, dataJson);
+    }
+
+    /// <summary>
+    /// The .docuclick diagram text (see <see cref="DocuClickDiagramIo"/>):
+    /// same rendered steps as the .html Ablauf, but screenshots stay files
+    /// referenced by vault path instead of being embedded on every click.
+    /// </summary>
+    private string BuildDiagramText()
+    {
+        var (nodeSpecs, edgeSpecs) = BuildSpecs(file => file);
+        return DocuClickDiagramIo.Serialize(_canvasPath!, _doc, nodeSpecs, edgeSpecs, ResolveImageSrc);
+    }
+
+    /// <summary>Rendered nodes/edges (colors, shapes, labels) shared by both file formats; <paramref name="image"/> maps a file node's value to the node's image.</summary>
+    private (List<HtmlViewerBuilder.NodeSpec> Nodes, List<HtmlViewerBuilder.EdgeSpec> Edges) BuildSpecs(Func<string, string?> image)
+    {
 
         // Reuses GetPreview()'s own PathId tagging for column-based accent
         // colors, matching DrawIoConverter's palette —
@@ -1372,7 +1492,7 @@ public sealed class CanvasFlowWriter
                 label = BuildLabel(canvasNode.Text);
                 if (FindImageSibling(canvasNode, imageIndex)?.File is { } relativeToOutput)
                 {
-                    imageSrc = ResolveImageSrc(relativeToOutput);
+                    imageSrc = image(relativeToOutput);
                 }
             }
 
@@ -1405,7 +1525,7 @@ public sealed class CanvasFlowWriter
             edgeSpecs.Add(new HtmlViewerBuilder.EdgeSpec(edge.FromId, edge.ToId, edgeColor, Manual: false, LineStyle: lineStyle));
         }
 
-        return HtmlViewerBuilder.BuildPage(_sessionName, nodeSpecs, edgeSpecs, dataJson);
+        return (nodeSpecs, edgeSpecs);
     }
 
     /// <summary>

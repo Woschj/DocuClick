@@ -165,6 +165,9 @@ public sealed class SessionManager : IDisposable
         {
             try
             {
+                // A .docuclick diagram may have been edited in Obsidian
+                // meanwhile: act on its current content, not a stale copy.
+                _writer.SyncWithDisk();
                 tcs.SetResult(work());
             }
             catch (Exception ex)

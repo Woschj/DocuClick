@@ -59,15 +59,40 @@ Import und Export überschreiben keine vorhandenen Dateien. Gleichnamige Dateien
 erhalten eine laufende Nummer. Importierte HTML-Skripte werden nicht ausgeführt;
 nur die eingebetteten JSON-Daten und Rasterbilder werden übernommen.
 
-### DocuClick-Aufnahmen übernehmen
+### Mit DocuClick für Windows/macOS direkt in den Vault aufnehmen
 
-Mit DocuClick für Windows oder macOS aufgenommene Abläufe (`.html`) lassen
+Das Plugin ist der Ort, an dem Abläufe liegen und bearbeitet werden; die
+Apps [DocuClick für Windows](../windows/README.md) und
+[für macOS](../macos/README.md) liefern die Aufnahme dazu:
+
+1. In der App eine neue Session starten und als **Speicherort einen Ordner
+   im Vault** wählen. Die App erkennt den Vault (am Ordner `.obsidian`) und
+   legt statt einer `.html`-Datei ein **`.docuclick`-Diagramm** an; der
+   Hinweis im Dialog zeigt das an.
+2. Das Diagramm in Obsidian öffnen, gern schon während der Aufnahme: Jeder
+   Klick erscheint nach kurzer Zeit im geöffneten Tab (die Ansicht lädt die
+   Datei neu, sobald die App sie ändert).
+3. In Obsidian bearbeiten (umbenennen, verschieben, verbinden …). Die App
+   übernimmt diese Änderungen vor dem nächsten Klick; sie werden nicht
+   überschrieben. Zum Weiteraufnehmen in der App „Bestehende Datei
+   fortsetzen“ und die `.docuclick`-Datei wählen.
+
+Screenshots legt die App als PNG-Dateien in `Attachments/<Ablaufname>/`
+neben dem Diagramm ab; das Diagramm verweist darauf (`images`) und bleibt
+klein. Diese Bilder bleiben auch bei der Einstellung „In der Datei“ Dateien.
+Zum Weitergeben dient wie immer die **HTML-Ansicht**.
+
+Gleichzeitig in App und Obsidian dieselbe Stelle ändern sollte man
+vermeiden: Schreiben beide im selben Moment, sichert das Plugin seine
+Fassung als `… – lokale Änderungen.docuclick` (siehe unten).
+
+### Ältere DocuClick-Aufnahmen übernehmen
+
+Abläufe, die außerhalb eines Vaults als `.html` aufgenommen wurden, lassen
 sich importieren: HTML-Datei in den Vault legen → Rechtsklick → **Als
 DocuClick-Diagramm importieren** (oder Befehl **DocuClick-HTML importieren**
 für eine Datei außerhalb des Vaults). Es entsteht eine neue `.docuclick`-
 Datei mit allen Schritten und Screenshots; die HTML-Datei bleibt unverändert.
-Der Weg geht nur in diese Richtung: Die DocuClick-Apps öffnen keine
-`.docuclick`-Dateien. Zum Weitergeben dient die **HTML-Ansicht**.
 
 ### Speicherort neuer Abläufe
 
@@ -131,7 +156,10 @@ Canvas-Dokument und den Darstellungsdaten (`flow`). Die Darstellungsdaten sicher
 insbesondere die bereits eingebetteten Screenshots aus bestehenden HTML-Dateien.
 Bilder liegen standardmäßig einmal als Data-URI in der Datei; optional können
 sie als Vault-Dateien ausgelagert werden (dann steht in `images` je Schritt der
-Pfad, siehe „Screenshots speichern“). Grenze: 64 MB pro Datei, maximal 10.000
+Pfad relativ zum Vault, siehe „Screenshots speichern“). Die DocuClick-Apps
+schreiben dasselbe Format (`core/DocuClick.Core/Services/DocuClickDiagramIo.cs`);
+`tests/fixtures/app-recording.docuclick` ist eine echte App-Aufnahme, die beide
+Testsuiten prüfen. Grenze: 64 MB pro Datei, maximal 10.000
 sichtbare Knoten.
 
 Jeder Schreibvorgang vergleicht innerhalb von `Vault.process()` den bisherigen

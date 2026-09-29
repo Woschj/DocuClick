@@ -230,8 +230,9 @@ class DiagramView extends FileView {
     this.contentEl.empty();
     try {
       const base = await this.app.vault.read(file);
-      const doc = await this.plugin.loadDocument(base);
-      const state = { file, base, doc, queue: Promise.resolve(), recovery: null, blocked: false, error: null, inbox: [], inboxTimer: null, pendingWrite: null, banner: null, pristineKey: JSON.stringify(doc) };
+      const imagePaths = new Map();
+      const doc = await this.plugin.loadDocument(base, imagePaths);
+      const state = { file, base, doc, imagePaths, queue: Promise.resolve(), recovery: null, blocked: false, error: null, inbox: [], inboxTimer: null, pendingWrite: null, banner: null, pristineKey: JSON.stringify(doc) };
       this.state = state;
       const frame = this.contentEl.createEl("iframe", { cls: "docuclick-editor", attr: { sandbox: "allow-scripts allow-downloads", title: "DocuClick Diagrammeditor" } });
       this.frame = frame;
@@ -452,19 +453,28 @@ module.exports = class DocuClickPlugin extends Plugin {
       await this.app.workspace.getLeaf("tab").openFile(file);
     }).open();
   }
-  /** Text of a `.docuclick` file; screenshots go to vault files when that setting is on. */
+  /**
+   * Text of a `.docuclick` file. Screenshots that already are vault files
+   * (recorded by the DocuClick apps, or saved earlier) stay files; new ones
+   * go to vault files only when that setting is on, else they are embedded.
+   */
   async storageText(state, doc) {
-    if (this.settings.imageStorage !== "attachments") return JSON.stringify(doc, null, 2);
+    const attach = this.settings.imageStorage === "attachments";
+    const known = state?.imagePaths ?? new Map();
+    if (!attach && !known.size) return JSON.stringify(doc, null, 2);
     const folder = cleanFolder(this.settings.imageFolder) || DEFAULT_SETTINGS.imageFolder;
-    const known = state?.imagePaths ?? new Map(), used = new Map(), images = {};
+    const used = new Map(), images = {};
     const nodes = [];
     for (const n of doc.flow.nodes) {
-      if (!n.data.imageUrl) { nodes.push(n); continue; }
-      const path = known.get(n.data.imageUrl) ?? await this.saveImage(folder, n.data.imageUrl);
-      used.set(n.data.imageUrl, path); images[n.data.id] = path;
+      // Keyed by step: two steps may show identical screenshots stored in different files.
+      const previous = known.get(n.data.id);
+      const path = n.data.imageUrl && (previous?.url === n.data.imageUrl ? previous.path : attach ? await this.saveImage(folder, n.data.imageUrl) : null);
+      if (!path) { nodes.push(n); continue; }
+      used.set(n.data.id, { url: n.data.imageUrl, path }); images[n.data.id] = path;
       const { imageUrl, ...data } = n.data; nodes.push({ ...n, data });
     }
     if (state) state.imagePaths = used;
+    if (!used.size) return JSON.stringify(doc, null, 2);
     return JSON.stringify({ ...doc, flow: { ...doc.flow, nodes }, images }, null, 2);
   }
   async saveImage(folder, dataUri) {
@@ -480,8 +490,11 @@ module.exports = class DocuClickPlugin extends Plugin {
     }
     return path;
   }
-  /** Parses a `.docuclick` text and resolves screenshot files back into embedded images. */
-  async loadDocument(text) {
+  /**
+   * Parses a `.docuclick` text and resolves screenshot files back into
+   * embedded images; `paths` (optional Map) receives step id → { url, path }.
+   */
+  async loadDocument(text, paths) {
     check_(typeof text === "string" && text.length <= D.MAX_BYTES, "Datei ist zu groß.");
     const raw = JSON.parse(text);
     if (raw?.images && typeof raw.images === "object") {
@@ -493,6 +506,7 @@ module.exports = class DocuClickPlugin extends Plugin {
         const file = type && this.app.vault.getAbstractFileByPath(clean);
         if (!node?.data || !(file instanceof TFile) || (file.stat?.size ?? 0) > MAX_IMAGE_BYTES) { missing.push(String(path)); continue; }
         node.data.imageUrl = `data:${type};base64,${toBase64(await this.app.vault.readBinary(file))}`;
+        paths?.set(nodeId, { url: node.data.imageUrl, path: clean });
       }
       if (missing.length) new Notice(`DocuClick: ${missing.length} Bilddatei(en) fehlen oder sind ungültig, z. B. ${missing[0]}`, 10000);
     }

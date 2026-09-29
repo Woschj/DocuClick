@@ -8,6 +8,13 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [Unreleased]
+
+- **Aufnehmen in einen Obsidian-Vault**: In einem Vault legt DocuClick ein
+  `.docuclick`-Diagramm für das Plugin „DocuClick Diagrams“ an; Details im
+  [Windows-Changelog](../windows/CHANGELOG.md). Die Dateiauswahl zeigt
+  `.docuclick`-Dateien.
+
 ## [0.1.0] - 2026-09-28
 
 Erste macOS-Version, Funktionsstand DocuClick für Windows 1.13.0.

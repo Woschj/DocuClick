@@ -262,8 +262,27 @@ let browser, socket;
   assert.equal(hostile, "false,false");
   assert.ok(await evaluate("testHost.notices.some(n => n.includes('Bilddatei'))"));
   await evaluate("testHost.plugin.settings.imageStorage = 'embedded'");
+  // A diagram recorded by the DocuClick apps into the vault: screenshots are vault
+  // files and stay files, even with "In der Datei" storage; the app's next click reloads the view.
+  const recording = fs.readFileSync(path.join(__dirname, "fixtures/app-recording.docuclick"), "utf8");
+  await evaluate(`(async () => {
+    const raw = ${JSON.stringify(recording)};
+    const bytes = Uint8Array.from(atob('${shot.split(",")[1]}'), c => c.charCodeAt(0));
+    for (const file of Object.values(JSON.parse(raw).images)) await testHost.vault.createBinary(file, bytes.buffer);
+    window.appFile = await testHost.vault.create('Prozesse/Ablauf.docuclick', raw);
+    window.appView = testHost.plugin.factory({}); appView.file = appFile; await appView.onOpen(); await appView.onLoadFile(appFile);
+    window.leaves = [{view: appView}];
+  })()`);
+  assert.equal(await evaluate("appView.state.doc.flow.nodes.filter(n => n.data.imageUrl).length"), 2, "recorded screenshots not loaded");
+  await evaluate("appView.state.pristineKey = null; appView.enqueueSave(appView.state, DocuClickDocument.compactForStorage(appView.state.doc))");
+  const saved = await evaluate("testHost.files.get('Prozesse/Ablauf.docuclick').text");
+  assert.equal(saved.includes("data:image"), false, "recorded screenshots were embedded into the diagram");
+  assert.deepEqual(JSON.parse(saved).images, JSON.parse(recording).images);
+  const nextClick = JSON.parse(recording); nextClick.canvas.nodes.find(n => n.type === "text").text = "Nächster Klick";
+  await evaluate(`window.appState = appView.state; testHost.files.get('Prozesse/Ablauf.docuclick').text = ${JSON.stringify(JSON.stringify(nextClick))}; emitModify(appFile)`);
+  await until("appView.state && appView.state !== appState && appView.state.doc.canvas.nodes.some(n => n.text === 'Nächster Klick')");
   assert.deepEqual(errors, [], "Uncaught browser errors");
-  console.log("PASS: sandbox, palette, default folder, colour themes, rename, undo/redo, image move, connect/delete/restore, Vault save, read-only HTML export/search/guide/lightbox, forged message rejection, conflict recovery, close flush");
+  console.log("PASS: sandbox, palette, default folder, colour themes, rename, undo/redo, image move, connect/delete/restore, Vault save, read-only HTML export/search/guide/lightbox, forged message rejection, conflict recovery, close flush, app recording in the vault");
 })().catch(error => { console.error(error); process.exitCode=1; }).finally(async () => {
   socket?.close(); browser?.kill(); server.close();
   await delay(300);

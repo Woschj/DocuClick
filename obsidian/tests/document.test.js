@@ -141,3 +141,19 @@ test("storage form leaves screenshots alone that cannot be rebuilt", () => {
   const stored = D.compactForStorage(valid);
   assert.equal(stored, valid);
 });
+test("a diagram recorded by the DocuClick apps is a valid plugin document", () => {
+  // Written by the C# writer (DocuClickDiagramTests regenerates it), so both sides share one format.
+  const raw = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures/app-recording.docuclick"), "utf8"));
+  const doc = D.validateDocument(raw);
+  assert.equal(doc.flow.nodes.length, 4);
+  assert.equal(doc.flow.edges.length, 3);
+  // Screenshots are vault files the plugin loads via "images", keyed by step id.
+  const ids = new Set(doc.flow.nodes.map(n => n.data.id));
+  assert.equal(Object.keys(raw.images).length, 2);
+  for (const [id, file] of Object.entries(raw.images)) {
+    assert.ok(ids.has(id));
+    assert.match(file, /^Prozesse\/Attachments\/Ablauf\/\d{6}_\d{3}\.png$/);
+  }
+  assert.ok(!JSON.stringify(raw).includes("base64"));
+  assert.ok(D.buildHtml(template, "/* vendor */", doc, "Aufnahme").includes("Linksklick auf „Anmelden“"));
+});

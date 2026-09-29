@@ -185,7 +185,9 @@ public static class DrawIoConverter
     {
         var imageSibling = canvas.Nodes.FirstOrDefault(n =>
             n.Type == "file" && Math.Abs(n.X - textNode.X) < 0.5 && Math.Abs(n.Y - (textNode.Y + CanvasFlowWriter.TextNodeHeight + CanvasFlowWriter.TextToImageGap)) < 0.5);
-        return imageSibling?.File is { } relativePath ? Path.Combine(outputPath, relativePath) : null;
+        return imageSibling?.File is not { } relativePath ? null
+            : DocuClickDiagramIo.IsImageDataUri(relativePath) ? relativePath // embedded (browser editor, Obsidian plugin)
+            : Path.Combine(outputPath, relativePath);
     }
 
     private static string BuildDecisionMarker(XElement root, double x, double y, string label)
@@ -373,10 +375,32 @@ public static class DrawIoConverter
     /// </summary>
     private static ScreenshotImage LoadAsPng(string? path)
     {
-        using var bitmap = (path is not null && File.Exists(path) ? SKBitmap.Decode(path) : null) ?? new SKBitmap(1, 1);
+        using var bitmap = Decode(path) ?? new SKBitmap(1, 1);
         using var image = SKImage.FromBitmap(bitmap);
         using var data = image.Encode(SKEncodedImageFormat.Png, 100);
         return new ScreenshotImage(data.ToArray(), bitmap.Width, bitmap.Height);
+    }
+
+    private static SKBitmap? Decode(string? path)
+    {
+        if (path is null)
+        {
+            return null;
+        }
+
+        if (DocuClickDiagramIo.IsImageDataUri(path))
+        {
+            try
+            {
+                return SKBitmap.Decode(System.Convert.FromBase64String(path[(path.IndexOf(',') + 1)..]));
+            }
+            catch (FormatException)
+            {
+                return null;
+            }
+        }
+
+        return File.Exists(path) ? SKBitmap.Decode(path) : null;
     }
 
     // draw.io's XML must use invariant "." decimals regardless of the
