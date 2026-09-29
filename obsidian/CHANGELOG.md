@@ -5,6 +5,16 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [0.5.0] - 2026-09-29
+
+- **Screenshots optional als Vault-Dateien** (Einstellung „Screenshots
+  speichern“, Standard weiterhin „In der Datei“): Bilder liegen im Bildordner
+  (Dateiname = Prüfsumme, keine Duplikate), die Diagrammdatei bleibt klein.
+  Ältere Plugin-Versionen zeigen solche Diagramme ohne Bilder.
+- Eine Ansicht ohne Änderungen schreibt die Datei nicht mehr um
+  (kein unnötiger Sync-Verkehr beim bloßen Öffnen).
+- Import: Zu große HTML-Dateien werden vor dem Einlesen abgelehnt.
+
 ## [0.4.0] - 2026-09-29
 
 - **Externe Änderungen**: Ändert Sync, Git oder ein anderes Programm die

@@ -2,7 +2,7 @@
 const { Plugin, PluginSettingTab, FileView, Modal, Setting, Notice, TFile, TFolder, AbstractInputSuggest, normalizePath } = require("obsidian");
 const VIEW_TYPE = "docuclick-diagram";
 const D = DocuClickDocument;
-const DEFAULT_SETTINGS = { themeMode: "docuclick", background: "#1e1e1e", accent: "#7c3aed", themeExport: true, defaultFolder: "", askFolder: true };
+const DEFAULT_SETTINGS = { themeMode: "docuclick", background: "#1e1e1e", accent: "#7c3aed", themeExport: true, defaultFolder: "", askFolder: true, imageStorage: "embedded", imageFolder: "DocuClick-Bilder" };
 
 // Runs only inside a sandboxed, opaque-origin iframe. There is no Obsidian
 // API, require(), filesystem access, or parent DOM access in this context.
@@ -66,6 +66,16 @@ function cleanFolder(value) {
   if (trimmed.split("/").some(part => !part.trim() || part === "." || part === ".." || /[:*?"<>|]/.test(part))) return null;
   return normalizePath(trimmed);
 }
+
+const IMAGE_TYPES = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", bmp: "image/bmp" };
+const MAX_IMAGE_BYTES = 32 * 1024 * 1024;
+function toBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+function fromBase64(text) { return Uint8Array.from(atob(text), c => c.charCodeAt(0)); }
 
 class NameDialog extends Modal {
   constructor(app, { folder, askFolder }, submit) { super(app); this.folder = folder; this.askFolder = askFolder; this.submit = submit; }
@@ -138,6 +148,32 @@ class DocuClickSettingTab extends PluginSettingTab {
       .setDesc("Zeigt im Dialog „Neues Ablaufdiagramm“ ein Ordnerfeld, vorausgefüllt mit dem Standardordner. Aus: direkt im Standardordner anlegen.")
       .addToggle(toggle => toggle.setValue(settings.askFolder)
         .onChange(async value => { settings.askFolder = value; await this.plugin.saveData(settings); }));
+    new Setting(containerEl).setName("Screenshots").setHeading();
+    new Setting(containerEl)
+      .setName("Screenshots speichern")
+      .setDesc("„In der Datei“: Alles steckt in einer .docuclick-Datei (einfach zu teilen). „Als Dateien im Vault“: Bilder liegen als eigene Dateien im Bildordner, die Diagrammdatei bleibt klein und schnell. Ältere Plugin-Versionen zeigen dann keine Bilder. Gilt für neu gespeicherte Diagramme.")
+      .addDropdown(dropdown => dropdown
+        .addOption("embedded", "In der Datei")
+        .addOption("attachments", "Als Dateien im Vault")
+        .setValue(settings.imageStorage)
+        .onChange(async value => { settings.imageStorage = value; await this.plugin.saveData(settings); this.display(); }));
+    if (settings.imageStorage === "attachments") {
+      new Setting(containerEl)
+        .setName("Bildordner")
+        .setDesc("Hier werden Screenshots abgelegt (Dateiname = Prüfsumme, gleiche Bilder werden nur einmal gespeichert). Nicht mehr verwendete Bilder werden nicht automatisch gelöscht.")
+        .addText(text => {
+          text.setPlaceholder("DocuClick-Bilder").setValue(settings.imageFolder)
+            .onChange(value => {
+              const folder = cleanFolder(value);
+              text.inputEl.toggleClass?.("docuclick-invalid", folder === null || folder === "");
+              if (!folder) return;
+              settings.imageFolder = folder;
+              clearTimeout(this.saveTimer);
+              this.saveTimer = setTimeout(() => this.plugin.saveData(settings).catch(report), 400);
+            });
+          new FolderSuggest(this.app, text.inputEl);
+        });
+    }
     new Setting(containerEl).setName("Darstellung").setHeading();
     new Setting(containerEl)
       .setName("Farbschema")
@@ -181,6 +217,7 @@ class DocuClickSettingTab extends PluginSettingTab {
   }
 }
 
+function check_(condition, message) { if (!condition) throw new Error(message); }
 function report(error) { console.error("DocuClick:", error); new Notice(`DocuClick: ${error.message || error}`, 10000); }
 
 class DiagramView extends FileView {
@@ -193,8 +230,8 @@ class DiagramView extends FileView {
     this.contentEl.empty();
     try {
       const base = await this.app.vault.read(file);
-      const doc = D.parseDocument(base);
-      const state = { file, base, doc, queue: Promise.resolve(), recovery: null, blocked: false, error: null, inbox: [], inboxTimer: null, pendingWrite: null, banner: null };
+      const doc = await this.plugin.loadDocument(base);
+      const state = { file, base, doc, queue: Promise.resolve(), recovery: null, blocked: false, error: null, inbox: [], inboxTimer: null, pendingWrite: null, banner: null, pristineKey: JSON.stringify(doc) };
       this.state = state;
       const frame = this.contentEl.createEl("iframe", { cls: "docuclick-editor", attr: { sandbox: "allow-scripts allow-downloads", title: "DocuClick Diagrammeditor" } });
       this.frame = frame;
@@ -238,12 +275,15 @@ class DiagramView extends FileView {
     const messages = state.inbox.splice(0);
     if (!messages.length || state !== this.state) return;
     const requests = messages.filter(message => message.kind !== "change");
-    let next;
+    let stored;
     try {
       const snapshot = D.validateDocument({ format: D.FORMAT, version: 1, ...messages[messages.length - 1].snapshot });
-      next = JSON.stringify(D.compactForStorage(snapshot), null, 2);
-      if (next.length > D.MAX_BYTES) throw new Error("Diagramm ist zu groß.");
+      stored = D.compactForStorage(snapshot);
       state.doc = snapshot;
+      // A view that has not changed anything must not rewrite the file (formatting, sync churn).
+      if (state.pristineKey) {
+        if (JSON.stringify(snapshot) === state.pristineKey) stored = null; else state.pristineKey = null;
+      }
     } catch (error) {
       for (const message of requests) {
         if (message.kind === "save") frame.contentWindow?.postMessage({ channel, kind: "saved", request: message.request, error: error.message }, "*");
@@ -251,7 +291,7 @@ class DiagramView extends FileView {
       }
       report(error); return;
     }
-    const work = this.enqueueSave(state, next);
+    const work = stored ? this.enqueueSave(state, stored) : state.queue;
     for (const message of requests) {
       if (message.kind === "save") work.then(() => frame.contentWindow?.postMessage({ channel, kind: "saved", request: message.request, error: state.error }, "*"));
       if (message.kind === "flushed") work.then(() => this.flushers.get(message.request)?.resolve());
@@ -266,7 +306,7 @@ class DiagramView extends FileView {
     const text = await this.app.vault.read(file);
     if (text === state.base || text === state.pendingWrite) return;
     let unchanged = false;
-    try { unchanged = JSON.stringify(state.doc) === JSON.stringify(D.parseDocument(state.base)); } catch { /* keep the warning path */ }
+    try { unchanged = JSON.stringify(state.doc) === JSON.stringify(await this.plugin.loadDocument(state.base)); } catch { /* keep the warning path */ }
     if (unchanged && !state.blocked) { await this.reload(); return; }
     if (state.banner?.isConnected) return;
     const banner = this.contentEl.createDiv({ cls: "docuclick-banner" });
@@ -290,8 +330,15 @@ class DiagramView extends FileView {
   }
   applyTheme(theme) { this.post("theme", { css: D.themeCss(theme) }); }
   post(kind, extra = {}) { this.frame?.contentWindow?.postMessage({ channel: this.channel, kind, ...extra }, "*"); }
-  enqueueSave(state, next) {
+  enqueueSave(state, stored) {
     state.queue = state.queue.then(async () => {
+      let next;
+      try {
+        next = await this.plugin.storageText(state, stored);
+      } catch (error) {
+        state.error = error.message; report(error); return;
+      }
+      if (next.length > D.MAX_BYTES) { state.error = "Diagramm ist zu groß."; report(new Error(state.error)); return; }
       if (next === state.base && !state.blocked) return;
       try {
         if (state.blocked) throw new Error("Die Datei wurde außerhalb dieser Ansicht geändert.");
@@ -305,18 +352,19 @@ class DiagramView extends FileView {
         state.pendingWrite = null;
         // Preserve local work separately instead of overwriting a newer file.
         state.error = error.message;
+        const recoveryText = JSON.stringify(stored, null, 2);
         try {
           if (!state.recovery) {
-            state.recovery = await this.plugin.createUnique(state.file.parent?.path, `${state.file.basename} – lokale Änderungen`, "docuclick", next);
+            state.recovery = await this.plugin.createUnique(state.file.parent?.path, `${state.file.basename} – lokale Änderungen`, "docuclick", JSON.stringify(stored, null, 2));
             new Notice(`Speicherkonflikt/Fehler: Deine Änderungen liegen in ${state.recovery.path}. Original unverändert.`, 15000);
           } else {
             const previous = state.recoveryBase;
             await this.app.vault.process(state.recovery, current => {
               if (current !== previous) throw new Error("Auch die Sicherung wurde extern geändert.");
-              return next;
+              return recoveryText;
             });
           }
-          state.recoveryBase = next;
+          state.recoveryBase = recoveryText;
           state.error += ` Sicherung: ${state.recovery.path}`;
         } catch (backupError) { state.error += ` Sicherung fehlgeschlagen: ${backupError.message}`; report(new Error(state.error)); }
       }
@@ -404,6 +452,52 @@ module.exports = class DocuClickPlugin extends Plugin {
       await this.app.workspace.getLeaf("tab").openFile(file);
     }).open();
   }
+  /** Text of a `.docuclick` file; screenshots go to vault files when that setting is on. */
+  async storageText(state, doc) {
+    if (this.settings.imageStorage !== "attachments") return JSON.stringify(doc, null, 2);
+    const folder = cleanFolder(this.settings.imageFolder) || DEFAULT_SETTINGS.imageFolder;
+    const known = state?.imagePaths ?? new Map(), used = new Map(), images = {};
+    const nodes = [];
+    for (const n of doc.flow.nodes) {
+      if (!n.data.imageUrl) { nodes.push(n); continue; }
+      const path = known.get(n.data.imageUrl) ?? await this.saveImage(folder, n.data.imageUrl);
+      used.set(n.data.imageUrl, path); images[n.data.id] = path;
+      const { imageUrl, ...data } = n.data; nodes.push({ ...n, data });
+    }
+    if (state) state.imagePaths = used;
+    return JSON.stringify({ ...doc, flow: { ...doc.flow, nodes }, images }, null, 2);
+  }
+  async saveImage(folder, dataUri) {
+    const match = /^data:image\/(png|jpeg|jpg|webp|gif|bmp);base64,([a-z0-9+/=\s]+)$/i.exec(dataUri);
+    if (!match) throw new Error("Unbekanntes Bildformat.");
+    const bytes = fromBase64(match[2].replace(/\s/g, ""));
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), b => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+    const path = normalizePath(`${folder}/${hash}.${match[1].toLowerCase() === "jpeg" ? "jpg" : match[1].toLowerCase()}`);
+    if (!(this.app.vault.getAbstractFileByPath(path) instanceof TFile)) {
+      await this.ensureFolder(folder);
+      try { await this.app.vault.createBinary(path, bytes.buffer); }
+      catch (error) { if (!(this.app.vault.getAbstractFileByPath(path) instanceof TFile)) throw error; }
+    }
+    return path;
+  }
+  /** Parses a `.docuclick` text and resolves screenshot files back into embedded images. */
+  async loadDocument(text) {
+    check_(typeof text === "string" && text.length <= D.MAX_BYTES, "Datei ist zu groß.");
+    const raw = JSON.parse(text);
+    if (raw?.images && typeof raw.images === "object") {
+      const missing = [];
+      for (const [nodeId, path] of Object.entries(raw.images)) {
+        const node = raw.flow?.nodes?.find?.(n => n?.data?.id === nodeId);
+        const clean = typeof path === "string" ? cleanFolder(path) : null;
+        const type = clean && IMAGE_TYPES[clean.split(".").pop().toLowerCase()];
+        const file = type && this.app.vault.getAbstractFileByPath(clean);
+        if (!node?.data || !(file instanceof TFile) || (file.stat?.size ?? 0) > MAX_IMAGE_BYTES) { missing.push(String(path)); continue; }
+        node.data.imageUrl = `data:${type};base64,${toBase64(await this.app.vault.readBinary(file))}`;
+      }
+      if (missing.length) new Notice(`DocuClick: ${missing.length} Bilddatei(en) fehlen oder sind ungültig, z. B. ${missing[0]}`, 10000);
+    }
+    return D.validateDocument(raw);
+  }
   async createUnique(folder, name, extension, text) {
     const stem = name.replace(/[\\/:*?"<>|]/g, "-").trim() || "Ablauf";
     for (let index = 0; index < 10000; index++) {
@@ -414,10 +508,13 @@ module.exports = class DocuClickPlugin extends Plugin {
     }
     throw new Error("Kein freier Dateiname gefunden.");
   }
-  async importFile(file) { return this.importText(await this.app.vault.read(file), file.basename, file.parent?.path); }
+  async importFile(file) {
+    if (file.stat?.size > D.MAX_BYTES) throw new Error("Datei ist größer als 64 MB.");
+    return this.importText(await this.app.vault.read(file), file.basename, file.parent?.path);
+  }
   async importText(text, name, folder) {
     const doc = D.importHtml(text);
-    const file = await this.createUnique(folder, name, "docuclick", JSON.stringify(doc, null, 2));
+    const file = await this.createUnique(folder, name, "docuclick", await this.storageText(null, D.compactForStorage(doc)));
     await this.app.workspace.getLeaf("tab").openFile(file);
   }
   pickHtml() {
