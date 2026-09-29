@@ -113,6 +113,7 @@ function vaultColor(property, value) {
 
 class DocuClickSettingTab extends PluginSettingTab {
   constructor(app, plugin) { super(app, plugin); this.plugin = plugin; }
+  hide() { clearTimeout(this.saveTimer); this.plugin.saveData(this.plugin.settings).catch(report); }
   display() {
     const { containerEl } = this, settings = this.plugin.settings;
     containerEl.empty();
@@ -126,7 +127,9 @@ class DocuClickSettingTab extends PluginSettingTab {
             const folder = cleanFolder(value);
             text.inputEl.toggleClass?.("docuclick-invalid", folder === null);
             if (folder === null) return;
-            settings.defaultFolder = folder; await this.plugin.saveData(settings);
+            settings.defaultFolder = folder;
+            clearTimeout(this.saveTimer);
+            this.saveTimer = setTimeout(() => this.plugin.saveData(settings).catch(report), 400);
           });
         new FolderSuggest(this.app, text.inputEl);
       });

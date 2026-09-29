@@ -1,3 +1,4 @@
 .docuclick-view { display: flex; flex-direction: column; padding: 0 !important; overflow: hidden; }
 .docuclick-editor { width: 100%; flex: 1; min-height: 0; border: 0; background: #090d16; }
 .docuclick-error { padding: 24px; color: var(--text-error); white-space: pre-wrap; }
+.docuclick-invalid { border-color: var(--text-error) !important; }

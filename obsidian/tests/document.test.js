@@ -99,3 +99,27 @@ test("themes derive readable colours and are injected after the template's own s
   // Viewer exports keep the theme too.
   assert.ok(D.buildHtml(template, "", fixture(), "Test", { readOnly: true, theme: { background: "#ffffff", accent: "#e11d48" } }).includes("--accent: #e11d48;"));
 });
+
+test("edge colour falls back to the first matching flow edge and screenshots stay attached", () => {
+  const doc = fixture();
+  doc.canvas.nodes.push({ id: "b", type: "text", text: "Ende", x: 300, y: 0, width: 100, height: 80 });
+  doc.flow.nodes.push({ data: { id: "b", label: "Ende" }, position: { x: 300, y: 0 } });
+  doc.canvas.edges.push({ fromNode: "a", toNode: "b" });
+  doc.flow.edges.push({ data: { source: "a", target: "b", color: "#00ff00" } }, { data: { source: "a", target: "b", color: "#ff0000" } });
+  delete doc.canvas.nodes[1].file;
+  const result = D.validateDocument(doc);
+  assert.equal(result.flow.edges[0].data.color, "#00ff00");
+  assert.equal(result.canvas.nodes[1].file, png);
+});
+
+test("large diagrams validate quickly (no quadratic lookups)", () => {
+  const doc = D.emptyDocument(), steps = 5000;
+  for (let i = 0; i < steps; i++) {
+    doc.canvas.nodes.push({ id: `n${i}`, type: "text", text: `S${i}`, x: i * 10, y: i * 10, width: 200, height: 60 }, { id: `f${i}`, type: "file", x: i * 10, y: i * 10 + 70, width: 200, height: 100 });
+    doc.flow.nodes.push({ data: { id: `n${i}`, label: `S${i}`, imageUrl: png }, position: { x: i * 10, y: i * 10 } });
+    if (i) doc.canvas.edges.push({ fromNode: `n${i - 1}`, toNode: `n${i}` });
+  }
+  const start = Date.now(), result = D.validateDocument(doc);
+  assert.ok(Date.now() - start < 2000, "validation too slow");
+  assert.equal(result.canvas.nodes.filter(n => n.file === png).length, steps);
+});

@@ -5,6 +5,13 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [0.3.1] - 2026-09-29
+
+- Diagramme mit sehr vielen Schritten werden schneller geprüft (keine
+  quadratischen Suchvorgänge mehr in der Validierung).
+- Einstellungen: Der Standardordner wird verzögert gespeichert statt bei jedem
+  Tastendruck; ein ungültiger Ordner wird jetzt rot markiert.
+
 ## [0.3.0] - 2026-09-28
 
 - **Ordner für neue Abläufe**: Der Dialog „Neues Ablaufdiagramm“ fragt jetzt
