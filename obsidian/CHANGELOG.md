@@ -5,6 +5,20 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [0.4.0] - 2026-09-29
+
+- **Externe Änderungen**: Ändert Sync, Git oder ein anderes Programm die
+  geöffnete Datei, lädt die Ansicht sie automatisch neu, sofern lokal nichts
+  Ungesichertes vorliegt. Sonst erscheint ein Hinweis mit „Neu laden“
+  (eigene Änderungen liegen dann bereits in der „– lokale Änderungen“-Datei).
+- **Schnelleres Speichern**: Pro Bearbeitung wird nur noch ein Snapshot
+  geprüft und serialisiert (bisher zweimal, weil der Editor „Änderung“ und
+  „Speichern“ getrennt meldet).
+- **Kleinere Dateien**: Ein Screenshot wird in `.docuclick`-Dateien nur noch
+  einmal gespeichert (bisher doppelt). Beim Öffnen wird die Canvas-Seite aus
+  dem Diagramm rekonstruiert; ältere Dateien und ältere Plugin-Versionen
+  bleiben lesbar.
+
 ## [0.3.1] - 2026-09-29
 
 - Diagramme mit sehr vielen Schritten werden schneller geprüft (keine

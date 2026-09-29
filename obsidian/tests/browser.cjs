@@ -30,7 +30,10 @@ HTMLElement.prototype.createSpan = function(options) { return this.createEl('spa
 const files = new Map(), folders = new Map(), notices = [];
 class TFolder { constructor(path) { this.path = path; } }
 class TFile { constructor(path) { this.path = path; this.basename = path.replace(/\\.[^.]+$/, ''); this.extension = path.split('.').pop(); this.parent = {path: '/'}; } }
+const handlers = [];
+window.emitModify = file => handlers.forEach(handler => handler(file));
 const vault = {
+  on: (name, handler) => { if (name === 'modify') handlers.push(handler); return {}; },
   read: async file => files.get(file.path).text,
   process: async (file, fn) => { if (window.writeDelay) await new Promise(resolve => setTimeout(resolve, window.writeDelay)); const entry = files.get(file.path); entry.text = fn(entry.text); },
   create: async (path, text) => { if (files.has(path)) throw Error('exists'); const file = new TFile(path); files.set(path, {file, text}); return file; },
@@ -123,10 +126,19 @@ let browser, socket;
   assert.equal(await inFrame("snapshot().canvas.nodes.find(n => n.type === 'file').y"), 470);
   await inFrame("tryConnect(snapshot().flow.nodes[0].data.id, imageId)");
   await until("JSON.parse(testHost.files.get('Test.docuclick').text).canvas.edges.length === 1");
+  assert.equal(await evaluate("testHost.files.get('Test.docuclick').text.split('data:image/png').length - 1"), 1, "screenshot stored more than once");
   await inFrame("deleteNode(imageId)");
   await inFrame("restoreHistory(-1)");
   assert.equal(await inFrame("snapshot().flow.nodes.length"), 2);
   assert.equal(await inFrame("snapshot().canvas.edges.length"), 1);
+  await evaluate("testHost.view.flush()");
+  // One edit is validated once, although the editor sends both "change" and "save".
+  await evaluate("window.validations = 0; const original = DocuClickDocument.validateDocument; DocuClickDocument.validateDocument = (...args) => { validations++; return original(...args); }");
+  await inFrame("addManualElement(0, 500, 'rectangle', '#3b82f6', 'Einmal validiert')");
+  await until("JSON.parse(testHost.files.get('Test.docuclick').text).canvas.nodes.some(n => n.text === 'Einmal validiert')");
+  assert.equal(await evaluate("validations"), 1);
+  await evaluate("DocuClickDocument.validateDocument = original");
+  await inFrame("deleteNode(snapshot().flow.nodes.find(n => n.data.label === 'Einmal validiert').data.id)");
   await evaluate("testHost.view.flush()");
   // Default folder: nested folders are created; unsafe paths are rejected.
   assert.equal(await evaluate("testHost.plugin.targetFolder()"), "");
@@ -199,6 +211,26 @@ let browser, socket;
   await evaluate("window.recoveryPath = testHost.view.state.recovery.path; testHost.view.onUnloadFile()");
   assert.equal(await evaluate("JSON.parse(testHost.files.get(recoveryPath).text).flow.nodes.length"), 4);
   assert.equal(await evaluate("document.querySelectorAll('iframe').length"), 0);
+  // External change without local edits: the view reloads silently; own writes never do.
+  const empty = JSON.stringify({format:'docuclick-diagram', version:1, canvas:{nodes:[],edges:[]}, flow:{nodes:[],edges:[]}});
+  await evaluate(`(async () => {
+    window.reloadFile = await testHost.vault.create('Reload.docuclick', ${JSON.stringify("")} + ${JSON.stringify("")} + '${empty}');
+    window.reloadView = testHost.plugin.factory({}); reloadView.file = reloadFile; await reloadView.onOpen(); await reloadView.onLoadFile(reloadFile);
+    window.leaves = [{view: reloadView}]; testHost.plugin.app.workspace.getLeavesOfType = () => leaves;
+  })()`);
+  const oldState = await evaluate("!!reloadView.state");
+  assert.ok(oldState);
+  await evaluate("window.firstState = reloadView.state; emitModify(reloadFile); new Promise(r => setTimeout(r, 100))");
+  assert.equal(await evaluate("reloadView.state === firstState"), true, "own/unchanged file must not reload");
+  const external = JSON.stringify({format:'docuclick-diagram', version:1, canvas:{nodes:[{id:'x',type:'text',text:'Extern',x:0,y:0,width:100,height:50}],edges:[]}, flow:{nodes:[{data:{id:'x',label:'Extern'},position:{x:0,y:0}}],edges:[]}});
+  await evaluate(`testHost.files.get('Reload.docuclick').text = ${JSON.stringify(external)}; emitModify(reloadFile)`);
+  await until("reloadView.state && reloadView.state !== firstState && reloadView.state.doc.canvas.nodes.length === 1");
+  // With local changes at risk: a banner with a reload button instead of a silent reload.
+  await evaluate("reloadView.state.blocked = true; window.blockedState = reloadView.state; testHost.files.get('Reload.docuclick').text = " + JSON.stringify(empty) + "; emitModify(reloadFile)");
+  await until("!!reloadView.contentEl.querySelector('.docuclick-banner')");
+  assert.equal(await evaluate("reloadView.state === blockedState"), true);
+  await evaluate("reloadView.contentEl.querySelector('.docuclick-banner button').click()");
+  await until("reloadView.state !== blockedState && reloadView.state.doc.canvas.nodes.length === 0 && !reloadView.contentEl.querySelector('.docuclick-banner')");
   assert.deepEqual(errors, [], "Uncaught browser errors");
   console.log("PASS: sandbox, palette, default folder, colour themes, rename, undo/redo, image move, connect/delete/restore, Vault save, read-only HTML export/search/guide/lightbox, forged message rejection, conflict recovery, close flush");
 })().catch(error => { console.error(error); process.exitCode=1; }).finally(async () => {

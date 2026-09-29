@@ -123,3 +123,21 @@ test("large diagrams validate quickly (no quadratic lookups)", () => {
   assert.ok(Date.now() - start < 2000, "validation too slow");
   assert.equal(result.canvas.nodes.filter(n => n.file === png).length, steps);
 });
+
+test("storage form keeps each screenshot once and restores it on load", () => {
+  const doc = D.validateDocument(fixture());
+  doc.canvas.nodes.find(n => n.type === "file").y = 90;
+  const stored = D.compactForStorage(D.validateDocument(doc));
+  assert.equal(stored.canvas.nodes.find(n => n.type === "file").file, undefined);
+  assert.equal(stored.flow.nodes[0].data.imageUrl, png);
+  assert.ok(JSON.stringify(stored).length < JSON.stringify(doc).length - png.length + 10);
+  assert.deepEqual(D.parseDocument(JSON.stringify(stored)), D.validateDocument(doc));
+});
+
+test("storage form leaves screenshots alone that cannot be rebuilt", () => {
+  const doc = fixture();
+  doc.canvas.nodes[1].file = png; doc.canvas.nodes[1].y = 500;
+  const valid = D.validateDocument(doc);
+  const stored = D.compactForStorage(valid);
+  assert.equal(stored, valid);
+});
