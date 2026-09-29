@@ -83,6 +83,22 @@ Der Weg geht nur in diese Richtung: Die DocuClick-Apps öffnen keine
 Importe per Rechtsklick auf eine HTML-Datei im Vault landen immer neben dieser
 Datei.
 
+### Screenshots speichern
+
+Einstellung „Screenshots speichern“:
+
+- **In der Datei** (Standard): Screenshots stecken einmal als Data-URI in der
+  `.docuclick`-Datei. Eine Datei lässt sich einfach teilen.
+- **Als Dateien im Vault**: Screenshots liegen als eigene Dateien im
+  **Bildordner** (Dateiname = Prüfsumme, gleiche Bilder nur einmal). Die
+  Diagrammdatei bleibt klein, Speichern und Sync werden schneller. Beim Öffnen
+  werden die Bilder wieder eingelesen; der HTML-Export bettet sie ein. Nicht mehr
+  verwendete Bilddateien werden nicht automatisch gelöscht. Ältere Plugin-Versionen
+  (vor 0.5.0) zeigen solche Diagramme ohne Bilder.
+
+Die Einstellung gilt für neu gespeicherte Diagramme; bestehende Dateien werden
+erst bei der nächsten Änderung umgestellt.
+
 ### Farben an das eigene Theme anpassen
 
 ![Diagrammeditor mit hellem Farbschema](../docs/screenshots/obsidian-hell.png)
@@ -113,17 +129,20 @@ einzelnen Schritte und Pfade gehören zum Diagramm und bleiben erhalten.
 `.docuclick` ist JSON mit `format: "docuclick-diagram"`, `version: 1`, dem
 Canvas-Dokument und den Darstellungsdaten (`flow`). Die Darstellungsdaten sichern
 insbesondere die bereits eingebetteten Screenshots aus bestehenden HTML-Dateien.
-In dieser ersten Version bleiben Bilder als Data-URIs eingebettet. Externe
-Attachment-Verwaltung, ein vollständig normalisiertes Datenmodell und Migrationen
-folgen separat. Grenze: 64 MB pro Datei, maximal 10.000 sichtbare Knoten.
+Bilder liegen standardmäßig einmal als Data-URI in der Datei; optional können
+sie als Vault-Dateien ausgelagert werden (dann steht in `images` je Schritt der
+Pfad, siehe „Screenshots speichern“). Grenze: 64 MB pro Datei, maximal 10.000
+sichtbare Knoten.
 
 Jeder Schreibvorgang vergleicht innerhalb von `Vault.process()` den bisherigen
 Dateistand. Wurde die Datei in einem anderen Tab oder extern geändert, bleibt
 das Original erhalten; lokale Änderungen werden in einer neuen Datei
 `… – lokale Änderungen.docuclick` gesichert. Die Ansicht zeigt den Konflikt an.
 Beide Fassungen können dann verglichen werden. Es gibt kein automatisches
-Zusammenführen. Zum erneuten Laden des Originals den Diagramm-Tab schließen
-und die Datei wieder öffnen. Die lokale Sicherung bleibt dabei erhalten.
+Zusammenführen. Ändert ein anderes Programm (Sync, Git) die Datei, während lokal
+nichts Ungesichertes vorliegt, lädt die Ansicht sie automatisch neu. Sonst zeigt
+ein Hinweis den Konflikt an; „Neu laden“ übernimmt den Dateistand, die lokale
+Sicherung bleibt erhalten.
 
 Undo/Redo gilt pro geöffnetem Tab und bleibt nicht über Neustarts erhalten.
 Die Historie ist auf 60 Zustände bzw. ungefähr 32 MB begrenzt (mindestens zwei

@@ -29,13 +29,15 @@ HTMLElement.prototype.createDiv = function(options) { return this.createEl('div'
 HTMLElement.prototype.createSpan = function(options) { return this.createEl('span', options); };
 const files = new Map(), folders = new Map(), notices = [];
 class TFolder { constructor(path) { this.path = path; } }
-class TFile { constructor(path) { this.path = path; this.basename = path.replace(/\\.[^.]+$/, ''); this.extension = path.split('.').pop(); this.parent = {path: '/'}; } }
+class TFile { constructor(path) { this.path = path; this.basename = path.replace(/\\.[^.]+$/, ''); this.extension = path.split('.').pop(); this.parent = {path: '/'}; this.stat = {size: 0}; } }
 const handlers = [];
 window.emitModify = file => handlers.forEach(handler => handler(file));
 const vault = {
   on: (name, handler) => { if (name === 'modify') handlers.push(handler); return {}; },
   read: async file => files.get(file.path).text,
   process: async (file, fn) => { if (window.writeDelay) await new Promise(resolve => setTimeout(resolve, window.writeDelay)); const entry = files.get(file.path); entry.text = fn(entry.text); },
+  createBinary: async (path, bytes) => { if (files.has(path)) throw Error('exists'); const file = new TFile(path); file.stat.size = bytes.byteLength; files.set(path, {file, bytes}); return file; },
+  readBinary: async file => files.get(file.path).bytes,
   create: async (path, text) => { if (files.has(path)) throw Error('exists'); const file = new TFile(path); files.set(path, {file, text}); return file; },
   getAbstractFileByPath: path => files.get(path)?.file || folders.get(path),
   createFolder: async path => { if (files.has(path) || folders.has(path)) throw Error('exists'); const folder = new TFolder(path); folders.set(path, folder); return folder; },
@@ -231,6 +233,35 @@ let browser, socket;
   assert.equal(await evaluate("reloadView.state === blockedState"), true);
   await evaluate("reloadView.contentEl.querySelector('.docuclick-banner button').click()");
   await until("reloadView.state !== blockedState && reloadView.state.doc.canvas.nodes.length === 0 && !reloadView.contentEl.querySelector('.docuclick-banner')");
+  // A view that changed nothing does not rewrite the file (here: unusual formatting stays as is).
+  await evaluate("reloadView.flush()");
+  assert.equal(await evaluate("testHost.files.get('Reload.docuclick').text"), empty);
+  // Screenshots as vault files (optional): stored once by checksum, restored on load, hostile paths ignored.
+  const shot = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
+  await evaluate(`(async () => {
+    const plugin = testHost.plugin; plugin.settings.imageStorage = 'attachments'; plugin.settings.imageFolder = 'Bilder/DocuClick';
+    const doc = DocuClickDocument.emptyDocument();
+    for (const id of ['a', 'b']) {
+      doc.canvas.nodes.push({id, type:'text', text:id, x:id === 'a' ? 0 : 300, y:0, width:200, height:60}, {id:'f'+id, type:'file', x:id === 'a' ? 0 : 300, y:70, width:200, height:100});
+      doc.flow.nodes.push({data:{id, label:id, imageUrl:'${shot}'}, position:{x:id === 'a' ? 0 : 300, y:0}});
+    }
+    window.attachDoc = DocuClickDocument.validateDocument(doc);
+    window.attachText = await plugin.storageText(null, DocuClickDocument.compactForStorage(attachDoc));
+    window.attachLoaded = await plugin.loadDocument(attachText);
+  })()`);
+  assert.equal(await evaluate("attachText.includes('data:image')"), false, "image data left in the diagram file");
+  assert.equal(await evaluate("Object.keys(JSON.parse(attachText).images).length"), 2);
+  assert.equal(await evaluate("[...testHost.files.keys()].filter(p => p.startsWith('Bilder/DocuClick/')).length"), 1, "identical images must be stored once");
+  assert.equal(await evaluate("JSON.stringify(attachLoaded) === JSON.stringify(attachDoc)"), true, "round trip changed the document");
+  // A live view saves through the same path.
+  await evaluate("reloadView.state.pristineKey = null; reloadView.enqueueSave(reloadView.state, DocuClickDocument.compactForStorage(attachDoc))");
+  assert.equal(await evaluate("JSON.parse(testHost.files.get('Reload.docuclick').text).images.b.startsWith('Bilder/DocuClick/')"), true);
+  // Missing files and paths outside the image rules are dropped with a notice, never read.
+  await evaluate("testHost.notices.length = 0; testHost.files.set('Geheim.txt', {file: new (testHost.vault.getAbstractFileByPath('Test.docuclick').constructor)('Geheim.txt'), text: 'x'})");
+  const hostile = await evaluate(`(async () => { const raw = JSON.parse(attachText); raw.images.a = '../Geheim.txt'; raw.images.b = 'Geheim.txt'; return (await testHost.plugin.loadDocument(JSON.stringify(raw))).flow.nodes.map(n => !!n.data.imageUrl).join(); })()`);
+  assert.equal(hostile, "false,false");
+  assert.ok(await evaluate("testHost.notices.some(n => n.includes('Bilddatei'))"));
+  await evaluate("testHost.plugin.settings.imageStorage = 'embedded'");
   assert.deepEqual(errors, [], "Uncaught browser errors");
   console.log("PASS: sandbox, palette, default folder, colour themes, rename, undo/redo, image move, connect/delete/restore, Vault save, read-only HTML export/search/guide/lightbox, forged message rejection, conflict recovery, close flush");
 })().catch(error => { console.error(error); process.exitCode=1; }).finally(async () => {
