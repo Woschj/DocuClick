@@ -7,7 +7,7 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
-## [Unreleased]
+## [1.15.0] - 2026-09-29
 
 - **Aufnehmen in einen Obsidian-Vault**: Liegt der gewählte Speicherort in
   einem Vault (Ordner `.obsidian`), legt DocuClick eine Diagramm-Notiz (`.md`)

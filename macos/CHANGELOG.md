@@ -8,7 +8,7 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
-## [Unreleased]
+## [0.2.0] - 2026-09-29
 
 - **Aufnehmen in einen Obsidian-Vault**: In einem Vault legt DocuClick eine
   Diagramm-Notiz (`.md`) für das Plugin „DocuClick Diagrams“ an; Details im

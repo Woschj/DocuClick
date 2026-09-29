@@ -5,7 +5,7 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
-## [0.6.0] – noch nicht veröffentlicht (Testversion)
+## [0.6.0] - 2026-09-29
 
 - **Ein Ablauf = eine Notiz**: Neue und importierte Abläufe sind
   Diagramm-Notizen (`.md` mit Eigenschaft `docuclick: diagramm`). Sie öffnen
