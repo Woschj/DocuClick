@@ -241,7 +241,7 @@ class DiagramView extends FileView {
     let next;
     try {
       const snapshot = D.validateDocument({ format: D.FORMAT, version: 1, ...messages[messages.length - 1].snapshot });
-      next = JSON.stringify(snapshot, null, 2);
+      next = JSON.stringify(D.compactForStorage(snapshot), null, 2);
       if (next.length > D.MAX_BYTES) throw new Error("Diagramm ist zu groß.");
       state.doc = snapshot;
     } catch (error) {

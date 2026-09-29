@@ -11,6 +11,18 @@ function color(value) { return typeof value === "string" && /^#[0-9a-f]{6}$/i.te
 function safeJson(value) { return JSON.stringify(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026"); }
 function escapeHtml(value) { return String(value).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]); }
 
+// File nodes bucketed by rounded position; the .5 tolerance is checked on candidates.
+function fileIndex(nodes) {
+  const at = new Map();
+  for (const x of nodes) if (x.type === "file") { const key = `${Math.round(x.x)},${Math.round(x.y)}`; (at.get(key) || at.set(key, []).get(key)).push(x); }
+  // The screenshot card of a step sits 70 units below its text node.
+  return (x, y) => {
+    for (const dx of [-1, 0, 1]) for (const dy of [-1, 0, 1]) {
+      const hit = at.get(`${Math.round(x) + dx},${Math.round(y + 70) + dy}`)?.find(f => Math.abs(f.x - x) < .5 && Math.abs(f.y - y - 70) < .5);
+      if (hit) return hit;
+    }
+  };
+}
 function validateDocument(input) {
   check(input?.format === FORMAT && input.version === 1, "Unbekanntes Diagrammformat oder neuere Version.");
   const canvas = input.canvas, flow = input.flow;
@@ -54,21 +66,30 @@ function validateDocument(input) {
   const renderedEdges = edges.map(e => ({ data: { id: `${e.docuClickManual ? "manual-" : ""}${e.fromNode}->${e.toNode}`, source: e.fromNode, target: e.toNode, color: e.color, manual: e.docuClickManual, lineStyle: e.lineStyle } }));
   // Preserve imported screenshots even after the original attachment folder is gone.
   const nodeById = new Map(nodes.map(x => [x.id, x]));
-  // File nodes bucketed by rounded position (tolerance .5 is checked on the candidates).
-  const fileAt = new Map();
-  for (const x of nodes) if (x.type === "file") { const key = `${Math.round(x.x)},${Math.round(x.y)}`; (fileAt.get(key) || fileAt.set(key, []).get(key)).push(x); }
+  const siblingOf = fileIndex(nodes);
   for (const n of rendered) {
     const text = nodeById.get(n.data.id);
     text.x = n.position.x; text.y = n.position.y;
     if (n.data.imageUrl) {
-      let sibling;
-      for (const dx of [-1, 0, 1]) for (const dy of [-1, 0, 1]) {
-        sibling ||= fileAt.get(`${Math.round(text.x) + dx},${Math.round(text.y + 70) + dy}`)?.find(x => Math.abs(x.x - text.x) < .5 && Math.abs(x.y - text.y - 70) < .5);
-      }
+      const sibling = siblingOf(text.x, text.y);
       if (sibling) sibling.file = n.data.imageUrl;
     }
   }
   return { format: FORMAT, version: 1, canvas: { nodes, edges }, flow: { nodes: rendered, edges: renderedEdges } };
+}
+/**
+ * Storage form: a screenshot is kept once (flow imageUrl); the duplicate on the
+ * canvas file node is left out when validateDocument can rebuild it from the
+ * flow node next to it (same position rule), so nothing is lost on reload.
+ */
+function compactForStorage(doc) {
+  const siblingOf = fileIndex(doc.canvas.nodes), rebuilt = new Set();
+  for (const n of doc.flow.nodes) {
+    const sibling = n.data.imageUrl && siblingOf(n.position.x, n.position.y);
+    if (sibling && sibling.file === n.data.imageUrl) rebuilt.add(sibling);
+  }
+  if (!rebuilt.size) return doc;
+  return { ...doc, canvas: { ...doc.canvas, nodes: doc.canvas.nodes.map(x => { if (!rebuilt.has(x)) return x; const { file, ...rest } = x; return rest; }) } };
 }
 function parseDocument(text) {
   check(typeof text === "string" && text.length <= MAX_BYTES, "Datei ist zu groß.");
@@ -155,4 +176,4 @@ function buildHtml(template, cytoscape, document, title, { readOnly = false, the
   const values = { TITLE: escapeHtml(title), NODE_COUNT: String(doc.flow.nodes.length), EDGE_COUNT: String(doc.flow.edges.length), DOCUMENT: `<script id="docuclick-data" type="application/json">${safeJson(doc.canvas)}</script>`, CYTOSCAPE: cytoscape, FLOW: safeJson(doc.flow), SAVE_PORT: "47811" };
   return template.replace(/@@([A-Z_]+)@@/g, (_, key) => { check(key in values, `Unbekannter Vorlagenwert: ${key}`); return values[key]; });
 }
-module.exports = { FORMAT, MAX_BYTES, validateDocument, parseDocument, importHtml, emptyDocument, buildHtml, safeJson, themeCss };
+module.exports = { compactForStorage, FORMAT, MAX_BYTES, validateDocument, parseDocument, importHtml, emptyDocument, buildHtml, safeJson, themeCss };

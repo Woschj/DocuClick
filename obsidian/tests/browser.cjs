@@ -126,6 +126,7 @@ let browser, socket;
   assert.equal(await inFrame("snapshot().canvas.nodes.find(n => n.type === 'file').y"), 470);
   await inFrame("tryConnect(snapshot().flow.nodes[0].data.id, imageId)");
   await until("JSON.parse(testHost.files.get('Test.docuclick').text).canvas.edges.length === 1");
+  assert.equal(await evaluate("testHost.files.get('Test.docuclick').text.split('data:image/png').length - 1"), 1, "screenshot stored more than once");
   await inFrame("deleteNode(imageId)");
   await inFrame("restoreHistory(-1)");
   assert.equal(await inFrame("snapshot().flow.nodes.length"), 2);

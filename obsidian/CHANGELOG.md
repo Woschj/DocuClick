@@ -14,6 +14,10 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 - **Schnelleres Speichern**: Pro Bearbeitung wird nur noch ein Snapshot
   geprüft und serialisiert (bisher zweimal, weil der Editor „Änderung“ und
   „Speichern“ getrennt meldet).
+- **Kleinere Dateien**: Ein Screenshot wird in `.docuclick`-Dateien nur noch
+  einmal gespeichert (bisher doppelt). Beim Öffnen wird die Canvas-Seite aus
+  dem Diagramm rekonstruiert; ältere Dateien und ältere Plugin-Versionen
+  bleiben lesbar.
 
 ## [0.3.1] - 2026-09-29
 
