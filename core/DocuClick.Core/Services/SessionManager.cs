@@ -238,6 +238,12 @@ public sealed class SessionManager : IDisposable
         });
         _currentTargetFileName = targetFilePath;
 
+        // Recording into a vault: the plugin that opens the diagram note comes along.
+        if (ObsidianVault.FindRoot(targetDirectory) is { } vaultRoot && ObsidianPluginInstaller.EnsureInstalled(vaultRoot) is { } installMessage)
+        {
+            InfoOccurred?.Invoke(installMessage);
+        }
+
         StartCapturing();
 
         _isRunning = true;

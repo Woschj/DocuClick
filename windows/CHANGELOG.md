@@ -16,6 +16,11 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
   Diagramm öffnet. Eigener Text in der Notiz bleibt beim Aufnehmen erhalten.
   Der Session-Dialog zeigt das an. Screenshots bleiben PNG-Dateien im
   `Attachments`-Unterordner und werden nicht bei jedem Klick neu eingebettet.
+- **Obsidian-Plugin wird automatisch installiert**: Beim Start einer Aufnahme
+  in einem Vault installiert bzw. aktualisiert DocuClick das Plugin
+  „DocuClick Diagrams“ im Vault (nie auf eine ältere Version, Einstellungen
+  bleiben) und schaltet es bei der Erstinstallation ein. Die App bringt das
+  Plugin mit (`ObsidianPlugin/`).
 - Während der Aufnahme in Obsidian bearbeitete Diagramme werden vor dem
   nächsten Klick neu eingelesen statt überschrieben.
 - „Bestehende Datei fortsetzen“, „Ablauf öffnen“ und der draw.io-Export

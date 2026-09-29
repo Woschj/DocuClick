@@ -5,15 +5,19 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
-## [Unreleased]
+## [0.6.0] – noch nicht veröffentlicht (Testversion)
 
 - **Ein Ablauf = eine Notiz**: Neue und importierte Abläufe sind
   Diagramm-Notizen (`.md` mit Eigenschaft `docuclick: diagramm`). Sie öffnen
-  sich als Diagramm-Tab wie bisher (inkl. HTML-Ansicht); **Als Notiz
-  anzeigen** zeigt den Text. Die Notiz enthält eigenen Text, eine
+  sich direkt als Diagramm-Tab wie bisher (inkl. HTML-Ansicht); **Als Notiz
+  anzeigen** zeigt den Text im Lesemodus. Die Notiz enthält eigenen Text, eine
   automatisch erzeugte Schrittliste (durchsuchbar, verlinkbar) und die
   Diagrammdaten in einem unsichtbaren Kommentar. Eigener Text bleibt bei
   jedem Speichern erhalten.
+- Diagramm-Notizen öffnen sich direkt als Diagramm, ohne kurz den Text zu
+  zeigen (sofern Obsidian die Notiz schon indiziert hat).
+- Die DocuClick-Apps installieren das Plugin automatisch in einen Vault, in
+  den sie aufnehmen.
 - `.docuclick`-Dateien öffnen sich weiterhin; **In Diagramm-Notiz
   umwandeln** (Kontextmenü) macht daraus eine Notiz.
 - **Diagramm in andere Notizen einbetten** mit einem Codeblock `docuclick`

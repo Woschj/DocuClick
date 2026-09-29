@@ -1,5 +1,5 @@
 /* global DocuClickDocument, VIEWER_TEMPLATE, CYTOSCAPE */
-const { Plugin, PluginSettingTab, FileView, Modal, Setting, Notice, TFile, TFolder, AbstractInputSuggest, MarkdownRenderChild, normalizePath } = require("obsidian");
+const { Plugin, PluginSettingTab, FileView, Modal, Setting, Notice, TFile, TFolder, AbstractInputSuggest, MarkdownRenderChild, WorkspaceLeaf, normalizePath } = require("obsidian");
 const VIEW_TYPE = "docuclick-diagram";
 const D = DocuClickDocument;
 const DEFAULT_SETTINGS = { themeMode: "docuclick", background: "#1e1e1e", accent: "#7c3aed", themeExport: true, defaultFolder: "", askFolder: true, imageStorage: "embedded", imageFolder: "DocuClick-Bilder" };
@@ -112,7 +112,7 @@ class DiagramEmbed extends MarkdownRenderChild {
     }
     const header = el.createDiv({ cls: "docuclick-embed-header" });
     header.createSpan({ text: file.basename });
-    header.createEl("button", { text: "Im Editor öffnen" }).addEventListener("click", () => this.plugin.app.workspace.getLeaf("tab").openFile(file));
+    header.createEl("button", { text: "Im Editor öffnen" }).addEventListener("click", () => this.plugin.openDiagram(file).catch(report));
     let doc;
     try { doc = await this.plugin.loadDocument(await this.plugin.app.vault.read(file)); }
     catch (error) { el.createDiv({ cls: "docuclick-error", text: `DocuClick: ${error.message}` }); return; }
@@ -283,10 +283,11 @@ class DiagramView extends FileView {
   async onOpen() {
     this.contentEl.addClass("docuclick-view");
     // Diagram notes: switch to the note's text (own notes, step list); old .docuclick files: convert.
-    this.addAction?.("file-text", "Als Notiz anzeigen", () => { if (this.file) this.plugin.toggleView(this.leaf, this.file).catch(report); });
+    this.noteAction = this.addAction?.("file-text", "Als Notiz anzeigen", () => { if (this.file) this.plugin.toggleView(this.leaf, this.file).catch(report); });
   }
   async onLoadFile(file) {
     this.contentEl.empty();
+    this.noteAction?.setAttribute?.("aria-label", file.extension === "md" ? "Als Notiz anzeigen" : "In Diagramm-Notiz umwandeln (ersetzt diese .docuclick-Datei)");
     try {
       const base = await this.app.vault.read(file);
       const imagePaths = new Map();
@@ -470,7 +471,22 @@ module.exports = class DocuClickPlugin extends Plugin {
       for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) leaf.view?.externalChange?.(file)?.catch(report);
     }));
     this.registerMarkdownCodeBlockProcessor("docuclick", (source, el, ctx) => ctx.addChild(new DiagramEmbed(this, el, source, ctx.sourcePath)));
-    // Diagram notes open as diagram tab, like any .docuclick file.
+    // Diagram notes open as diagram tab, like any .docuclick file: a leaf asked to
+    // show one as Markdown shows the diagram instead, before anything renders
+    // (same approach as the Excalidraw plugin). Tabs switched to text stay text.
+    const leafPrototype = WorkspaceLeaf?.prototype, originalSetViewState = leafPrototype?.setViewState, plugin = this;
+    if (originalSetViewState) {
+      const patched = function (viewState, ...rest) {
+        const path = viewState?.state?.file;
+        if (viewState?.type === "markdown" && typeof path === "string" && plugin.textLeaves.get(this) !== path && plugin.isDiagramNoteCached(path)) {
+          viewState = { ...viewState, type: VIEW_TYPE };
+        }
+        return originalSetViewState.call(this, viewState, ...rest);
+      };
+      leafPrototype.setViewState = patched;
+      this.register(() => { if (leafPrototype.setViewState === patched) leafPrototype.setViewState = originalSetViewState; });
+    }
+    // Fallback for notes Obsidian has not indexed yet (just created or synced).
     this.registerEvent(this.app.workspace.on("file-open", () => this.showDiagramNotes().catch(report)));
     this.app.workspace.onLayoutReady?.(() => this.showDiagramNotes().catch(report));
     this.addCommand({
@@ -512,6 +528,14 @@ module.exports = class DocuClickPlugin extends Plugin {
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) leaf.view?.applyTheme?.(theme);
     for (const embed of this.embeds) embed.render().catch(report);
   }
+  /** Synchronous check from Obsidian's metadata cache (false while not indexed yet). */
+  isDiagramNoteCached(path) {
+    return typeof path === "string" && path.endsWith(".md") && this.app.metadataCache.getCache?.(path)?.frontmatter?.docuclick === "diagramm";
+  }
+  /** Opens a diagram (note or .docuclick) as diagram tab in a new tab. */
+  async openDiagram(file) {
+    await this.app.workspace.getLeaf("tab").setViewState({ type: VIEW_TYPE, state: { file: file.path }, active: true });
+  }
   /** True for a Markdown note marked as diagram (`docuclick: diagramm`). */
   async isDiagramNote(file) {
     if (!(file instanceof TFile) || file.extension !== "md") return false;
@@ -538,7 +562,8 @@ module.exports = class DocuClickPlugin extends Plugin {
     if (file.extension === "docuclick") { await this.convertToNote(file); return; }
     if (leaf.view?.getViewType() === VIEW_TYPE) {
       this.textLeaves.set(leaf, file.path);
-      await leaf.setViewState({ type: "markdown", state: { file: file.path } });
+      // Reading mode: the note is for reading; editing text is one click away.
+      await leaf.setViewState({ type: "markdown", state: { file: file.path, mode: "preview" } });
       this.addDiagramAction(leaf);
     } else {
       this.textLeaves.delete(leaf);
@@ -555,7 +580,7 @@ module.exports = class DocuClickPlugin extends Plugin {
     const text = await this.app.vault.read(file);
     await this.loadDocument(text); // refuse invalid content before creating anything
     const note = await this.createUnique(file.parent?.path, file.basename, "md", this.fileText({ extension: "md" }, null, JSON.parse(text)));
-    await this.app.workspace.getLeaf("tab").openFile(note);
+    await this.openDiagram(note);
     await this.app.fileManager.trashFile(file);
     new Notice(`In Diagramm-Notiz umgewandelt: ${note.path}`);
   }
@@ -582,7 +607,7 @@ module.exports = class DocuClickPlugin extends Plugin {
     new NameDialog(this.app, { folder: this.targetFolder(), askFolder: this.settings.askFolder }, async (name, folder) => {
       await this.ensureFolder(folder);
       const file = await this.createUnique(folder, name, "md", this.fileText({ extension: "md" }, null, D.emptyDocument()));
-      await this.app.workspace.getLeaf("tab").openFile(file);
+      await this.openDiagram(file);
     }).open();
   }
   /**
@@ -663,7 +688,7 @@ module.exports = class DocuClickPlugin extends Plugin {
   async importText(text, name, folder) {
     const doc = D.importHtml(text);
     const file = await this.createUnique(folder, name, "md", this.fileText({ extension: "md" }, null, await this.storageDoc(null, D.compactForStorage(doc))));
-    await this.app.workspace.getLeaf("tab").openFile(file);
+    await this.openDiagram(file);
   }
   pickHtml() {
     const input = document.createElement("input");

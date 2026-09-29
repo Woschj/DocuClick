@@ -10,7 +10,7 @@ on:
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
-    paths: [ 'windows/**', 'core/**', 'OutputTemplate/**', 'global.json', '.github/workflows/windows.yml' ]
+    paths: [ 'windows/**', 'core/**', 'obsidian/src/**', 'obsidian/manifest.json', 'obsidian/styles.css', 'OutputTemplate/**', 'global.json', '.github/workflows/windows.yml' ]
 
 jobs:
   build:

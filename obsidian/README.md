@@ -9,6 +9,15 @@ DocuClick-App. Erste Desktop-Version für Obsidian ab 1.5.
 
 ## Installation
 
+**Mit DocuClick für Windows/macOS**: nichts zu tun. Startet man in der App
+eine Aufnahme in einem Vault, installiert die App das Plugin dort (oder
+aktualisiert es auf die mitgelieferte Version; nie auf eine ältere), schaltet
+es beim ersten Mal ein und meldet das. Danach Obsidian einmal neu starten;
+fragt Obsidian nach dem eingeschränkten Modus bzw. ob man dem Vault vertraut,
+Community-Plugins erlauben. Plugin-Einstellungen bleiben bei Updates erhalten.
+
+**Von Hand** (ohne App):
+
 Das Plugin ist (noch) nicht im Community-Plugin-Verzeichnis von Obsidian;
 es wird von Hand installiert:
 

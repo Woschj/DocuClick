@@ -55,7 +55,7 @@ public static class ObsidianVault
     /// <summary>Line under the session-start dialog's folder field: what gets created there.</summary>
     public static string TargetHint(string? folder) => FindRoot(folder) is null
         ? "Die .html-Datei und ihr Attachments-Unterordner werden direkt in diesem Ordner angelegt."
-        : "Obsidian-Vault erkannt: Der Ablauf wird als Diagramm-Notiz (.md) angelegt und öffnet sich mit dem Plugin „DocuClick Diagrams“ als Diagramm (auch schon während der Aufnahme). Screenshots landen im Attachments-Unterordner.";
+        : "Obsidian-Vault erkannt: Der Ablauf wird als Diagramm-Notiz (.md) angelegt und öffnet sich mit dem Plugin „DocuClick Diagrams“ als Diagramm (auch schon während der Aufnahme). Das Plugin wird dafür bei Bedarf automatisch im Vault installiert. Screenshots landen im Attachments-Unterordner.";
 
     /// <summary>True for a plugin file: a diagram note (any .md target) or a .docuclick diagram.</summary>
     public static bool IsDiagramFile(string? path) => IsNote(path)

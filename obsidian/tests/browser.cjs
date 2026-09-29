@@ -52,18 +52,19 @@ const metadataCache = {
   getCache: path => ({frontmatter: frontmatter(path)}), getFileCache: file => ({frontmatter: frontmatter(file.path)}),
   getFirstLinkpathDest: path => files.get(path)?.file || null, on: () => ({})
 };
+class WorkspaceLeaf { async setViewState(state) { this.state = state; } }
 class MarkdownRenderChild { constructor(containerEl) { this.containerEl = containerEl; } registerEvent() {} }
-const app = {vault, metadataCache, workspace: {on: () => () => {}, getActiveFile: () => null, getLeaf: () => ({openFile: async () => {}}), getLeavesOfType: () => window.testHost ? [{view: window.testHost.view}] : []}};
+const app = {vault, metadataCache, workspace: {on: () => () => {}, getActiveFile: () => null, getLeaf: () => ({openFile: async () => {}, setViewState: async () => {}}), getLeavesOfType: () => window.testHost ? [{view: window.testHost.view}] : []}};
 class Plugin {
   constructor() { this.app = app; }
   registerView(type, factory) { this.factory = factory; }
   registerMarkdownCodeBlockProcessor(language, processor) { window.codeBlocks = {...window.codeBlocks, [language]: processor}; }
-  registerExtensions() {} addRibbonIcon() {} addCommand() {} registerEvent() {} addSettingTab() {}
+  register() {} registerExtensions() {} addRibbonIcon() {} addCommand() {} registerEvent() {} addSettingTab() {}
   async loadData() { return window.pluginData || null; } async saveData(data) { window.pluginData = JSON.parse(JSON.stringify(data)); }
 }
 class FileView { constructor() { this.app = app; this.contentEl = document.body.createDiv(); this.contentEl.style = 'height:95vh;display:flex;flex-direction:column'; } }
 window.module = {exports: {}};
-window.require = name => { if (name !== 'obsidian') throw Error(name); return {Plugin, PluginSettingTab: class {}, AbstractInputSuggest: class {}, TFolder, FileView, MarkdownRenderChild, Modal: class {}, Setting: class {}, Notice: class {constructor(text) {notices.push(text);}}, TFile, normalizePath: path => path}; };
+window.require = name => { if (name !== 'obsidian') throw Error(name); return {Plugin, PluginSettingTab: class {}, AbstractInputSuggest: class {}, TFolder, FileView, MarkdownRenderChild, WorkspaceLeaf, Modal: class {}, Setting: class {}, Notice: class {constructor(text) {notices.push(text);}}, TFile, normalizePath: path => path}; };
 window.start = async () => {
   const plugin = new module.exports(); await plugin.onload();
   const file = await vault.create('Test.docuclick', JSON.stringify({format:'docuclick-diagram', version:1, canvas:{nodes:[],edges:[]}, flow:{nodes:[],edges:[]}}));
@@ -322,6 +323,11 @@ let browser, socket;
   await evaluate("mdLeaf.state = undefined; testHost.plugin.textLeaves.set(mdLeaf, appFile.path); testHost.plugin.showDiagramNotes()");
   assert.equal(await evaluate("mdLeaf.state === undefined && mdLeaf.actions === 1"), true, "tab switched to text must stay text, with a way back");
   await evaluate("testHost.plugin.app.workspace.getLeavesOfType = type => type === 'markdown' ? [] : leaves");
+  // Without a flash of text: a leaf asked to show a (indexed) diagram note as Markdown shows the diagram right away.
+  assert.equal(await evaluate("(async () => { const leaf = new (require('obsidian').WorkspaceLeaf)(); await leaf.setViewState({type: 'markdown', state: {file: 'Prozesse/Ablauf.md'}}); return leaf.state.type; })()"), "docuclick-diagram");
+  assert.equal(await evaluate("(async () => { const leaf = new (require('obsidian').WorkspaceLeaf)(); await leaf.setViewState({type: 'markdown', state: {file: 'Notiz.md'}}); return leaf.state.type; })()"), "markdown");
+  // "Als Notiz anzeigen": text in reading mode, and the patch lets that through.
+  assert.equal(await evaluate("(async () => { const leaf = new (require('obsidian').WorkspaceLeaf)(); leaf.view = {getViewType: () => 'docuclick-diagram', addAction() {}}; await testHost.plugin.toggleView(leaf, appFile); return leaf.state.type + ':' + leaf.state.state.mode; })()"), "markdown:preview");
   // Embedding a diagram note in another note: read-only viewer, follows changes.
   await evaluate("window.embedEl = document.body.createDiv(); codeBlocks.docuclick('[[Prozesse/Ablauf.md]]', embedEl, {sourcePath: 'Uebersicht.md', addChild: child => child.onload()})");
   for (let i = 0; i < 40 && !await evaluate("!!embedEl.querySelector('iframe.docuclick-embed-frame')"); i++) await delay(50);
