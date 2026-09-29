@@ -80,10 +80,14 @@ const server = http.createServer((request, response) => {
 let browser, socket;
 (async () => {
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-  browser = spawn(browserPath, ["--headless=new", "--disable-gpu", "--disable-site-isolation-trials", "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], {stdio: "ignore"});
+  browser = spawn(browserPath, ["--headless=new", "--disable-gpu", "--disable-site-isolation-trials", "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], {stdio: ["ignore", "ignore", "pipe"]});
+  let browserLog = "", exitCode = null;
+  browser.stderr.on("data", chunk => { browserLog = (browserLog + chunk).slice(-4000); });
+  browser.on("exit", code => { exitCode = code; });
+  // A cold runner can take well over 10 s for Chromium's first start.
   const portFile = path.join(profile, "DevToolsActivePort");
-  for (let i = 0; i < 100 && !fs.existsSync(portFile); i++) await delay(100);
-  assert.ok(fs.existsSync(portFile), "Chromium did not start");
+  for (let i = 0; i < 600 && exitCode === null && !fs.existsSync(portFile); i++) await delay(100);
+  assert.ok(fs.existsSync(portFile), `Chromium did not start (exit code ${exitCode}):\n${browserLog}`);
   const port = fs.readFileSync(portFile, "utf8").split("\n")[0];
   const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
   socket = new WebSocket(targets.find(x => x.type === "page").webSocketDebuggerUrl);
