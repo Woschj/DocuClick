@@ -7,9 +7,10 @@ using System.Text.Json.Serialization;
 namespace DocuClick.Services;
 
 /// <summary>
-/// Reads and writes a <c>.docuclick</c> diagram — the file format of the
-/// DocuClick Diagrams plugin for Obsidian (<c>obsidian/src/document.js</c>),
-/// so the apps can record straight into a diagram the plugin has open:
+/// Reads and writes a diagram of the DocuClick Diagrams plugin for Obsidian
+/// (<c>obsidian/src/document.js</c>) — a diagram note (<c>.md</c>, the JSON
+/// below inside, see <see cref="DiagramNote"/>) or a plain <c>.docuclick</c>
+/// file — so the apps can record straight into a diagram the plugin has open:
 /// <code>
 /// { "format": "docuclick-diagram", "version": 1,
 ///   "canvas": { nodes, edges },          // same document as an .html Ablauf
@@ -79,9 +80,24 @@ public static class DocuClickDiagramIo
         return Parse(text, path);
     }
 
+    /// <param name="text">File content: a diagram note (for a .md path) or the diagram JSON.</param>
     public static CanvasDocument Parse(string text, string path)
     {
         var name = Path.GetFileName(path);
+        if (ObsidianVault.IsNote(path))
+        {
+            var data = DiagramNote.ExtractData(text);
+            if (data is null)
+            {
+                // An empty note may become a diagram; any other note is left alone.
+                return string.IsNullOrWhiteSpace(text)
+                    ? new CanvasDocument()
+                    : throw new InvalidOperationException($"\"{name}\" ist keine DocuClick-Diagramm-Notiz (keine Diagrammdaten). Bitte eine andere Datei wählen oder eine neue anlegen.");
+            }
+
+            text = data;
+        }
+
         JsonObject root;
         CanvasDocument doc;
         try
@@ -167,7 +183,9 @@ public static class DocuClickDiagramIo
     }
 
     /// <summary>
-    /// The diagram text for <paramref name="doc"/>. <paramref name="nodes"/>
+    /// The file text for <paramref name="doc"/>: for a diagram note,
+    /// <paramref name="currentText"/> (the note on disk) with steps and data
+    /// replaced, own text kept; else the diagram JSON. <paramref name="nodes"/>
     /// are the rendered steps with <see cref="HtmlViewerBuilder.NodeSpec.ImageSrc"/>
     /// set to the canvas file node's raw value (relative path or data URI);
     /// <paramref name="embed"/> turns a path outside the image root into a
@@ -178,7 +196,8 @@ public static class DocuClickDiagramIo
         CanvasDocument doc,
         IReadOnlyList<HtmlViewerBuilder.NodeSpec> nodes,
         IReadOnlyList<HtmlViewerBuilder.EdgeSpec> edges,
-        Func<string, string?> embed)
+        Func<string, string?> embed,
+        string? currentText = null)
     {
         var diagramFolder = Path.GetDirectoryName(Path.GetFullPath(path))!;
         var imageRoot = RootFor(path);
@@ -213,7 +232,7 @@ public static class DocuClickDiagramIo
             edges = doc.Edges,
         };
 
-        return JsonSerializer.Serialize(new
+        var json = JsonSerializer.Serialize(new
         {
             format = Format,
             version = Version,
@@ -221,6 +240,10 @@ public static class DocuClickDiagramIo
             flow = HtmlViewerBuilder.FlowData(flowNodes, edges),
             images = images.Count > 0 ? images : null,
         }, WriteOptions);
+
+        return ObsidianVault.IsNote(path)
+            ? DiagramNote.Compose(currentText, DiagramNote.EscapeForNote(json), DiagramNote.Steps(doc))
+            : json;
     }
 
     internal static bool IsImageDataUri(string value) =>

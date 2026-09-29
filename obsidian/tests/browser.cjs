@@ -6,6 +6,7 @@ const os = require("node:os");
 const http = require("node:http");
 const { spawn } = require("node:child_process");
 const assert = require("node:assert/strict");
+const D = require("../src/document.js");
 const root = path.resolve(__dirname, "../..");
 const css = fs.readFileSync(path.join(root, "obsidian/styles.css"), "utf8");
 const bundle = fs.readFileSync(path.join(root, "dist/obsidian-docuclick/docuclick-diagrams/main.js"), "utf8");
@@ -35,6 +36,7 @@ window.emitModify = file => handlers.forEach(handler => handler(file));
 const vault = {
   on: (name, handler) => { if (name === 'modify') handlers.push(handler); return {}; },
   read: async file => files.get(file.path).text,
+  cachedRead: async file => files.get(file.path).text,
   process: async (file, fn) => { if (window.writeDelay) await new Promise(resolve => setTimeout(resolve, window.writeDelay)); const entry = files.get(file.path); entry.text = fn(entry.text); },
   createBinary: async (path, bytes) => { if (files.has(path)) throw Error('exists'); const file = new TFile(path); file.stat.size = bytes.byteLength; files.set(path, {file, bytes}); return file; },
   readBinary: async file => files.get(file.path).bytes,
@@ -255,7 +257,7 @@ let browser, socket;
       doc.flow.nodes.push({data:{id, label:id, imageUrl:'${shot}'}, position:{x:id === 'a' ? 0 : 300, y:0}});
     }
     window.attachDoc = DocuClickDocument.validateDocument(doc);
-    window.attachText = await plugin.storageText(null, DocuClickDocument.compactForStorage(attachDoc));
+    window.attachText = JSON.stringify(await plugin.storageDoc(null, DocuClickDocument.compactForStorage(attachDoc)), null, 2);
     window.attachLoaded = await plugin.loadDocument(attachText);
   })()`);
   assert.equal(await evaluate("attachText.includes('data:image')"), false, "image data left in the diagram file");
@@ -271,50 +273,75 @@ let browser, socket;
   assert.equal(hostile, "false,false");
   assert.ok(await evaluate("testHost.notices.some(n => n.includes('Bilddatei'))"));
   await evaluate("testHost.plugin.settings.imageStorage = 'embedded'");
-  // A diagram recorded by the DocuClick apps into the vault: screenshots are vault
-  // files and stay files, even with "In der Datei" storage; the app's next click reloads the view.
-  const recording = fs.readFileSync(path.join(__dirname, "fixtures/app-recording.docuclick"), "utf8");
+  // A diagram note recorded by the DocuClick apps: one Markdown file; screenshots stay vault
+  // files (also with "In der Datei"); own text in the note survives every save.
+  const recording = fs.readFileSync(path.join(__dirname, "fixtures/app-recording.md"), "utf8");
   await evaluate(`(async () => {
     const raw = ${JSON.stringify(recording)};
     const bytes = Uint8Array.from(atob('${shot.split(",")[1]}'), c => c.charCodeAt(0));
-    for (const file of Object.values(JSON.parse(raw).images)) await testHost.vault.createBinary(file, bytes.buffer);
-    window.appFile = await testHost.vault.create('Prozesse/Ablauf.docuclick', raw);
+    for (const file of Object.values(JSON.parse(DocuClickDocument.noteData(raw)).images)) await testHost.vault.createBinary(file, bytes.buffer);
+    window.appFile = await testHost.vault.create('Prozesse/Ablauf.md', raw);
     window.appView = testHost.plugin.factory({}); appView.file = appFile; await appView.onOpen(); await appView.onLoadFile(appFile);
     window.leaves = [{view: appView}];
   })()`);
   assert.equal(await evaluate("appView.state.doc.flow.nodes.filter(n => n.data.imageUrl).length"), 2, "recorded screenshots not loaded");
-  await evaluate("appView.state.pristineKey = null; appView.enqueueSave(appView.state, DocuClickDocument.compactForStorage(appView.state.doc))");
-  const saved = await evaluate("testHost.files.get('Prozesse/Ablauf.docuclick').text");
-  assert.equal(saved.includes("data:image"), false, "recorded screenshots were embedded into the diagram");
-  assert.deepEqual(JSON.parse(saved).images, JSON.parse(recording).images);
-  const nextClick = JSON.parse(recording); nextClick.canvas.nodes.find(n => n.type === "text").text = "Nächster Klick";
-  await evaluate(`window.appState = appView.state; testHost.files.get('Prozesse/Ablauf.docuclick').text = ${JSON.stringify(JSON.stringify(nextClick))}; emitModify(appFile)`);
+  // Typing in the note's text (other pane) does not reload the diagram tab.
+  await evaluate("window.appState = appView.state; testHost.files.get('Prozesse/Ablauf.md').text = testHost.files.get('Prozesse/Ablauf.md').text.replace('## Schritte', 'Eigene Notiz.\\n\\n## Schritte'); emitModify(appFile)");
+  await delay(150);
+  assert.equal(await evaluate("appView.state === appState"), true, "text edit reloaded the diagram");
+  // An edit in the diagram: steps and data replaced, own text kept.
+  await evaluate(`(() => {
+    const doc = structuredClone(appView.state.doc);
+    const first = doc.canvas.nodes.find(n => n.type === 'text'); first.text = 'Umbenannt im Diagramm';
+    doc.flow.nodes.find(n => n.data.id === first.id).data.label = first.text;
+    // As drainInbox does for an edit from the editor frame.
+    appView.state.pristineKey = null; appView.state.doc = DocuClickDocument.validateDocument(doc);
+    return appView.enqueueSave(appView.state, DocuClickDocument.compactForStorage(appView.state.doc));
+  })()`);
+  const saved = await evaluate("testHost.files.get('Prozesse/Ablauf.md').text");
+  assert.ok(D.isDiagramNote(saved) && saved.includes("Eigene Notiz.") && saved.includes("1. Umbenannt im Diagramm\n2. Abzweigung:"), saved.slice(0, 600));
+  assert.equal(saved.includes("data:image"), false, "recorded screenshots were embedded into the note");
+  assert.deepEqual(JSON.parse(D.noteData(saved)).images, JSON.parse(D.noteData(recording)).images);
+  assert.equal(saved.split(D.DATA_START).length, 2);
+  // The app records another step (diagram data changes): the open tab reloads.
+  const nextData = JSON.parse(D.noteData(saved)); nextData.canvas.nodes.find(n => n.type === "text").text = "Nächster Klick";
+  const nextNote = D.composeNote(saved, D.noteJson(nextData), D.stepsMarkdown(nextData));
+  await evaluate(`window.appState = appView.state; testHost.files.get('Prozesse/Ablauf.md').text = ${JSON.stringify(nextNote)}; emitModify(appFile)`);
   await until("appView.state && appView.state !== appState && appView.state.doc.canvas.nodes.some(n => n.text === 'Nächster Klick')");
-  // Note about the recorded flow: property link, embedded read-only diagram, generated step list.
-  await evaluate("testHost.plugin.openNote(appFile)");
-  const note = await evaluate("testHost.files.get('Prozesse/Ablauf.md').text");
-  assert.ok(note.startsWith('---\ndocuclick: "[[Prozesse/Ablauf.docuclick]]"\n---\n# Ablauf\n'), note);
-  assert.ok(note.includes("1. Nächster Klick\n2. Abzweigung:\n\t- **Pfad: Erfolg**\n\t\t1. Linksklick auf „Weiter“"), note);
-  assert.equal(await evaluate("testHost.plugin.notesFor(appFile).map(f => f.path).join()"), "Prozesse/Ablauf.md");
-  await evaluate("testHost.plugin.openNote(appFile)"); // opens the existing note, no second one
-  assert.equal(await evaluate("[...testHost.files.keys()].filter(p => p.endsWith('.md')).length"), 1);
-  await evaluate("window.embedEl = document.body.createDiv(); codeBlocks.docuclick('', embedEl, {sourcePath: 'Prozesse/Ablauf.md', addChild: child => child.onload()})");
-  await until("!!embedEl.querySelector('iframe.docuclick-embed-frame')");
+  // Opening a diagram note shows the full diagram tab; a tab switched to text stays text.
+  await evaluate(`(async () => {
+    const leaf = view => ({ view, setViewState: async state => { leaf.last = state; } });
+    const markdown = file => { const l = { view: { file, getViewType: () => 'markdown', addAction() { l.actions = (l.actions || 0) + 1; } }, setViewState: async state => { l.state = state; } }; return l; };
+    window.plain = await testHost.vault.create('Notiz.md', '# Nur eine Notiz');
+    window.mdLeaf = markdown(appFile); window.plainLeaf = markdown(plain);
+    testHost.plugin.app.workspace.getLeavesOfType = type => type === 'markdown' ? [mdLeaf, plainLeaf] : leaves;
+    await testHost.plugin.showDiagramNotes();
+  })()`);
+  assert.equal(await evaluate("mdLeaf.state?.type + ':' + mdLeaf.state?.state.file"), "docuclick-diagram:Prozesse/Ablauf.md");
+  assert.equal(await evaluate("plainLeaf.state"), undefined, "an ordinary note must stay a note");
+  await evaluate("mdLeaf.state = undefined; testHost.plugin.textLeaves.set(mdLeaf, appFile.path); testHost.plugin.showDiagramNotes()");
+  assert.equal(await evaluate("mdLeaf.state === undefined && mdLeaf.actions === 1"), true, "tab switched to text must stay text, with a way back");
+  await evaluate("testHost.plugin.app.workspace.getLeavesOfType = type => type === 'markdown' ? [] : leaves");
+  // Embedding a diagram note in another note: read-only viewer, follows changes.
+  await evaluate("window.embedEl = document.body.createDiv(); codeBlocks.docuclick('[[Prozesse/Ablauf.md]]', embedEl, {sourcePath: 'Uebersicht.md', addChild: child => child.onload()})");
+  for (let i = 0; i < 40 && !await evaluate("!!embedEl.querySelector('iframe.docuclick-embed-frame')"); i++) await delay(50);
+  assert.ok(await evaluate("!!embedEl.querySelector('iframe.docuclick-embed-frame')"), await evaluate("embedEl.innerText"));
   const embedded = await evaluate("embedEl.querySelector('iframe').srcdoc");
   assert.ok(embedded.includes("Nächster Klick") && embedded.includes("Content-Security-Policy"));
   assert.ok(!embedded.includes('id="add-element-btn"'), "embedded diagram must be read-only");
   assert.equal(await evaluate("embedEl.querySelector('.docuclick-embed-header span').textContent"), "Ablauf");
-  await evaluate("window.missingEl = document.body.createDiv(); codeBlocks.docuclick('Gibt/Es/Nicht.docuclick', missingEl, {sourcePath: 'X.md', addChild: child => child.onload()})");
+  await evaluate("window.missingEl = document.body.createDiv(); codeBlocks.docuclick('Notiz.md', missingEl, {sourcePath: 'X.md', addChild: child => child.onload()})");
   await until("!!missingEl.querySelector('.docuclick-error')");
-  // The app records another step: the note's step list follows, own text stays.
-  await evaluate("testHost.files.get('Prozesse/Ablauf.md').text = testHost.files.get('Prozesse/Ablauf.md').text.replace('## Schritte', 'Eigene Notiz.\\n\\n## Schritte')");
-  nextClick.canvas.nodes.find(n => n.type === "text").text = "Dritter Klick";
-  await evaluate(`testHost.files.get('Prozesse/Ablauf.docuclick').text = ${JSON.stringify(JSON.stringify(nextClick))}; emitModify(appFile)`);
-  await until("testHost.files.get('Prozesse/Ablauf.md').text.includes('1. Dritter Klick')");
-  assert.ok(await evaluate("testHost.files.get('Prozesse/Ablauf.md').text.includes('Eigene Notiz.')"));
   await evaluate("embedEl.remove(); missingEl.remove()");
+  // New and imported flows are diagram notes; an old .docuclick file is converted, the old file trashed.
+  assert.ok(D.isDiagramNote(await evaluate("testHost.plugin.fileText({extension: 'md'}, null, DocuClickDocument.emptyDocument())")));
+  await evaluate("testHost.plugin.importText(testHost.files.get('Test – Ansicht.html').text, 'Import', '')");
+  assert.equal(await evaluate("JSON.parse(DocuClickDocument.noteData(testHost.files.get('Import.md').text)).flow.nodes.length"), 2);
+  await evaluate("testHost.plugin.app.fileManager = { trashFile: async file => testHost.files.delete(file.path) }; testHost.plugin.convertToNote(testHost.vault.getAbstractFileByPath('Reload.docuclick'))");
+  assert.equal(await evaluate("testHost.files.has('Reload.docuclick')"), false);
+  assert.equal(await evaluate("DocuClickDocument.isDiagramNote(testHost.files.get('Reload.md').text) && JSON.parse(DocuClickDocument.noteData(testHost.files.get('Reload.md').text)).images.b.startsWith('Bilder/DocuClick/')"), true);
   assert.deepEqual(errors, [], "Uncaught browser errors");
-  console.log("PASS: sandbox, palette, default folder, colour themes, rename, undo/redo, image move, connect/delete/restore, Vault save, read-only HTML export/search/guide/lightbox, forged message rejection, conflict recovery, close flush, app recording in the vault, note with embedded diagram and step list");
+  console.log("PASS: sandbox, palette, default folder, colour themes, rename, undo/redo, image move, connect/delete/restore, Vault save, read-only HTML export/search/guide/lightbox, forged message rejection, conflict recovery, close flush, app recording in the vault, diagram notes (open as tab, own text kept, embed, convert)");
 })().catch(error => { console.error(error); process.exitCode=1; }).finally(async () => {
   socket?.close(); browser?.kill(); server.close();
   await delay(300);

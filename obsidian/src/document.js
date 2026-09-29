@@ -184,7 +184,7 @@ const STEPS_START = "%% DocuClick: Schritte werden aus dem Diagramm erzeugt, Än
 const STEPS_END = "%% DocuClick: Ende der Schritte %%";
 /** Step text safe for a Markdown list item: one line, no tags, links or formatting. */
 function markdownText(value) {
-  return String(value || "").replace(/\s+/g, " ").trim().replace(/[\\`*_[\]#<>|~=$^]/g, c => "\\" + c) || "(ohne Beschreibung)";
+  return String(value || "").replace(/\s+/g, " ").trim().replace(/[\\`*_[\]#<>|~=$^%]/g, c => "\\" + c) || "(ohne Beschreibung)";
 }
 /**
  * The flow as nested Markdown lists: the main line numbered, each path of a
@@ -242,8 +242,36 @@ function replaceSteps(note, steps) {
   if (start < 0 || end < 0) return null;
   return `${note.slice(0, start)}${STEPS_START}\n${steps}\n${note.slice(end)}`;
 }
-/** A new note for a diagram: property link (renames stay in sync), embedded diagram, generated steps. */
-function noteMarkdown(diagramPath, title, steps) {
-  return `---\ndocuclick: "[[${diagramPath}]]"\n---\n# ${markdownText(title)}\n\n\`\`\`docuclick\n\`\`\`\n\n## Schritte\n\n${STEPS_START}\n${steps}\n${STEPS_END}\n`;
+// ---- Diagram notes -------------------------------------------------------
+// A flow is one Markdown note: own text, the generated step list and the
+// diagram data in a hidden %% comment. The plugin opens it as a diagram tab.
+const NOTE_PROPERTY = "diagramm";
+const DATA_START = "%% DocuClick-Diagrammdaten (nicht von Hand ändern)";
+/** True if the note's properties mark it as a DocuClick diagram (`docuclick: diagramm`). */
+function isDiagramNote(text) {
+  const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(String(text || ""));
+  return !!front && /^docuclick:\s*["']?diagramm["']?\s*$/m.test(front[1]);
 }
-module.exports = { stepsMarkdown, replaceSteps, noteMarkdown, STEPS_START, STEPS_END, compactForStorage, FORMAT, MAX_BYTES, validateDocument, parseDocument, importHtml, emptyDocument, buildHtml, safeJson, themeCss };
+/** The diagram JSON inside a note, or null. */
+function noteData(text) {
+  const start = text.indexOf(DATA_START);
+  if (start < 0) return null;
+  const end = text.indexOf("\n%%", start + DATA_START.length);
+  return end < 0 ? null : text.slice(start + DATA_START.length, end).trim();
+}
+/** JSON for the data block; "%" escaped so it can never close the comment early. */
+function noteJson(doc) { return JSON.stringify(doc, null, 2).replace(/%/g, "\\u0025"); }
+/**
+ * The note text with this diagram: a new note, or `previous` with only the
+ * step list and the data block replaced (own text and properties stay).
+ */
+function composeNote(previous, dataJson, steps) {
+  const data = `${DATA_START}\n${dataJson}\n%%`;
+  if (!previous || !previous.trim()) {
+    return `---\ndocuclick: ${NOTE_PROPERTY}\n---\n\n## Schritte\n\n${STEPS_START}\n${steps}\n${STEPS_END}\n\n${data}\n`;
+  }
+  let text = replaceSteps(previous, steps) ?? previous;
+  const start = text.indexOf(DATA_START), end = start < 0 ? -1 : text.indexOf("\n%%", start + DATA_START.length);
+  return end < 0 ? `${text.replace(/\s*$/, "")}\n\n${data}\n` : `${text.slice(0, start)}${data}${text.slice(end + 3)}`;
+}
+module.exports = { stepsMarkdown, replaceSteps, isDiagramNote, noteData, noteJson, composeNote, DATA_START, STEPS_START, STEPS_END, compactForStorage, FORMAT, MAX_BYTES, validateDocument, parseDocument, importHtml, emptyDocument, buildHtml, safeJson, themeCss };

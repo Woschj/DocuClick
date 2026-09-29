@@ -1435,14 +1435,17 @@ public sealed class CanvasFlowWriter
     }
 
     /// <summary>
-    /// The .docuclick diagram text (see <see cref="DocuClickDiagramIo"/>):
+    /// The diagram note / .docuclick text (see <see cref="DocuClickDiagramIo"/>):
     /// same rendered steps as the .html Ablauf, but screenshots stay files
     /// referenced by vault path instead of being embedded on every click.
     /// </summary>
     private string BuildDiagramText()
     {
         var (nodeSpecs, edgeSpecs) = BuildSpecs(file => file);
-        return DocuClickDiagramIo.Serialize(_canvasPath!, _doc, nodeSpecs, edgeSpecs, ResolveImageSrc);
+        // A diagram note: compose over the note as it is on disk right now,
+        // so text typed in Obsidian a moment ago is kept.
+        var current = ObsidianVault.IsNote(_canvasPath) && File.Exists(_canvasPath) ? File.ReadAllText(_canvasPath!) : null;
+        return DocuClickDiagramIo.Serialize(_canvasPath!, _doc, nodeSpecs, edgeSpecs, ResolveImageSrc, current);
     }
 
     /// <summary>Rendered nodes/edges (colors, shapes, labels) shared by both file formats; <paramref name="image"/> maps a file node's value to the node's image.</summary>

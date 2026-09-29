@@ -10,10 +10,10 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ## [Unreleased]
 
-- **Aufnehmen in einen Obsidian-Vault**: In einem Vault legt DocuClick ein
-  `.docuclick`-Diagramm für das Plugin „DocuClick Diagrams“ an; Details im
+- **Aufnehmen in einen Obsidian-Vault**: In einem Vault legt DocuClick eine
+  Diagramm-Notiz (`.md`) für das Plugin „DocuClick Diagrams“ an; Details im
   [Windows-Changelog](../windows/CHANGELOG.md). Die Dateiauswahl zeigt
-  `.docuclick`-Dateien.
+  Diagramm-Notizen und `.docuclick`-Dateien.
 
 ## [0.1.0] - 2026-09-28
 

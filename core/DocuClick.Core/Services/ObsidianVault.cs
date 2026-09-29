@@ -4,14 +4,18 @@ namespace DocuClick.Services;
 
 /// <summary>
 /// Recognizes an Obsidian vault around a session folder. Inside a vault a
-/// recording is saved as a <c>.docuclick</c> diagram (see
-/// <see cref="DocuClickDiagramIo"/>) — the file the DocuClick Diagrams
-/// plugin opens and edits — instead of a standalone <c>.html</c> Ablauf,
-/// so the plugin stays the one place a flow is edited and the apps only
-/// record into it.
+/// recording is saved as a diagram note (<c>.md</c>, see <see cref="DiagramNote"/>)
+/// — one file the DocuClick Diagrams plugin opens as diagram tab and
+/// Obsidian searches and links like any note — instead of a standalone
+/// <c>.html</c> Ablauf, so the plugin stays the one place a flow is edited
+/// and the apps only record into it.
 /// </summary>
 public static class ObsidianVault
 {
+    /// <summary>Diagram note: the format for new recordings in a vault.</summary>
+    public const string NoteExtension = ".md";
+
+    /// <summary>Plugin diagrams before diagram notes (still read and written).</summary>
     public const string DiagramExtension = ".docuclick";
 
     /// <summary>
@@ -44,16 +48,20 @@ public static class ObsidianVault
         return null;
     }
 
-    /// <summary>File extension for a new session in <paramref name="folder"/>: <c>.docuclick</c> in a vault, else <c>.html</c>.</summary>
+    /// <summary>File extension for a new session in <paramref name="folder"/>: <c>.md</c> (diagram note) in a vault, else <c>.html</c>.</summary>
     public static string OutputExtensionFor(string? folder) =>
-        FindRoot(folder) is null ? SessionManager.OutputExtension : DiagramExtension;
+        FindRoot(folder) is null ? SessionManager.OutputExtension : NoteExtension;
 
     /// <summary>Line under the session-start dialog's folder field: what gets created there.</summary>
     public static string TargetHint(string? folder) => FindRoot(folder) is null
         ? "Die .html-Datei und ihr Attachments-Unterordner werden direkt in diesem Ordner angelegt."
-        : "Obsidian-Vault erkannt: Der Ablauf wird als .docuclick-Diagramm angelegt und öffnet sich im Plugin „DocuClick Diagrams“ (auch schon während der Aufnahme). Screenshots landen im Attachments-Unterordner.";
+        : "Obsidian-Vault erkannt: Der Ablauf wird als Diagramm-Notiz (.md) angelegt und öffnet sich mit dem Plugin „DocuClick Diagrams“ als Diagramm (auch schon während der Aufnahme). Screenshots landen im Attachments-Unterordner.";
 
-    /// <summary>True for a DocuClick Diagrams file (by extension).</summary>
-    public static bool IsDiagramFile(string? path) =>
-        path is not null && string.Equals(Path.GetExtension(path), DiagramExtension, StringComparison.OrdinalIgnoreCase);
+    /// <summary>True for a plugin file: a diagram note (any .md target) or a .docuclick diagram.</summary>
+    public static bool IsDiagramFile(string? path) => IsNote(path)
+        || (path is not null && string.Equals(Path.GetExtension(path), DiagramExtension, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>True for a diagram note target (.md).</summary>
+    public static bool IsNote(string? path) =>
+        path is not null && string.Equals(Path.GetExtension(path), NoteExtension, StringComparison.OrdinalIgnoreCase);
 }

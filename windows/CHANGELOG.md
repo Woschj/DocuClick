@@ -10,17 +10,20 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 ## [Unreleased]
 
 - **Aufnehmen in einen Obsidian-Vault**: Liegt der gewählte Speicherort in
-  einem Vault (Ordner `.obsidian`), legt DocuClick ein `.docuclick`-Diagramm
-  für das Plugin „DocuClick Diagrams“ an statt einer `.html`-Datei. Der
-  Session-Dialog zeigt das an. Screenshots bleiben PNG-Dateien im
+  einem Vault (Ordner `.obsidian`), legt DocuClick eine Diagramm-Notiz (`.md`)
+  für das Plugin „DocuClick Diagrams“ an statt einer `.html`-Datei: eine
+  Notiz mit Schrittliste als Text und den Diagrammdaten, die das Plugin als
+  Diagramm öffnet. Eigener Text in der Notiz bleibt beim Aufnehmen erhalten.
+  Der Session-Dialog zeigt das an. Screenshots bleiben PNG-Dateien im
   `Attachments`-Unterordner und werden nicht bei jedem Klick neu eingebettet.
 - Während der Aufnahme in Obsidian bearbeitete Diagramme werden vor dem
   nächsten Klick neu eingelesen statt überschrieben.
 - „Bestehende Datei fortsetzen“, „Ablauf öffnen“ und der draw.io-Export
-  akzeptieren `.docuclick`-Dateien (auch mit Bildern, die das Plugin
+  akzeptieren Diagramm-Notizen und `.docuclick`-Dateien (gewöhnliche Notizen
+  werden abgelehnt, nicht überschrieben) (auch mit Bildern, die das Plugin
   eingebettet oder in einen eigenen Bildordner gelegt hat).
 - Kern (`DocuClick.Core`): neues `DocuClickDiagramIo` (Lesen/Schreiben des
-  Plugin-Formats) und `ObsidianVault` (Vault-Erkennung); Kern-Tests laufen
+  Plugin-Formats), `DiagramNote` (Notiz mit Schrittliste) und `ObsidianVault` (Vault-Erkennung); Kern-Tests laufen
   jetzt auch unter Linux.
 
 ## [1.14.0] - 2026-09-28

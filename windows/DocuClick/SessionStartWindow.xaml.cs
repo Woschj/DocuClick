@@ -154,7 +154,7 @@ public partial class SessionStartWindow : Window
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
             Title = "Bestehenden Ablauf auswählen",
-            Filter = "DocuClick-Ablauf (*.docuclick;*.html;*.canvas)|*.docuclick;*.html;*.canvas|Obsidian-Diagramme (*.docuclick)|*.docuclick|HTML-Abläufe (*.html)|*.html|Obsidian Canvas (*.canvas)|*.canvas|Alle Dateien (*.*)|*.*",
+            Filter = "DocuClick-Ablauf (*.md;*.html;*.docuclick;*.canvas)|*.md;*.html;*.docuclick;*.canvas|Diagramm-Notizen in Obsidian (*.md)|*.md|HTML-Abläufe (*.html)|*.html|Ältere Obsidian-Diagramme (*.docuclick)|*.docuclick|Obsidian Canvas (*.canvas)|*.canvas|Alle Dateien (*.*)|*.*",
             CheckFileExists = true,
         };
 

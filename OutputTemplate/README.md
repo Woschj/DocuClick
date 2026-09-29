@@ -28,10 +28,10 @@ Ordner doch mal in-place benutzt wird — ersetzt aber nicht den Schritt oben.
 Dieser Ordner öffnet sich direkt als Obsidian-Vault (**"Open folder as
 vault"**) und zeigt `.html`-Dateien im Dateibaum an (`.obsidian/app.json`
 setzt dafür `"showUnsupportedFiles": true`). Weil er einen `.obsidian`-Ordner
-enthält, legt DocuClick neue Aufnahmen hier als `.docuclick`-Diagramme an,
-die das Plugin [DocuClick Diagrams](../obsidian/README.md) öffnet und
-bearbeitet (siehe dort, „Direkt in den Vault aufnehmen“). Ohne Plugin
-bleiben die Diagramme lesbar, aber nicht anzeigbar; wer nur mit dem Browser
+enthält, legt DocuClick neue Aufnahmen hier als Diagramm-Notizen (`.md`) an,
+die das Plugin [DocuClick Diagrams](../obsidian/README.md) als Diagramm öffnet
+und bearbeitet (siehe dort, „Direkt in den Vault aufnehmen“). Ohne Plugin
+bleiben Text und Schrittliste lesbar, das Diagramm aber nicht; wer nur mit dem Browser
 arbeiten will, löscht den Ordner `.obsidian` in der Kopie.
 
 ## Struktur

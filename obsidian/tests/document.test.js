@@ -141,9 +141,11 @@ test("storage form leaves screenshots alone that cannot be rebuilt", () => {
   const stored = D.compactForStorage(valid);
   assert.equal(stored, valid);
 });
-test("a diagram recorded by the DocuClick apps is a valid plugin document", () => {
+test("a diagram note recorded by the DocuClick apps is valid and has the same step list", () => {
   // Written by the C# writer (DocuClickDiagramTests regenerates it), so both sides share one format.
-  const raw = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures/app-recording.docuclick"), "utf8"));
+  const note = fs.readFileSync(path.join(__dirname, "fixtures/app-recording.md"), "utf8");
+  assert.ok(D.isDiagramNote(note));
+  const raw = JSON.parse(D.noteData(note));
   const doc = D.validateDocument(raw);
   assert.equal(doc.flow.nodes.length, 4);
   assert.equal(doc.flow.edges.length, 3);
@@ -154,7 +156,9 @@ test("a diagram recorded by the DocuClick apps is a valid plugin document", () =
     assert.ok(ids.has(id));
     assert.match(file, /^Prozesse\/Attachments\/Ablauf\/\d{6}_\d{3}\.png$/);
   }
-  assert.ok(!JSON.stringify(raw).includes("base64"));
+  assert.ok(!note.includes("base64"));
+  // The app's step list (C#) equals the plugin's, so saving in Obsidian changes nothing there.
+  assert.equal(D.composeNote(note, D.noteData(note), D.stepsMarkdown(raw)), note);
   assert.ok(D.buildHtml(template, "/* vendor */", doc, "Aufnahme").includes("Linksklick auf „Anmelden“"));
 });
 test("the step list follows the main line and each named path, as plain searchable text", () => {
@@ -175,10 +179,19 @@ test("the step list follows the main line and each named path, as plain searchab
   ].join("\n"));
   assert.equal(D.stepsMarkdown(D.emptyDocument()), "_Noch keine Schritte._");
 });
-test("only the generated section of a note is replaced", () => {
-  const note = D.noteMarkdown("Prozesse/A.docuclick", "A", "1. Alt").replace("## Schritte", "Eigener Text\n\n## Schritte") + "\nNachwort\n";
-  const updated = D.replaceSteps(note, "1. Neu");
-  assert.ok(updated.includes("Eigener Text") && updated.includes("Nachwort") && updated.includes("1. Neu") && !updated.includes("1. Alt"));
-  assert.ok(updated.startsWith('---\ndocuclick: "[[Prozesse/A.docuclick]]"\n---\n'));
+test("a diagram note keeps own text and replaces only steps and data", () => {
+  const doc = fixture();
+  const note = D.composeNote(null, D.noteJson(doc), D.stepsMarkdown(doc));
+  assert.ok(D.isDiagramNote(note));
+  assert.deepEqual(JSON.parse(D.noteData(note)), doc);
+  const edited = note.replace("## Schritte", "Eigener Text mit 100 % Sicherheit\n\n## Schritte") + "\nNachwort\n";
+  const changed = fixture(); changed.canvas.nodes[0].text = "Neu %% nicht das Ende"; changed.flow.nodes[0].data.label = "Neu";
+  const updated = D.composeNote(edited, D.noteJson(changed), D.stepsMarkdown(changed));
+  assert.ok(updated.includes("Eigener Text mit 100 % Sicherheit") && updated.includes("Nachwort"));
+  assert.ok(updated.includes("1. Neu \\%\\% nicht das Ende")); // no Obsidian comment in the visible list
+  assert.equal(JSON.parse(D.noteData(updated)).canvas.nodes[0].text, "Neu %% nicht das Ende");
+  assert.equal(updated.split(D.DATA_START).length, 2);
   assert.equal(D.replaceSteps("Notiz ohne Abschnitt", "1. Neu"), null);
+  assert.equal(D.isDiagramNote("---\ntags: x\n---\nText"), false);
+  assert.equal(D.noteData("# Nur Text"), null);
 });

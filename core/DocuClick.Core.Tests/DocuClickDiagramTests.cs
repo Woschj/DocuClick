@@ -35,7 +35,7 @@ public sealed class DocuClickDiagramTests : IDisposable
         Directory.CreateDirectory(nested);
 
         Assert.Equal(Path.GetFullPath(_vault.Path), ObsidianVault.FindRoot(nested));
-        Assert.Equal(".docuclick", ObsidianVault.OutputExtensionFor(nested));
+        Assert.Equal(".md", ObsidianVault.OutputExtensionFor(nested));
 
         using var outside = new TempFolder();
         Assert.Null(ObsidianVault.FindRoot(outside.Path));
@@ -204,28 +204,104 @@ public sealed class DocuClickDiagramTests : IDisposable
         Assert.Contains("something-else", File.ReadAllText(Diagram));
     }
 
+    private string Note => Path.Combine(_vault.Path, "Prozesse", "Ablauf.md");
+
+    private CanvasFlowWriter StartNote()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(Note)!);
+        var writer = new CanvasFlowWriter(_config);
+        writer.StartSession(Note);
+        return writer;
+    }
+
+    [Fact]
+    public void In_a_vault_a_recording_is_one_diagram_note_with_steps_and_data()
+    {
+        var writer = StartNote();
+        Click(writer, "Linksklick auf „Öffnen“ #wichtig");
+        Assert.True(writer.MarkDecisionPoint("Erfolg").Success);
+        Click(writer, "Linksklick auf „100 % fertig“");
+        writer.Stop();
+
+        var text = File.ReadAllText(Note);
+        Assert.StartsWith("---\ndocuclick: diagramm\n---\n", text);
+        Assert.Contains(string.Join("\n",
+            DiagramNote.StepsStart,
+            "1. Linksklick auf „Öffnen“ \\#wichtig", // no Obsidian tag from a step text
+            "2. Abzweigung:",
+            "\t- **Pfad: Erfolg**",
+            "\t\t1. Linksklick auf „100 \\% fertig“",
+            DiagramNote.StepsEnd), text);
+        Assert.DoesNotContain("base64", text);
+
+        var data = DiagramNote.ExtractData(text)!;
+        Assert.DoesNotContain("%", data); // can't end the hidden comment early
+        var json = (JsonObject)JsonNode.Parse(data)!;
+        Assert.Equal("docuclick-diagram", (string?)json["format"]);
+        Assert.Equal(2, json["images"]!.AsObject().Count);
+        Assert.Contains("100 % fertig", (string?)json["canvas"]!["nodes"]!.AsArray().Last(n => (string?)n!["type"] == "text")!["text"]);
+
+        var reloaded = new CanvasFlowWriter(_config);
+        reloaded.StartSession(Note);
+        Assert.Equal(4, reloaded.GetPreview().Nodes.Count);
+    }
+
+    [Fact]
+    public void Own_text_in_the_note_is_kept_while_recording()
+    {
+        var writer = StartNote();
+        Click(writer, "Eins");
+        writer.FlushPendingSave();
+
+        // Written in Obsidian between two clicks: a heading, a sentence and an extra property.
+        var own = File.ReadAllText(Note)
+            .Replace("docuclick: diagramm\n", "docuclick: diagramm\ntags: prozess\n")
+            .Replace("## Schritte", "# Rechnung stornieren\nZweck: Storno bei Doppelbuchung.\n\n## Schritte");
+        File.WriteAllText(Note, own);
+        File.SetLastWriteTimeUtc(Note, DateTime.UtcNow.AddSeconds(5));
+
+        Click(writer, "Zwei");
+        writer.Stop();
+
+        var text = File.ReadAllText(Note);
+        Assert.Contains("tags: prozess", text);
+        Assert.Contains("Zweck: Storno bei Doppelbuchung.", text);
+        Assert.Contains("1. Eins\n2. Zwei\n", text);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(text, System.Text.RegularExpressions.Regex.Escape(DiagramNote.DataStart)));
+    }
+
+    [Fact]
+    public void An_ordinary_note_is_not_turned_into_a_diagram()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(Note)!);
+        File.WriteAllText(Note, "# Einkaufsliste\n- Milch\n");
+
+        Assert.Throws<InvalidOperationException>(() => new CanvasFlowWriter(_config).StartSession(Note));
+        Assert.Equal("# Einkaufsliste\n- Milch\n", File.ReadAllText(Note));
+    }
+
     /// <summary>
-    /// obsidian/tests/fixtures/app-recording.docuclick is a real recording
+    /// obsidian/tests/fixtures/app-recording.md is a real recording
     /// by this writer; the plugin's tests validate it with document.js, so
-    /// both sides are held to the same format. Regenerate with
+    /// both sides are held to the same format (data and step list). Regenerate with
     /// DOCUCLICK_WRITE_FIXTURES=1 after a deliberate format change.
     /// </summary>
     [Fact]
     public void The_shared_fixture_is_a_current_recording()
     {
-        var fixture = Path.Combine(RepoRoot(), "obsidian", "tests", "fixtures", "app-recording.docuclick");
+        var fixture = Path.Combine(RepoRoot(), "obsidian", "tests", "fixtures", "app-recording.md");
         if (Environment.GetEnvironmentVariable("DOCUCLICK_WRITE_FIXTURES") == "1")
         {
-            var writer = StartWriter();
+            var writer = StartNote();
             Click(writer, "Linksklick auf „Anmelden“");
             Assert.True(writer.MarkDecisionPoint("Erfolg").Success);
             Click(writer, "Linksklick auf „Weiter“");
             writer.Stop();
             Directory.CreateDirectory(Path.GetDirectoryName(fixture)!);
-            File.Copy(Diagram, fixture, overwrite: true);
+            File.Copy(Note, fixture, overwrite: true);
         }
 
-        var doc = DocuClickDiagramIo.Parse(File.ReadAllText(fixture), Diagram);
+        var doc = DocuClickDiagramIo.Parse(File.ReadAllText(fixture), Note);
         Assert.Equal(4, doc.Nodes.Count(n => n.Type == "text"));
         Assert.Equal(2, doc.Nodes.Count(n => n.Type == "file" && n.File is not null));
     }
