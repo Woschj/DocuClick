@@ -2,3 +2,5 @@
 .docuclick-editor { width: 100%; flex: 1; min-height: 0; border: 0; background: #090d16; }
 .docuclick-error { padding: 24px; color: var(--text-error); white-space: pre-wrap; }
 .docuclick-invalid { border-color: var(--text-error) !important; }
+.docuclick-banner { display: flex; gap: 12px; align-items: center; padding: 6px 12px; background: var(--background-modifier-error); color: var(--text-on-accent); }
+.docuclick-banner span { flex: 1; }

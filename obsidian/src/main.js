@@ -194,7 +194,7 @@ class DiagramView extends FileView {
     try {
       const base = await this.app.vault.read(file);
       const doc = D.parseDocument(base);
-      const state = { file, base, doc, queue: Promise.resolve(), recovery: null, blocked: false, error: null };
+      const state = { file, base, doc, queue: Promise.resolve(), recovery: null, blocked: false, error: null, inbox: [], inboxTimer: null, pendingWrite: null, banner: null };
       this.state = state;
       const frame = this.contentEl.createEl("iframe", { cls: "docuclick-editor", attr: { sandbox: "allow-scripts allow-downloads", title: "DocuClick Diagrammeditor" } });
       this.frame = frame;
@@ -204,31 +204,11 @@ class DiagramView extends FileView {
         if (event.source !== frame.contentWindow || event.data?.channel !== channel) return;
         const message = event.data;
         if (!["change", "save", "flushed", "export-readonly"].includes(message.kind)) return;
-        let snapshot;
-        try {
-          const raw = { format: D.FORMAT, version: 1, ...message.snapshot };
-          if (JSON.stringify(raw).length > D.MAX_BYTES) throw new Error("Diagramm ist zu groß.");
-          snapshot = D.validateDocument(raw);
-        } catch (error) {
-          if (message.kind === "save") frame.contentWindow?.postMessage({ channel, kind: "saved", request: message.request, error: error.message }, "*");
-          if (message.kind === "flushed") this.flushers.get(message.request)?.reject(error);
-          report(error); return;
-        }
-        if (message.kind === "export-readonly") {
-          try {
-            const theme = this.plugin.settings.themeExport ? this.plugin.currentTheme() : null;
-            const html = D.buildHtml(VIEWER_TEMPLATE, CYTOSCAPE, snapshot, file.basename, { readOnly: true, theme });
-            this.plugin.createUnique(file.parent?.path, `${file.basename} – Ansicht`, "html", html)
-              .then(exported => new Notice(`HTML-Ansicht exportiert: ${exported.path}`)).catch(report);
-          } catch (error) { report(error); }
-          return;
-        }
-        state.doc = snapshot;
-        const work = this.enqueueSave(state, snapshot);
-        if (message.kind === "save") work.then(() => {
-          frame.contentWindow?.postMessage({ channel, kind: "saved", request: message.request, error: state.error }, "*");
-        });
-        if (message.kind === "flushed") work.then(() => this.flushers.get(message.request)?.resolve());
+        if (message.kind === "export-readonly") { this.exportReadOnly(file, message.snapshot); return; }
+        // The editor sends "change" and "save" for the same edit; process only the
+        // newest snapshot once per tick instead of validating/serializing each.
+        state.inbox.push(message);
+        state.inboxTimer ??= setTimeout(() => this.drainInbox(state, frame, channel), 0);
       };
       const ownerWindow = this.contentEl.ownerDocument.defaultView;
       ownerWindow.addEventListener("message", onMessage);
@@ -243,20 +223,86 @@ class DiagramView extends FileView {
       report(error);
     }
   }
+  exportReadOnly(file, raw) {
+    try {
+      const snapshot = D.validateDocument({ format: D.FORMAT, version: 1, ...raw });
+      const theme = this.plugin.settings.themeExport ? this.plugin.currentTheme() : null;
+      const html = D.buildHtml(VIEWER_TEMPLATE, CYTOSCAPE, snapshot, file.basename, { readOnly: true, theme });
+      this.plugin.createUnique(file.parent?.path, `${file.basename} – Ansicht`, "html", html)
+        .then(exported => new Notice(`HTML-Ansicht exportiert: ${exported.path}`)).catch(report);
+    } catch (error) { report(error); }
+  }
+  /** Validates the newest queued snapshot once and answers all queued save/flush requests. */
+  drainInbox(state, frame, channel) {
+    state.inboxTimer = null;
+    const messages = state.inbox.splice(0);
+    if (!messages.length || state !== this.state) return;
+    const requests = messages.filter(message => message.kind !== "change");
+    let next;
+    try {
+      const snapshot = D.validateDocument({ format: D.FORMAT, version: 1, ...messages[messages.length - 1].snapshot });
+      next = JSON.stringify(snapshot, null, 2);
+      if (next.length > D.MAX_BYTES) throw new Error("Diagramm ist zu groß.");
+      state.doc = snapshot;
+    } catch (error) {
+      for (const message of requests) {
+        if (message.kind === "save") frame.contentWindow?.postMessage({ channel, kind: "saved", request: message.request, error: error.message }, "*");
+        if (message.kind === "flushed") this.flushers.get(message.request)?.reject(error);
+      }
+      report(error); return;
+    }
+    const work = this.enqueueSave(state, next);
+    for (const message of requests) {
+      if (message.kind === "save") work.then(() => frame.contentWindow?.postMessage({ channel, kind: "saved", request: message.request, error: state.error }, "*"));
+      if (message.kind === "flushed") work.then(() => this.flushers.get(message.request)?.resolve());
+    }
+  }
+  /** The vault file changed. Reload silently when there is nothing local to lose, else warn. */
+  async externalChange(file) {
+    const state = this.state;
+    if (!state || file !== state.file || this.reloading) return;
+    await state.queue;
+    if (state !== this.state) return;
+    const text = await this.app.vault.read(file);
+    if (text === state.base || text === state.pendingWrite) return;
+    let unchanged = false;
+    try { unchanged = JSON.stringify(state.doc) === JSON.stringify(D.parseDocument(state.base)); } catch { /* keep the warning path */ }
+    if (unchanged && !state.blocked) { await this.reload(); return; }
+    if (state.banner?.isConnected) return;
+    const banner = this.contentEl.createDiv({ cls: "docuclick-banner" });
+    banner.createSpan({ text: "Die Datei wurde außerhalb dieser Ansicht geändert. Eigene Änderungen werden separat gesichert." });
+    banner.createEl("button", { text: "Neu laden" }).addEventListener("click", () => this.reload().catch(report));
+    this.contentEl.insertBefore(banner, this.frame);
+    state.banner = banner;
+  }
+  async reload() {
+    const file = this.file;
+    if (!file || this.reloading) return;
+    this.reloading = true;
+    try { await this.state?.queue; this.teardown(); await this.onLoadFile(file); }
+    finally { this.reloading = false; }
+  }
+  teardown() {
+    this.removeListener?.(); this.removeListener = null;
+    clearTimeout(this.state?.inboxTimer);
+    this.frame?.remove(); this.frame = null;
+    this.state = null;
+  }
   applyTheme(theme) { this.post("theme", { css: D.themeCss(theme) }); }
   post(kind, extra = {}) { this.frame?.contentWindow?.postMessage({ channel: this.channel, kind, ...extra }, "*"); }
-  enqueueSave(state, snapshot) {
-    const next = JSON.stringify(snapshot, null, 2);
+  enqueueSave(state, next) {
     state.queue = state.queue.then(async () => {
       if (next === state.base && !state.blocked) return;
       try {
         if (state.blocked) throw new Error("Die Datei wurde außerhalb dieser Ansicht geändert.");
+        state.pendingWrite = next;
         await this.app.vault.process(state.file, current => {
           if (current !== state.base) { state.blocked = true; throw new Error("Die Datei wurde außerhalb dieser Ansicht geändert."); }
           return next;
         });
         state.base = next; state.error = null;
       } catch (error) {
+        state.pendingWrite = null;
         // Preserve local work separately instead of overwriting a newer file.
         state.error = error.message;
         try {
@@ -291,9 +337,7 @@ class DiagramView extends FileView {
       try { await this.flush(); } catch (error) { report(error); }
     }
     await this.state?.queue;
-    this.removeListener?.(); this.removeListener = null;
-    this.frame?.remove(); this.frame = null;
-    this.state = null;
+    this.teardown();
   }
   async onClose() { await this.onUnloadFile(); }
 }
@@ -305,6 +349,9 @@ module.exports = class DocuClickPlugin extends Plugin {
     this.registerView(VIEW_TYPE, leaf => new DiagramView(leaf, this));
     // Follow Obsidian theme switches (light/dark, other theme, accent colour).
     this.registerEvent(this.app.workspace.on("css-change", () => { if (this.settings.themeMode === "obsidian") this.refreshThemes(); }));
+    this.registerEvent(this.app.vault.on("modify", file => {
+      for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) leaf.view?.externalChange?.(file)?.catch(report);
+    }));
     this.registerExtensions(["docuclick"], VIEW_TYPE);
     this.addRibbonIcon("workflow", "Neues Ablaufdiagramm", () => this.newDiagram());
     this.addCommand({ id: "new-diagram", name: "Neues Ablaufdiagramm", callback: () => this.newDiagram() });
