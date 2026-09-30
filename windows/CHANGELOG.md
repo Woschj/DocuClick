@@ -27,6 +27,7 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
   .html-Datei enthält nur das bearbeitete Bild. Ein nur eingebettetes Bild
   (z. B. per „Bild ersetzen“ eingefügt) wird dafür als Original unter
   `Attachments/Originale/` abgelegt.
+  Auch der draw.io-Export enthält nur die bearbeiteten Screenshots.
 
 ## [1.16.0] - 2026-09-30
 

@@ -137,5 +137,24 @@ public sealed class CanvasFlowWriterTests : IDisposable
         Assert.Contains("data:image/png", xml);
     }
 
+    [Fact]
+    public void Draw_io_export_contains_only_the_redacted_screenshot()
+    {
+        var writer = StartWriter();
+        Click(writer, "Eins");
+        var doc = CanvasDocumentIo.Load(Ablauf);
+        doc.Nodes.First(n => n.Type == "file").Redactions = new List<ImageRedaction> { new() { X = 0, Y = 0, W = 1, H = 1, Mode = "black" } };
+        writer.ReplaceDocument(doc);
+        writer.Stop();
+
+        var drawio = _folder.File("Ablauf.drawio");
+        DrawIoConverter.Convert(Ablauf, _folder.Path, drawio);
+
+        var images = System.Text.RegularExpressions.Regex.Matches(File.ReadAllText(drawio), "data:image/png;base64,([A-Za-z0-9+/=]+)")
+            .Select(m => SkiaSharp.SKBitmap.Decode(Convert.FromBase64String(m.Groups[1].Value))).ToList();
+        Assert.NotEmpty(images);
+        Assert.All(images, image => Assert.Equal(SkiaSharp.SKColors.Black, image.GetPixel(image.Width / 2, image.Height / 2)));
+    }
+
     public void Dispose() => _folder.Dispose();
 }

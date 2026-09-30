@@ -33,6 +33,15 @@ public static class ImageRedactor
             return null;
         }
 
+        Draw(bitmap, areas);
+        using var result = SKImage.FromBitmap(bitmap);
+        using var encoded = result.Encode(SKEncodedImageFormat.Webp, 90);
+        return encoded.ToArray();
+    }
+
+    /// <summary>Draws the areas into <paramref name="bitmap"/> itself.</summary>
+    public static void Draw(SKBitmap bitmap, IReadOnlyList<ImageRedaction>? areas)
+    {
         using (var canvas = new SKCanvas(bitmap))
         {
             var block = Math.Max(8, (int)Math.Round(Math.Max(bitmap.Width, bitmap.Height) / 120.0));
@@ -68,9 +77,5 @@ public static class ImageRedactor
                 }
             }
         }
-
-        using var result = SKImage.FromBitmap(bitmap);
-        using var encoded = result.Encode(SKEncodedImageFormat.Webp, 90);
-        return encoded.ToArray();
     }
 }
