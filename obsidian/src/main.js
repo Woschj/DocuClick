@@ -117,7 +117,7 @@ class DiagramEmbed extends MarkdownRenderChild {
     let doc;
     try { doc = await this.plugin.loadDocument(await this.plugin.app.vault.read(file)); }
     catch (error) { el.createDiv({ cls: "docuclick-error", text: `DocuClick: ${error.message}` }); return; }
-    const frame = el.createEl("iframe", { cls: "docuclick-embed-frame", attr: { sandbox: "allow-scripts", title: `Ablauf ${file.basename}` } });
+    const frame = el.createEl("iframe", { cls: "docuclick-embed-frame", attr: { sandbox: "allow-scripts allow-modals", title: `Ablauf ${file.basename}` } });
     frame.style.height = `${this.height}px`;
     frame.srcdoc = D.buildHtml(VIEWER_TEMPLATE, CYTOSCAPE, doc, file.basename, { readOnly: true, theme: this.plugin.currentTheme() }).replace("<head>", () => `<head>${CSP}`);
   }
@@ -310,7 +310,7 @@ class DiagramView extends FileView {
       const doc = await this.plugin.loadDocument(base, imagePaths);
       const state = { file, base, doc, imagePaths, queue: Promise.resolve(), recovery: null, blocked: false, error: null, inbox: [], inboxTimer: null, pendingWrite: null, banner: null, pristineKey: JSON.stringify(doc) };
       this.state = state;
-      const frame = this.contentEl.createEl("iframe", { cls: "docuclick-editor", attr: { sandbox: "allow-scripts allow-downloads", title: "DocuClick Diagrammeditor" } });
+      const frame = this.contentEl.createEl("iframe", { cls: "docuclick-editor", attr: { sandbox: "allow-scripts allow-downloads allow-modals", title: "DocuClick Diagrammeditor" } });
       this.frame = frame;
       const channel = crypto.randomUUID(); this.channel = channel;
       // Exact window + unguessable per-view channel bind messages to this file.

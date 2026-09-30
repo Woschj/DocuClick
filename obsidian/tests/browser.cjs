@@ -146,6 +146,25 @@ let browser, socket;
   await inFrame("tryConnect(snapshot().flow.nodes[0].data.id, imageId)");
   await until("JSON.parse(testHost.files.get('Test.docuclick').text).canvas.edges.length === 1");
   assert.equal(await evaluate("testHost.files.get('Test.docuclick').text.split('data:image/png').length - 1"), 1, "screenshot stored more than once");
+  // Redaction replaces the pixels of the stored screenshot (not an overlay) and saves.
+  await inFrame("window.beforeRedact = cy.getElementById(imageId).data('imageUrl'); docuclickRedactImage(imageId, {x: 0, y: 0, width: 1, height: 1})");
+  await until("JSON.parse(testHost.files.get('Test.docuclick').text).flow.nodes.find(n => n.data.id === JSON.parse(testHost.files.get('Test.docuclick').text).flow.nodes[1].data.id).data.imageUrl?.startsWith('data:image/webp')");
+  assert.notEqual(await inFrame("cy.getElementById(imageId).data('imageUrl')"), await inFrame("beforeRedact"));
+  assert.equal(await inFrame("(() => { const c = document.createElement('canvas'); c.width = c.height = 1; const i = new Image(); i.src = cy.getElementById(imageId).data('imageUrl'); return i.decode().then(() => { const x = c.getContext('2d'); x.drawImage(i, 0, 0); return Array.from(x.getImageData(0, 0, 1, 1).data.slice(0, 3)).join(); }); })()"), "0,0,0");
+  // The same through the image view: button, then drag a rectangle over the image.
+  await inFrame(`(async () => {
+    const big = document.createElement('canvas'); big.width = 400; big.height = 200; big.getContext('2d').fillStyle = '#fff'; big.getContext('2d').fillRect(0, 0, 400, 200);
+    const bigUrl = big.toDataURL('image/png');
+    cy.getElementById(imageId).data('imageUrl', bigUrl); imageNodes.find(n => n.data.id === imageId).data.imageUrl = bigUrl;
+    window.beforeDrag = bigUrl;
+    openLightboxByNodeId(imageId); await lightboxImg.decode();
+    document.getElementById('lightbox-redact-btn').click();
+    const box = lightboxImg.getBoundingClientRect(), at = (type, x, y, target) => target.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
+    at('mousedown', box.left + 1, box.top + 1, lightboxImg); at('mousemove', box.right - 1, box.bottom - 1, window); at('mouseup', box.right - 1, box.bottom - 1, window);
+  })()`);
+  await until(`(() => { try { return cy.getElementById(imageId).data('imageUrl') !== beforeDrag; } catch { return false; } })()`, frameContext);
+  assert.equal(await inFrame("lightbox.classList.contains('redacting') + ':' + !!document.getElementById('redact-rect')"), "false:false");
+  await inFrame("closeLightbox()");
   await inFrame("deleteNode(imageId)");
   await inFrame("restoreHistory(-1)");
   assert.equal(await inFrame("snapshot().flow.nodes.length"), 2);
@@ -195,6 +214,13 @@ let browser, socket;
   const before = await inViewer("JSON.stringify(cy.elements().jsons())");
   await inViewer("cy.nodes().first().emit('cxttap'); document.dispatchEvent(new KeyboardEvent('keydown', {key:'Delete'})); document.dispatchEvent(new KeyboardEvent('keydown', {key:'z',ctrlKey:true})); document.dispatchEvent(new Event('paste')); document.dispatchEvent(new Event('drop'))");
   assert.equal(await inViewer("JSON.stringify(cy.elements().jsons())"), before);
+  // Print / PDF of the guide: one block per step, then the browser's print dialog.
+  assert.equal(await inViewer("typeof docuclickRedactImage + ':' + !!document.getElementById('lightbox-redact-btn')"), "undefined:false", "redaction must not be in the read-only view");
+  await inViewer("window.printed = 0; window.print = () => { printed++; }; document.getElementById('guide-print-btn').click()");
+  for (let i = 0; i < 40 && !(await inViewer("printed")); i++) await delay(50);
+  assert.equal(await inViewer("printed"), 1);
+  assert.equal(await inViewer("document.querySelectorAll('#print-guide .print-step').length"), 2);
+  assert.equal(await inViewer("document.querySelectorAll('#print-guide .print-step img').length"), 1);
   await inViewer("document.getElementById('guide-toggle-btn').click()");
   assert.equal(await inViewer("document.getElementById('guide-drawer').classList.contains('open')"), true);
   await inViewer("searchInput.value = 'Umbenannt'; searchInput.dispatchEvent(new Event('input'))");

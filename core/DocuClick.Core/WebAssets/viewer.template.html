@@ -595,6 +595,25 @@
   }
 
   [hidden] { display: none !important; }
+  /* Print / PDF of the step-by-step guide (button in the guide). */
+  #print-guide { display: none; }
+  .guide-print-btn { margin-left: auto; }
+  @media print {
+    body > *:not(#print-guide) { display: none !important; }
+    html, body { background: #fff !important; color: #000 !important; overflow: visible !important; height: auto !important; }
+    #print-guide { display: block; font: 11pt/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: #000; }
+    #print-guide h1 { font-size: 18pt; margin: 0 0 4pt; }
+    #print-guide .print-meta { color: #555; margin: 0 0 14pt; font-size: 9pt; }
+    #print-guide .print-step { break-inside: avoid; page-break-inside: avoid; margin: 0 0 14pt; }
+    #print-guide .print-step h2 { font-size: 12pt; margin: 0 0 5pt; }
+    #print-guide .print-step img { max-width: 100%; max-height: 16cm; border: 1px solid #ccc; }
+    #print-guide .print-path { font-size: 13pt; margin: 16pt 0 8pt; border-bottom: 1px solid #999; }
+  }
+  /* Redaction (editor): drag a rectangle over the screenshot in the image view. */
+  .lightbox-redact-btn { position: absolute; top: 16px; left: 16px; z-index: 3; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border-glass); background: var(--surface-glass); color: var(--text-main); cursor: pointer; font: inherit; font-size: 12px; }
+  .lightbox-redact-btn.active { background: var(--accent); color: var(--on-accent); }
+  #lightbox.redacting .lightbox-frame img { cursor: crosshair; }
+  #redact-rect { position: fixed; background: rgba(0, 0, 0, 0.85); outline: 2px dashed var(--accent); pointer-events: none; z-index: 4; }
 </style>
 </head>
 <body>
@@ -653,6 +672,7 @@
       <span class="guide-badge">SOP Guide</span>
       <h3 class="guide-title">Schritt-für-Schritt</h3>
     </div>
+    <button id="guide-print-btn" class="icon-btn guide-print-btn" title="Anleitung drucken oder als PDF speichern (Auswahl wie angezeigt)">⎙</button>
     <button id="guide-close-btn" class="icon-btn" title="Schließen">✕</button>
   </div>
   <div class="guide-controls">
@@ -671,8 +691,12 @@
 </aside>
 
 <!-- Lightbox Modal -->
+<div id="print-guide"></div>
 <div id="lightbox" hidden>
   <button id="lightbox-close-btn" class="lightbox-close-btn" title="Schließen (Esc)">✕</button>
+<!-- DOCUCLICK-EDITOR-START -->
+  <button id="lightbox-redact-btn" class="lightbox-redact-btn" type="button" title="Einen Bereich im Screenshot mit der Maus aufziehen; er wird dauerhaft geschwärzt">▮ Bereich schwärzen</button>
+<!-- DOCUCLICK-EDITOR-END -->
   <button id="lightbox-prev-btn" class="lightbox-nav prev" title="Vorheriger Schritt (←)">‹</button>
   <button id="lightbox-next-btn" class="lightbox-nav next" title="Nächster Schritt (→)">›</button>
   <div class="lightbox-frame">
@@ -1251,6 +1275,47 @@ guideTabImages?.addEventListener("click", () => {
   guideTabAll?.classList.remove("active");
   buildGuideList();
 });
+
+// Print / PDF: the guide as currently filtered (path, "Nur Screenshots"),
+// one step per block with its full-size screenshot. The browser's print
+// dialog offers "Als PDF speichern".
+function printGuide() {
+  const container = document.getElementById("print-guide");
+  container.innerHTML = "";
+  const title = document.createElement("h1");
+  title.textContent = document.title.replace(/ – Ablauf$/, "");
+  const meta = document.createElement("p");
+  meta.className = "print-meta";
+  meta.textContent = `Schritt-für-Schritt-Anleitung · ${new Date().toLocaleDateString("de-DE")}`;
+  container.append(title, meta);
+  guideList.querySelectorAll(".guide-path-divider, .guide-card").forEach((element) => {
+    if (element.classList.contains("guide-path-divider")) {
+      const heading = document.createElement("div");
+      heading.className = "print-path";
+      heading.textContent = element.textContent.trim();
+      container.appendChild(heading);
+      return;
+    }
+    const node = cy.getElementById(element.dataset.nodeId || "");
+    const step = document.createElement("section");
+    step.className = "print-step";
+    const heading = document.createElement("h2");
+    const number = element.querySelector(".guide-card-num")?.textContent.trim();
+    heading.textContent = `${number && number !== "◆" ? number + ". " : ""}${node.length ? node.data("label") || "" : element.textContent.trim()}`;
+    step.appendChild(heading);
+    const imageUrl = node.length ? node.data("imageUrl") : null;
+    if (imageUrl) {
+      const img = document.createElement("img");
+      img.src = imageUrl;
+      img.alt = "";
+      step.appendChild(img);
+    }
+    container.appendChild(step);
+  });
+  // Images must be decoded before the print snapshot is taken.
+  Promise.all([...container.querySelectorAll("img")].map((img) => img.decode().catch(() => {}))).then(() => window.print());
+}
+document.getElementById("guide-print-btn")?.addEventListener("click", printGuide);
 
 function buildGuideList() {
   if (!guideList) return;
@@ -2906,6 +2971,73 @@ if (dataScriptEl) {
     buildGuideList();
     scheduleSave();
   }
+
+  // ---- Redaction: black out an area of a screenshot for good -----------
+  // In the image view: "Bereich schwärzen", drag a rectangle over the image.
+  // The pixels are replaced in the stored screenshot (not an overlay), so
+  // exports and the HTML view never contain them. The original image file of
+  // a recording stays on disk until cleaned up ("Nicht mehr verwendete Bilder
+  // aufräumen" in the Obsidian plugin).
+  const redactButton = document.getElementById("lightbox-redact-btn");
+  const lightboxFrame = document.querySelector("#lightbox .lightbox-frame");
+  let redactDrag = null, redactRect = null;
+  const setRedacting = (on) => {
+    lightbox.classList.toggle("redacting", on);
+    redactButton?.classList.toggle("active", on);
+    if (redactButton) redactButton.textContent = on ? "Bereich aufziehen … (Esc: abbrechen)" : "▮ Bereich schwärzen";
+    if (!on) { redactRect?.remove(); redactRect = null; redactDrag = null; }
+  };
+  redactButton?.addEventListener("click", (e) => { e.stopPropagation(); setRedacting(!lightbox.classList.contains("redacting")); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && lightbox.classList.contains("redacting")) { e.stopImmediatePropagation(); setRedacting(false); } }, true);
+  lightboxImg.addEventListener("mousedown", (e) => {
+    if (!lightbox.classList.contains("redacting")) return;
+    e.preventDefault(); e.stopPropagation();
+    redactDrag = { x: e.clientX, y: e.clientY };
+    redactRect = document.createElement("div"); redactRect.id = "redact-rect";
+    document.body.appendChild(redactRect);
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!redactDrag || !redactRect) return;
+    const box = lightboxImg.getBoundingClientRect();
+    const x1 = Math.max(box.left, Math.min(redactDrag.x, e.clientX)), y1 = Math.max(box.top, Math.min(redactDrag.y, e.clientY));
+    const x2 = Math.min(box.right, Math.max(redactDrag.x, e.clientX)), y2 = Math.min(box.bottom, Math.max(redactDrag.y, e.clientY));
+    Object.assign(redactRect.style, { left: `${x1}px`, top: `${y1}px`, width: `${Math.max(0, x2 - x1)}px`, height: `${Math.max(0, y2 - y1)}px` });
+  });
+  window.addEventListener("mouseup", async (e) => {
+    if (!redactDrag || !redactRect) return;
+    const box = lightboxImg.getBoundingClientRect(), area = redactRect.getBoundingClientRect();
+    setRedacting(false);
+    if (area.width < 3 || area.height < 3 || currentLightboxIdx < 0) return;
+    const scaleX = lightboxImg.naturalWidth / box.width, scaleY = lightboxImg.naturalHeight / box.height;
+    await redactImage(imageNodes[currentLightboxIdx].data.id, {
+      x: (area.left - box.left) * scaleX, y: (area.top - box.top) * scaleY, width: area.width * scaleX, height: area.height * scaleY,
+    });
+  });
+  async function redactImage(nodeId, rect) {
+    const node = cy.getElementById(nodeId);
+    const source = new Image();
+    source.src = node.data("imageUrl");
+    await source.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = source.naturalWidth; canvas.height = source.naturalHeight;
+    const context = canvas.getContext("2d");
+    context.drawImage(source, 0, 0);
+    context.fillStyle = "#000";
+    context.fillRect(Math.floor(rect.x), Math.floor(rect.y), Math.ceil(rect.width), Math.ceil(rect.height));
+    // WebP where the browser can write it (Chromium, Firefox); PNG otherwise.
+    const url = canvas.toDataURL("image/webp", 0.9);
+    node.data("imageUrl", url);
+    overlayImgs.get(nodeId)?.setAttribute("src", url);
+    const entry = imageNodes.find((n) => n.data.id === nodeId);
+    if (entry) entry.data.imageUrl = url;
+    const textNode = textNodesById.get(nodeId);
+    const sibling = textNode && findImageSibling(textNode);
+    if (sibling) sibling.file = url;
+    if (!lightbox.hidden) lightboxImg.src = url;
+    buildGuideList();
+    scheduleSave();
+  }
+  window.docuclickRedactImage = redactImage; // tests
 }
 // DOCUCLICK-EDITOR-END
 </script>
