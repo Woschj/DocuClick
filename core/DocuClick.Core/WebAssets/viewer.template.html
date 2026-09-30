@@ -69,6 +69,7 @@
     position: absolute; object-fit: cover; border-radius: 8px;
     pointer-events: none; box-shadow: 0 4px 14px rgba(var(--shade), 0.4);
   }
+  .node-image-overlay.recording-current { outline: 4px solid #22c55e; outline-offset: 3px; box-shadow: 0 0 22px 6px rgba(34, 197, 94, 0.65); }
 
   #node-handles { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 1000; }
   .node-handle {
@@ -2941,13 +2942,14 @@ if (dataScriptEl) {
       createHandlesForNode(node);
     });
     buildGuideList(); scheduleViewerRaf();
+    if (typeof currentNodeId !== "undefined" && currentNodeId) setCurrentNode(currentNodeId);
   }
   // The file changed outside the editor (e.g. the DocuClick app recorded a
-  // step): show it and start a fresh history; nothing to save.
+  // step): show it as a new history entry, so "Zurück" can undo it like an
+  // own edit (which then saves the earlier state); nothing to save now.
   function replaceDocument(state) {
     applyState(state);
-    history = [JSON.stringify(snapshot())]; historyIndex = 0;
-    updateHistoryButtons();
+    recordHistory();
   }
   document.addEventListener("keydown", e => {
     if (!(e.ctrlKey || e.metaKey) || e.altKey || e.target.closest("input, textarea, [contenteditable]")) return;
@@ -2957,11 +2959,21 @@ if (dataScriptEl) {
     if (e.key.toLowerCase() === "s") { e.preventDefault(); saveNow(); }
   });
   updateHistoryButtons();
-  // Recording host: marks the step the next recorded click attaches to.
-  cy.style().selector("node.recording-current").style({ "border-width": 4, "border-color": "#22c55e", "border-style": "solid" }).update();
+  // Recording host: marks the step the next recorded click attaches to —
+  // a green glow around the card (the screenshot covers most of the card, so
+  // its own image gets a green frame too).
+  cy.style().selector("node.recording-current").style({
+    "border-width": 6, "border-color": "#22c55e", "border-style": "solid",
+    "underlay-color": "#22c55e", "underlay-opacity": 0.45, "underlay-padding": 10, "underlay-shape": "round-rectangle",
+  }).update();
+  let currentNodeId = null;
   function setCurrentNode(nodeId) {
+    currentNodeId = nodeId || null;
     cy.nodes(".recording-current").removeClass("recording-current");
-    if (nodeId) cy.getElementById(nodeId).addClass("recording-current");
+    overlayImgs.forEach((img) => img.classList.remove("recording-current"));
+    if (!currentNodeId) return;
+    cy.getElementById(currentNodeId).addClass("recording-current");
+    overlayImgs.get(currentNodeId)?.classList.add("recording-current");
   }
   if (editorHost) editorHost.ready?.({ snapshot, undo: () => restoreHistory(-1), redo: () => restoreHistory(1), replace: replaceDocument, setCurrent: setCurrentNode });
 

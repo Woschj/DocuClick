@@ -232,6 +232,30 @@ public sealed class SessionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task Undo_in_the_page_takes_back_a_recorded_click_and_recording_continues_from_there()
+    {
+        using var session = CreateSession(_config);
+        session.Start(_folder.File("Test.html"));
+        _capture.NextFrame = () => new CapturedFrame(White(40, 20), new ScreenRect(0, 0, 40, 20), 1.0);
+        WaitForCapture(session, () => _input.Click(new ScreenPoint(5, 5)));
+        var web = new PageHost();
+        var host = new EditorPageHost(session, web, (folder, file) => file);
+        host.BuildPage();
+        var beforeSecondClick = session.GetEditorDocument(f => f)!.CanvasJson;
+        WaitForCapture(session, () => _input.Click(new ScreenPoint(6, 6)));
+        host.OnSessionChanged(); // the page shows the second click
+
+        await host.HandleMessageAsync(Save(3, beforeSecondClick)); // "Zurück" in the page
+
+        Assert.Null(web.Posted.Last().GetProperty("error").GetString());
+        Assert.Single(session.GetPreview()!.Nodes);
+        WaitForCapture(session, () => _input.Click(new ScreenPoint(7, 7)));
+        var preview = session.GetPreview()!;
+        Assert.Equal(2, preview.Nodes.Count);
+        Assert.Single(preview.Edges); // the next click attaches to the remaining step
+    }
+
+    [Fact]
     public async Task A_page_save_based_on_an_older_state_never_drops_a_recorded_click()
     {
         using var session = CreateSession(_config);
