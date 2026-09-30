@@ -44,6 +44,9 @@ const vault = {
   getAbstractFileByPath: path => files.get(path)?.file || folders.get(path),
   createFolder: async path => { if (files.has(path) || folders.has(path)) throw Error('exists'); const folder = new TFolder(path); folders.set(path, folder); return folder; },
   getAllLoadedFiles: () => [...folders.values()],
+  configDir: '.obsidian',
+  adapter: { read: async path => { if (!files.has(path)) throw Error('missing'); return files.get(path).text; }, getFullPath: path => '/vault/' + path },
+  getFiles: () => [...files.values()].map(entry => entry.file),
   getMarkdownFiles: () => [...files.values()].map(entry => entry.file).filter(file => file.extension === 'md')
 };
 // Frontmatter of notes, parsed on demand (enough for a "docuclick" property).
@@ -59,12 +62,13 @@ class Plugin {
   constructor() { this.app = app; }
   registerView(type, factory) { this.factory = factory; }
   registerMarkdownCodeBlockProcessor(language, processor) { window.codeBlocks = {...window.codeBlocks, [language]: processor}; }
+  addStatusBarItem() { const el = document.body.createDiv(); window.statusBar = el; return el; } registerInterval() {}
   register() {} registerExtensions() {} addRibbonIcon() {} addCommand() {} registerEvent() {} addSettingTab() {}
   async loadData() { return window.pluginData || null; } async saveData(data) { window.pluginData = JSON.parse(JSON.stringify(data)); }
 }
 class FileView { constructor() { this.app = app; this.contentEl = document.body.createDiv(); this.contentEl.style = 'height:95vh;display:flex;flex-direction:column'; } }
 window.module = {exports: {}};
-window.require = name => { if (name !== 'obsidian') throw Error(name); return {Plugin, PluginSettingTab: class {}, AbstractInputSuggest: class {}, TFolder, FileView, MarkdownRenderChild, WorkspaceLeaf, Modal: class {}, Setting: class {}, Notice: class {constructor(text) {notices.push(text);}}, TFile, normalizePath: path => path}; };
+window.require = name => { if (name !== 'obsidian') throw Error(name); return {Plugin, PluginSettingTab: class {}, AbstractInputSuggest: class {}, TFolder, FileView, MarkdownRenderChild, WorkspaceLeaf, requestUrl: async request => { window.requests = [...(window.requests || []), request]; return window.fakeApp(JSON.parse(request.body)); }, Modal: class {}, Setting: class {}, Notice: class {constructor(text) {notices.push(text);}}, TFile, normalizePath: path => path}; };
 window.start = async () => {
   const plugin = new module.exports(); await plugin.onload();
   const file = await vault.create('Test.docuclick', JSON.stringify({format:'docuclick-diagram', version:1, canvas:{nodes:[],edges:[]}, flow:{nodes:[],edges:[]}}));
@@ -145,6 +149,25 @@ let browser, socket;
   await inFrame("tryConnect(snapshot().flow.nodes[0].data.id, imageId)");
   await until("JSON.parse(testHost.files.get('Test.docuclick').text).canvas.edges.length === 1");
   assert.equal(await evaluate("testHost.files.get('Test.docuclick').text.split('data:image/png').length - 1"), 1, "screenshot stored more than once");
+  // Redaction replaces the pixels of the stored screenshot (not an overlay) and saves.
+  await inFrame("window.beforeRedact = cy.getElementById(imageId).data('imageUrl'); docuclickRedactImage(imageId, {x: 0, y: 0, width: 1, height: 1})");
+  await until("JSON.parse(testHost.files.get('Test.docuclick').text).flow.nodes.find(n => n.data.id === JSON.parse(testHost.files.get('Test.docuclick').text).flow.nodes[1].data.id).data.imageUrl?.startsWith('data:image/webp')");
+  assert.notEqual(await inFrame("cy.getElementById(imageId).data('imageUrl')"), await inFrame("beforeRedact"));
+  assert.equal(await inFrame("(() => { const c = document.createElement('canvas'); c.width = c.height = 1; const i = new Image(); i.src = cy.getElementById(imageId).data('imageUrl'); return i.decode().then(() => { const x = c.getContext('2d'); x.drawImage(i, 0, 0); return Array.from(x.getImageData(0, 0, 1, 1).data.slice(0, 3)).join(); }); })()"), "0,0,0");
+  // The same through the image view: button, then drag a rectangle over the image.
+  await inFrame(`(async () => {
+    const big = document.createElement('canvas'); big.width = 400; big.height = 200; big.getContext('2d').fillStyle = '#fff'; big.getContext('2d').fillRect(0, 0, 400, 200);
+    const bigUrl = big.toDataURL('image/png');
+    cy.getElementById(imageId).data('imageUrl', bigUrl); imageNodes.find(n => n.data.id === imageId).data.imageUrl = bigUrl;
+    window.beforeDrag = bigUrl;
+    openLightboxByNodeId(imageId); await lightboxImg.decode();
+    document.getElementById('lightbox-redact-btn').click();
+    const box = lightboxImg.getBoundingClientRect(), at = (type, x, y, target) => target.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
+    at('mousedown', box.left + 1, box.top + 1, lightboxImg); at('mousemove', box.right - 1, box.bottom - 1, window); at('mouseup', box.right - 1, box.bottom - 1, window);
+  })()`);
+  await until(`(() => { try { return cy.getElementById(imageId).data('imageUrl') !== beforeDrag; } catch { return false; } })()`, frameContext);
+  assert.equal(await inFrame("lightbox.classList.contains('redacting') + ':' + !!document.getElementById('redact-rect')"), "false:false");
+  await inFrame("closeLightbox()");
   await inFrame("deleteNode(imageId)");
   await inFrame("restoreHistory(-1)");
   assert.equal(await inFrame("snapshot().flow.nodes.length"), 2);
@@ -194,6 +217,13 @@ let browser, socket;
   const before = await inViewer("JSON.stringify(cy.elements().jsons())");
   await inViewer("cy.nodes().first().emit('cxttap'); document.dispatchEvent(new KeyboardEvent('keydown', {key:'Delete'})); document.dispatchEvent(new KeyboardEvent('keydown', {key:'z',ctrlKey:true})); document.dispatchEvent(new Event('paste')); document.dispatchEvent(new Event('drop'))");
   assert.equal(await inViewer("JSON.stringify(cy.elements().jsons())"), before);
+  // Print / PDF of the guide: one block per step, then the browser's print dialog.
+  assert.equal(await inViewer("typeof docuclickRedactImage + ':' + !!document.getElementById('lightbox-redact-btn')"), "undefined:false", "redaction must not be in the read-only view");
+  await inViewer("window.printed = 0; window.print = () => { printed++; }; document.getElementById('guide-print-btn').click()");
+  for (let i = 0; i < 40 && !(await inViewer("printed")); i++) await delay(50);
+  assert.equal(await inViewer("printed"), 1);
+  assert.equal(await inViewer("document.querySelectorAll('#print-guide .print-step').length"), 2);
+  assert.equal(await inViewer("document.querySelectorAll('#print-guide .print-step img').length"), 1);
   await inViewer("document.getElementById('guide-toggle-btn').click()");
   assert.equal(await inViewer("document.getElementById('guide-drawer').classList.contains('open')"), true);
   await inViewer("searchInput.value = 'Umbenannt'; searchInput.dispatchEvent(new Event('input'))");
@@ -241,8 +271,13 @@ let browser, socket;
   await evaluate("window.firstState = reloadView.state; emitModify(reloadFile); new Promise(r => setTimeout(r, 100))");
   assert.equal(await evaluate("reloadView.state === firstState"), true, "own/unchanged file must not reload");
   const external = JSON.stringify({format:'docuclick-diagram', version:1, canvas:{nodes:[{id:'x',type:'text',text:'Extern',x:0,y:0,width:100,height:50}],edges:[]}, flow:{nodes:[{data:{id:'x',label:'Extern'},position:{x:0,y:0}}],edges:[]}});
-  await evaluate(`testHost.files.get('Reload.docuclick').text = ${JSON.stringify(external)}; emitModify(reloadFile)`);
-  await until("reloadView.state && reloadView.state !== firstState && reloadView.state.doc.canvas.nodes.length === 1");
+  await evaluate(`window.firstFrame = reloadView.frame; testHost.files.get('Reload.docuclick').text = ${JSON.stringify(external)}; emitModify(reloadFile)`);
+  await until("reloadView.state && reloadView.state.doc.canvas.nodes.length === 1");
+  // Shown in the running editor (same frame: zoom and position stay), which now holds the new document.
+  assert.equal(await evaluate("reloadView.frame === firstFrame"), true, "external change reloaded the editor");
+  await evaluate("reloadView.flush()");
+  assert.equal(await evaluate("reloadView.state.doc.flow.nodes.map(n => n.data.label).join()"), "Extern");
+  assert.equal(await evaluate("testHost.files.get('Reload.docuclick').text"), external, "showing an external change must not rewrite the file");
   // With local changes at risk: a banner with a reload button instead of a silent reload.
   await evaluate("reloadView.state.blocked = true; window.blockedState = reloadView.state; testHost.files.get('Reload.docuclick').text = " + JSON.stringify(empty) + "; emitModify(reloadFile)");
   await until("!!reloadView.contentEl.querySelector('.docuclick-banner')");
@@ -308,11 +343,11 @@ let browser, socket;
   assert.equal(saved.includes("data:image"), false, "recorded screenshots were embedded into the note");
   assert.deepEqual(JSON.parse(D.noteData(saved)).images, JSON.parse(D.noteData(recording)).images);
   assert.equal(saved.split(D.DATA_START).length, 2);
-  // The app records another step (diagram data changes): the open tab reloads.
+  // The app records another step (diagram data changes): the open tab shows it.
   const nextData = JSON.parse(D.noteData(saved)); nextData.canvas.nodes.find(n => n.type === "text").text = "Nächster Klick";
   const nextNote = D.composeNote(saved, D.noteJson(nextData), D.stepsMarkdown(nextData));
   await evaluate(`window.appState = appView.state; testHost.files.get('Prozesse/Ablauf.md').text = ${JSON.stringify(nextNote)}; emitModify(appFile)`);
-  await until("appView.state && appView.state !== appState && appView.state.doc.canvas.nodes.some(n => n.text === 'Nächster Klick')");
+  await until("appView.state && appView.state.doc.canvas.nodes.some(n => n.text === 'Nächster Klick')");
   // Opening a diagram note shows the full diagram tab; a tab switched to text stays text.
   await evaluate(`(async () => {
     const leaf = view => ({ view, setViewState: async state => { leaf.last = state; } });
@@ -350,6 +385,29 @@ let browser, socket;
   await evaluate("testHost.plugin.app.fileManager = { trashFile: async file => testHost.files.delete(file.path) }; testHost.plugin.convertToNote(testHost.vault.getAbstractFileByPath('Reload.docuclick'))");
   assert.equal(await evaluate("testHost.files.has('Reload.docuclick')"), false);
   assert.equal(await evaluate("DocuClickDocument.isDiagramNote(testHost.files.get('Reload.md').text) && JSON.parse(DocuClickDocument.noteData(testHost.files.get('Reload.md').text)).images.b.startsWith('Bilder/DocuClick/')"), true);
+  // Screenshots of deleted steps: found (only in DocuClick's folders), linked images are kept.
+  await evaluate(`(async () => {
+    const bytes = new Uint8Array([137, 80, 78, 71]).buffer;
+    for (const path of ['Prozesse/Attachments/Ablauf/999999_000.png', 'Fotos/Urlaub.png', 'Prozesse/Attachments/Ablauf/verlinkt.png']) await testHost.vault.createBinary(path, bytes);
+    testHost.plugin.app.metadataCache.resolvedLinks = { 'Notiz.md': { 'Prozesse/Attachments/Ablauf/verlinkt.png': 1 } };
+  })()`);
+  assert.equal(await evaluate("testHost.plugin.findUnusedImages().then(list => list.map(f => f.path).join())"), "Prozesse/Attachments/Ablauf/999999_000.png");
+  // Recording with the DocuClick app: not paired, paired, app not running.
+  assert.match(await evaluate("testHost.plugin.startRecording(appFile).then(() => 'ok', e => e.message)"), /einmal eine Aufnahme in diesem Vault starten/);
+  await evaluate(`testHost.files.set('.obsidian/plugins/docuclick-diagrams/app-link.json', { file: null, text: JSON.stringify({ port: 47811, token: 'geheim' }) });
+    window.fakeApp = body => ({ status: 200, json: { ok: true, message: 'Aufnahme läuft.', recording: body.action !== 'pause', paused: body.action === 'pause', file: body.file || '/vault/Prozesse/Ablauf.md' } });`);
+  await evaluate("testHost.plugin.startRecording(appFile)");
+  assert.deepEqual(JSON.parse(await evaluate("requests.at(-1).body")), { token: "geheim", action: "start", file: "/vault/Prozesse/Ablauf.md" });
+  assert.equal(await evaluate("requests.at(-1).url + ' ' + requests.at(-1).contentType"), "http://127.0.0.1:47811/control application/json");
+  assert.match(await evaluate("statusBar.textContent"), /DocuClick nimmt auf: Ablauf/);
+  await evaluate("testHost.plugin.remote('branch', { name: 'Fehlerfall' })");
+  assert.equal(await evaluate("JSON.parse(requests.at(-1).body).name"), "Fehlerfall");
+  await evaluate("testHost.plugin.toggleRecording(appFile)"); // same file recording -> pause
+  assert.equal(await evaluate("JSON.parse(requests.at(-1).body).action"), "pause");
+  assert.match(await evaluate("statusBar.textContent"), /pausiert/);
+  await evaluate("window.fakeApp = () => { throw new Error('ECONNREFUSED'); }");
+  assert.match(await evaluate("testHost.plugin.remote('status').then(() => 'ok', e => e.message)"), /läuft nicht/);
+  assert.equal(await evaluate("statusBar.textContent"), "");
   assert.deepEqual(errors, [], "Uncaught browser errors");
   console.log("PASS: sandbox, palette, default folder, colour themes, rename, undo/redo, image move, connect/delete/restore, Vault save, read-only HTML export/search/guide/lightbox, forged message rejection, conflict recovery, close flush, app recording in the vault, diagram notes (open as tab, own text kept, embed, convert)");
 })().catch(error => { console.error(error); process.exitCode=1; }).finally(async () => {

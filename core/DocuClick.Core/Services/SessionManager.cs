@@ -239,9 +239,18 @@ public sealed class SessionManager : IDisposable
         _currentTargetFileName = targetFilePath;
 
         // Recording into a vault: the plugin that opens the diagram note comes along.
-        if (ObsidianVault.FindRoot(targetDirectory) is { } vaultRoot && ObsidianPluginInstaller.EnsureInstalled(vaultRoot) is { } installMessage)
+        if (ObsidianVault.FindRoot(targetDirectory) is { } vaultRoot)
         {
-            InfoOccurred?.Invoke(installMessage);
+            if (_config.AutoInstallObsidianPlugin && ObsidianPluginInstaller.EnsureInstalled(vaultRoot) is { } installMessage)
+            {
+                InfoOccurred?.Invoke(installMessage);
+            }
+
+            // Lets the plugin in this vault start/pause recording and set decision points.
+            if (_config.RemoteControlToken is { Length: > 0 } token)
+            {
+                ObsidianAppLink.Write(vaultRoot, token);
+            }
         }
 
         StartCapturing();
@@ -896,6 +905,9 @@ public sealed class SessionManager : IDisposable
 
     private void ProcessClick(ScreenPoint point, DateTime timestamp, string targetFileName, bool isRightClick, PreClickFrame? preClick)
     {
+        // Released right after the capture (not only after the whole click is
+        // written), so a full-screen pre-click frame never outlives its use.
+        var frame = preClick;
         try
         {
             // Accessibility first: a password field must be skipped before
@@ -908,19 +920,20 @@ public sealed class SessionManager : IDisposable
             var description = DescriptionGenerator.Describe(element, fallbackWindowTitle, timestamp, action);
 
             Func<CapturedFrame> capture = _zoomToCursorActive
-                ? () => _platform.Capture.CaptureAroundPoint(point, _config.ZoomToCursorRadius, preClick)
-                : () => _platform.Capture.CaptureWindowAt(point, preClick);
+                ? () => _platform.Capture.CaptureAroundPoint(point, _config.ZoomToCursorRadius, frame)
+                : () => _platform.Capture.CaptureWindowAt(point, frame);
 
-            FinalizeCapture(description, timestamp, capture, element, point, targetFileName);
+            FinalizeCapture(description, timestamp, () => CaptureThenRelease(capture, ref frame), element, point, targetFileName);
         }
         finally
         {
-            preClick?.Dispose();
+            frame?.Dispose();
         }
     }
 
     private void ProcessEnterPress(DateTime timestamp, string targetFileName, PreClickFrame? preClick)
     {
+        var frame = preClick;
         try
         {
             var element = _config.UseUiAutomation ? _platform.Elements.GetFocusedElement() : null;
@@ -931,11 +944,11 @@ public sealed class SessionManager : IDisposable
 
             // No click point exists for a key press; the highlight (if any)
             // comes purely from the focused element's bounding rect.
-            FinalizeCapture(description, timestamp, () => _platform.Capture.CaptureForegroundWindow(preClick), element, null, targetFileName);
+            FinalizeCapture(description, timestamp, () => CaptureThenRelease(() => _platform.Capture.CaptureForegroundWindow(frame), ref frame), element, null, targetFileName);
         }
         finally
         {
-            preClick?.Dispose();
+            frame?.Dispose();
         }
     }
 
@@ -963,6 +976,19 @@ public sealed class SessionManager : IDisposable
         return true;
     }
 
+    private static CapturedFrame CaptureThenRelease(Func<CapturedFrame> capture, ref PreClickFrame? frame)
+    {
+        try
+        {
+            return capture();
+        }
+        finally
+        {
+            frame?.Dispose();
+            frame = null;
+        }
+    }
+
     private void FinalizeCapture(
         string description,
         DateTime timestamp,
@@ -982,7 +1008,7 @@ public sealed class SessionManager : IDisposable
             FlowPreviewChanged?.Invoke(_writer.GetPreview(), true);
 
             LogService.Log($"Eintrag geschrieben: \"{description}\" -> {targetFileName}");
-            LastScreenshotCaptured?.Invoke(screenshot.Png);
+            LastScreenshotCaptured?.Invoke(screenshot.Data);
 
             if (_config.EnableClickSound)
             {
@@ -1037,7 +1063,7 @@ public sealed class SessionManager : IDisposable
         }
     }
 
-    /// <summary>PNG-encodes the highlighted capture, first scaling HiDPI captures down to 1 pixel per point if configured.</summary>
+    /// <summary>Encodes the highlighted capture in the configured format (WebP, JPEG or PNG), first scaling HiDPI captures down to 1 pixel per point if configured.</summary>
     private ScreenshotImage Encode(SKBitmap bitmap, double scale)
     {
         var source = bitmap;
@@ -1058,8 +1084,14 @@ public sealed class SessionManager : IDisposable
         try
         {
             using var image = SKImage.FromBitmap(source);
-            using var data = image.Encode(SKEncodedImageFormat.Png, 100);
-            return new ScreenshotImage(data.ToArray(), source.Width, source.Height, scale);
+            var (format, extension) = _config.ScreenshotFormat?.ToLowerInvariant() switch
+            {
+                "png" => (SKEncodedImageFormat.Png, "png"),
+                "jpeg" or "jpg" => (SKEncodedImageFormat.Jpeg, "jpg"),
+                _ => (SKEncodedImageFormat.Webp, "webp"),
+            };
+            using var data = image.Encode(format, Math.Clamp(_config.ScreenshotQuality, 50, 100));
+            return new ScreenshotImage(data.ToArray(), source.Width, source.Height, scale, extension);
         }
         finally
         {

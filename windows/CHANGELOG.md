@@ -7,6 +7,32 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [1.16.0] - 2026-09-30
+
+- **Screenshots als WebP** (Standard; JPEG und PNG wählbar in den
+  Einstellungen): etwa viermal kleiner (typisches Fenster: 38 KB statt 162 KB).
+- **Lange Aufnahmen deutlich schneller** (gemessen mit 100 Klicks und echten
+  Screenshots): Ein `.html`-Ablauf wird während des Klickens mit Verweisen auf
+  die Screenshots geschrieben und erst nach 3 s Ruhe (oder bei Pause/Stopp/
+  Beenden) mit eingebetteten Bildern – statt ~2 GB werden ~50 MB geschrieben,
+  die späten Klicks dauern 14 ms statt 337 ms. Die Ablauf-Übersicht bekommt
+  jeden Screenshot nur noch einmal (40 MB statt 1,9 GB übertragen).
+- **Aufnahme aus Obsidian steuern**: Das Plugin kann die Aufnahme in ein
+  Diagramm starten, pausieren und Abzweigungen setzen. Gekoppelt über einen
+  Schlüssel, den DocuClick in den Vault schreibt; nur über 127.0.0.1.
+- **Schwärzen** von Bereichen in Screenshots und **Drucken / PDF** der
+  Anleitung im Ablauf (Browser, Obsidian).
+- Automatische Installation des Obsidian-Plugins ist abschaltbar
+  (Einstellungen).
+- Ändert das Obsidian-Plugin ein Diagramm genau zwischen Einlesen und
+  Speichern, bleibt dessen Stand als Kopie erhalten statt verloren zu gehen.
+- Das Bild von direkt vor dem Klick wird sofort nach der Aufnahme
+  freigegeben (weniger Speicher). Manuell eingefügte JPEG-Bilder werden mit
+  dem richtigen Bildtyp eingebettet. Datei- und Assembly-Version entsprechen
+  wieder der App-Version.
+- Entwicklung: `tools/release.py` (Versionen, Changelog-Datum, Tags),
+  Messung `RecordingBenchmark`, CI-Actions auf Node 24.
+
 ## [1.15.0] - 2026-09-29
 
 - **Aufnehmen in einen Obsidian-Vault**: Liegt der gewählte Speicherort in

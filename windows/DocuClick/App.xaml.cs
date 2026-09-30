@@ -73,6 +73,16 @@ public partial class App : Application
         // Lets an Ablauf opened in a browser save its edits straight back
         // into its own file while DocuClick runs (see LocalSaveService).
         _saveService = new LocalSaveService(_sessionManager.ApplyExternalEdit);
+        // The Obsidian plugin can start/pause recording and set decision
+        // points (paired through a token written into the vault).
+        if (string.IsNullOrEmpty(_config.RemoteControlToken))
+        {
+            _config.RemoteControlToken = ObsidianAppLink.NewToken();
+            ConfigService.Save(_config);
+        }
+
+        _saveService.RemoteToken = _config.RemoteControlToken;
+        _saveService.RemoteControl = command => Dispatcher.InvokeAsync(() => HandleRemoteCommand(command)).Task;
         _saveService.Start();
 
         _trayApp = new TrayApp();
@@ -312,6 +322,69 @@ public partial class App : Application
         finally
         {
             NativeMethods.ModalDialogDepth--;
+        }
+    }
+
+    /// <summary>A command from the Obsidian plugin (see LocalSaveService /control); runs on the UI thread.</summary>
+    private RemoteStatus HandleRemoteCommand(RemoteCommand command)
+    {
+        var session = _sessionManager!;
+        RemoteStatus Status(bool ok, string message) => new(ok, message, session.IsRunning, session.IsPaused, session.CurrentTargetFileName);
+        try
+        {
+            switch (command.Action)
+            {
+                case "start":
+                    var file = command.File!;
+                    var sameFile = string.Equals(session.CurrentTargetFileName, file, StringComparison.OrdinalIgnoreCase);
+                    if (session.IsRunning && sameFile)
+                    {
+                        return Status(true, "Aufnahme läuft bereits.");
+                    }
+
+                    if (session.IsRunning)
+                    {
+                        session.StartNewSession(file);
+                    }
+                    else
+                    {
+                        session.Start(file);
+                    }
+
+                    RememberLastSession(file);
+                    _trayApp!.SyncRecordingState(true);
+                    _topBar?.UpdateStatus(true, detail: null);
+                    _trayApp.ShowInfo($"Aufnahme aus Obsidian gestartet: {Path.GetFileName(file)}");
+                    return Status(true, "Aufnahme läuft.");
+
+                case "pause":
+                    if (session.IsRunning)
+                    {
+                        session.Pause();
+                        _trayApp!.SyncRecordingState(false);
+                        _topBar?.UpdateStatus(false, detail: "Pausiert");
+                        _trayApp.UpdatePausedState(session.IsPaused);
+                    }
+
+                    return Status(true, "Aufnahme pausiert.");
+
+                case "branch":
+                    if (!session.IsRunning)
+                    {
+                        return Status(false, "Es läuft keine Aufnahme.");
+                    }
+
+                    session.MarkDecisionPoint(string.IsNullOrWhiteSpace(command.Name) ? "Pfad" : command.Name.Trim());
+                    return Status(true, "Abzweigung gesetzt.");
+
+                default:
+                    return Status(true, session.IsRunning ? "Aufnahme läuft." : session.IsPaused ? "Aufnahme pausiert." : "Bereit.");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"Befehl aus Obsidian fehlgeschlagen: {ex}");
+            return Status(false, ex.Message);
         }
     }
 

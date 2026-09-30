@@ -29,6 +29,14 @@ internal sealed class SettingsWindow : DialogWindow<bool>
     private readonly ComboBox _skipModifier = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly CheckBox _beforeClick = new() { Content = "Bild von direkt VOR dem Klick verwenden (zeigt noch nicht die Reaktion der App, z. B. aufgeklappte Menüs)" };
     private readonly CheckBox _downscale = new() { Content = "Retina-Screenshots auf normale Größe verkleinern (deutlich kleinere Abläufe)" };
+    private static readonly (string Tag, string Text)[] ScreenshotFormats =
+    {
+        ("WebP", "WebP – klein, gute Qualität (empfohlen)"),
+        ("Jpeg", "JPEG – klein, auch für ältere Programme"),
+        ("Png", "PNG – verlustfrei, sehr groß"),
+    };
+    private readonly ComboBox _screenshotFormat = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
+    private readonly CheckBox _autoInstallPlugin = new() { Content = "Obsidian-Plugin beim Aufnehmen in einen Vault automatisch installieren und aktualisieren" };
     private readonly Dictionary<HotkeyTarget, TextBox> _hotkeyBoxes = new();
     private readonly Dictionary<HotkeyTarget, (string Modifiers, string Key)> _hotkeys = new();
     private readonly WrapPanel _swatchPanel = new();
@@ -56,6 +64,9 @@ internal sealed class SettingsWindow : DialogWindow<bool>
         _skipModifier.SelectedIndex = Math.Max(0, Array.FindIndex(SkipModifiers, m => m.Tag == config.SkipRecordingModifier));
         _beforeClick.IsChecked = config.CaptureTiming == "BeforeClick";
         _downscale.IsChecked = config.DownscaleHiDpiScreenshots;
+        _screenshotFormat.ItemsSource = ScreenshotFormats.Select(f => f.Text).ToList();
+        _screenshotFormat.SelectedIndex = Math.Max(0, Array.FindIndex(ScreenshotFormats, f => string.Equals(f.Tag, config.ScreenshotFormat, StringComparison.OrdinalIgnoreCase)));
+        _autoInstallPlugin.IsChecked = config.AutoInstallObsidianPlugin;
 
         _hotkeys[HotkeyTarget.StartStop] = (config.StartStopModifiers, config.StartStopKey);
         _hotkeys[HotkeyTarget.BranchMark] = (config.BranchMarkModifiers, config.BranchMarkKey);
@@ -100,6 +111,7 @@ internal sealed class SettingsWindow : DialogWindow<bool>
                 Ui.Card(Ui.Section("Aufnahme-Verhalten"), _useAccessibility, _clickSound, _captureEnter, _captureRightClick,
                     Ui.Label("Klicks überspringen bei gedrückter Taste"), _skipModifier,
                     _beforeClick, _downscale,
+                    Ui.Label("Screenshot-Format"), _screenshotFormat, _autoInstallPlugin,
                     Ui.Hint("Die Zieldatei wird bei jedem Start einer neuen Session abgefragt. Passwortfelder werden nie aufgezeichnet.")),
                 Ui.Card(Ui.Section("Tastenkürzel"),
                     HotkeyRow(HotkeyTarget.StartStop, "Aufnahme starten/stoppen"),
@@ -229,6 +241,8 @@ internal sealed class SettingsWindow : DialogWindow<bool>
         _config.SkipRecordingModifier = SkipModifiers[Math.Max(0, _skipModifier.SelectedIndex)].Tag;
         _config.CaptureTiming = _beforeClick.IsChecked == true ? "BeforeClick" : "AfterClick";
         _config.DownscaleHiDpiScreenshots = _downscale.IsChecked == true;
+        _config.ScreenshotFormat = ScreenshotFormats[Math.Max(0, _screenshotFormat.SelectedIndex)].Tag;
+        _config.AutoInstallObsidianPlugin = _autoInstallPlugin.IsChecked == true;
         (_config.StartStopModifiers, _config.StartStopKey) = _hotkeys[HotkeyTarget.StartStop];
         (_config.BranchMarkModifiers, _config.BranchMarkKey) = _hotkeys[HotkeyTarget.BranchMark];
         (_config.ZoomToCursorModifiers, _config.ZoomToCursorKey) = _hotkeys[HotkeyTarget.ZoomToCursor];

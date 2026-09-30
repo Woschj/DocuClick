@@ -6,7 +6,7 @@ namespace DocuClick.Core.Tests;
 /// <summary>Recording into an Obsidian vault: the .docuclick format shared with the DocuClick Diagrams plugin.</summary>
 public sealed class DocuClickDiagramTests : IDisposable
 {
-    private static readonly string Png = "data:image/png;base64," + Convert.ToBase64String(TestImages.Png(3, 2).Png);
+    private static readonly string Png = "data:image/png;base64," + Convert.ToBase64String(TestImages.Png(3, 2).Data);
 
     private readonly TempFolder _vault = new();
     private readonly AppConfig _config = new();
@@ -100,7 +100,7 @@ public sealed class DocuClickDiagramTests : IDisposable
     private void WritePluginStyleDiagram()
     {
         Directory.CreateDirectory(_vault.File("DocuClick-Bilder"));
-        File.WriteAllBytes(_vault.File("DocuClick-Bilder/abc.png"), TestImages.Png(4, 4).Png);
+        File.WriteAllBytes(_vault.File("DocuClick-Bilder/abc.png"), TestImages.Png(4, 4).Data);
         Directory.CreateDirectory(Path.GetDirectoryName(Diagram)!);
         File.WriteAllText(Diagram, $$"""
             {
@@ -271,6 +271,25 @@ public sealed class DocuClickDiagramTests : IDisposable
     }
 
     [Fact]
+    public void A_diagram_change_right_before_saving_is_kept_as_a_copy()
+    {
+        var writer = StartNote();
+        Click(writer, "Eins");
+        writer.FlushPendingSave();
+
+        // The plugin saves a renamed step between the app's last read and its next write.
+        var changed = File.ReadAllText(Note).Replace("\"text\": \"Eins\"", "\"text\": \"Eins (Obsidian)\"");
+        File.WriteAllText(Note, changed);
+        File.SetLastWriteTimeUtc(Note, DateTime.UtcNow.AddSeconds(5));
+        var node = writer.GetPreview().Nodes.Single();
+        writer.MoveNode(node.Id, node.X + 10, node.Y); // writer-level: no SyncWithDisk before this save
+        writer.FlushPendingSave();
+
+        var copy = Assert.Single(Directory.GetFiles(Path.GetDirectoryName(Note)!, "Ablauf (Stand aus Obsidian *).md"));
+        Assert.Contains("Eins (Obsidian)", File.ReadAllText(copy));
+    }
+
+    [Fact]
     public void An_ordinary_note_is_not_turned_into_a_diagram()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Note)!);
@@ -296,6 +315,9 @@ public sealed class DocuClickDiagramTests : IDisposable
             Click(writer, "Linksklick auf „Anmelden“");
             Assert.True(writer.MarkDecisionPoint("Erfolg").Success);
             Click(writer, "Linksklick auf „Weiter“");
+            var steps = writer.GetPreview().Nodes;
+            // A manual cross-connection: the step lists (C# and JS) must both leave it out.
+            Assert.True(writer.ConnectNodes(steps.First().Id, steps.Last().Id).Success); // a shortcut; loops are refused
             writer.Stop();
             Directory.CreateDirectory(Path.GetDirectoryName(fixture)!);
             File.Copy(Note, fixture, overwrite: true);

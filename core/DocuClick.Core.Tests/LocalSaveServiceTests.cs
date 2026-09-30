@@ -119,4 +119,54 @@ public sealed class LocalSaveServiceTests : IDisposable
         _service.Dispose();
         _folder.Dispose();
     }
+
+    private async Task<(HttpStatusCode Status, JsonElement Body)> ControlAsync(object command, string? origin = null, string contentType = "application/json")
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{_port}/control")
+        {
+            Content = new StringContent(JsonSerializer.Serialize(command), System.Text.Encoding.UTF8, contentType),
+        };
+        if (origin is not null)
+        {
+            request.Headers.Add("Origin", origin);
+        }
+
+        using var response = await Http.SendAsync(request);
+        return (response.StatusCode, JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.Clone());
+    }
+
+    [Fact]
+    public async Task The_Obsidian_plugin_can_start_recording_with_the_pairing_token_only()
+    {
+        Directory.CreateDirectory(_folder.File(".obsidian"));
+        var note = _folder.File("Ablauf.md");
+        var received = new List<RemoteCommand>();
+        _service.RemoteToken = "geheim";
+        _service.RemoteControl = command =>
+        {
+            received.Add(command);
+            return Task.FromResult(new RemoteStatus(true, "Aufnahme läuft.", true, false, command.File));
+        };
+
+        var (status, body) = await ControlAsync(new { token = "geheim", action = "start", file = note }, origin: "app://obsidian.md");
+        Assert.Equal(HttpStatusCode.OK, status);
+        Assert.True(body.GetProperty("recording").GetBoolean());
+        Assert.Equal(note, Assert.Single(received).File);
+
+        // Wrong token, a web page's origin, a form post, a file outside a vault, an unknown action: all refused.
+        Assert.Equal(HttpStatusCode.Forbidden, (await ControlAsync(new { token = "falsch", action = "status" })).Status);
+        Assert.Equal(HttpStatusCode.Forbidden, (await ControlAsync(new { token = "geheim", action = "status" }, origin: "https://example.com")).Status);
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, (await ControlAsync(new { token = "geheim", action = "status" }, contentType: "text/plain")).Status);
+        using var outside = new TempFolder();
+        Assert.Equal(HttpStatusCode.Forbidden, (await ControlAsync(new { token = "geheim", action = "start", file = outside.File("Ablauf.md") })).Status);
+        Assert.Equal(HttpStatusCode.BadRequest, (await ControlAsync(new { token = "geheim", action = "delete" })).Status);
+        Assert.Single(received);
+    }
+
+    [Fact]
+    public async Task Without_a_control_handler_the_endpoint_is_off()
+    {
+        _service.RemoteToken = "geheim";
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, (await ControlAsync(new { token = "geheim", action = "status" })).Status);
+    }
 }

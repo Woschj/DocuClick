@@ -366,7 +366,7 @@ public static class DrawIoConverter
         root.Add(edge);
     }
 
-    private static string ToBase64Png(ScreenshotImage screenshot) => System.Convert.ToBase64String(screenshot.Png);
+    private static string ToBase64Png(ScreenshotImage screenshot) => System.Convert.ToBase64String(screenshot.Data);
 
     /// <summary>
     /// Any attachment (recorded PNG, or a manually added JPEG/GIF/...) decoded

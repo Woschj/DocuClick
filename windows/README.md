@@ -47,6 +47,20 @@ Für eine vorbereitete Ordnerstruktur mit Vorlage siehe [Ausgabeordner-Vorlage
 für Prozessdokumentation](#ausgabeordner-vorlage-für-prozessdokumentation)
 weiter unten — praktisch für eine Knowledge Base, aber kein Pflichtschritt.
 
+**Screenshot-Format** (Einstellungen → Aufnahme-Verhalten): Standard ist
+**WebP**, etwa viermal kleiner als PNG bei gleicher Lesbarkeit (gemessen an
+typischen Fenstern: 38 KB statt 162 KB je Screenshot). JPEG ist ebenfalls
+klein und passt zu älteren Programmen, PNG ist verlustfrei, aber groß.
+Bestehende Screenshots behalten ihr Format.
+
+**Lange Aufnahmen**: Während geklickt wird, schreibt DocuClick den Ablauf mit
+Verweisen auf die Screenshots im `Attachments`-Ordner und bettet sie erst ein,
+wenn drei Sekunden lang kein Klick kommt (oder bei Pause, Stopp und
+Beenden). Die Datei ist dadurch zu jedem Zeitpunkt vollständig anzeigbar, aber
+ein Klick kostet nicht mehr das Neuschreiben aller Bilder. Mit Obsidian lässt
+sich die Aufnahme auch aus dem Plugin starten und pausieren (siehe
+[Plugin-Anleitung](../obsidian/README.md#aufnahme-aus-obsidian-steuern)).
+
 **Obsidian-Vault als Speicherort**: Liegt der gewählte Ordner in einem
 Obsidian-Vault (erkennbar am Ordner `.obsidian` in ihm oder darüber), legt
 DocuClick statt der `.html`-Datei eine **Diagramm-Notiz** (`.md`) an: eine

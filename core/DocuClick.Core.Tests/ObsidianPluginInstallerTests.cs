@@ -67,9 +67,11 @@ public sealed class ObsidianPluginInstallerTests : IDisposable
     public void The_assembled_plugin_matches_the_build_script()
     {
         var built = Path.Combine(RepoRoot(), "dist", "obsidian-docuclick", "docuclick-diagrams", "main.js");
-        if (!File.Exists(built))
+        var sources = new[] { "obsidian/src/main.js", "obsidian/src/document.js", "core/DocuClick.Core/WebAssets/viewer.template.html" }
+            .Select(path => File.GetLastWriteTimeUtc(Path.Combine(RepoRoot(), path)));
+        if (!File.Exists(built) || File.GetLastWriteTimeUtc(built) < sources.Max())
         {
-            return; // build.py not run in this checkout
+            return; // build.py not run (or not since the last source change) in this checkout
         }
 
         var assembled = ObsidianPluginInstaller.BuildMainJs(

@@ -5,6 +5,19 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [0.7.0] - 2026-09-30
+
+- **Aufnahme mit der DocuClick-App steuern**: Knopf „Mit DocuClick
+  aufnehmen“ im Diagramm-Tab, Befehle für Start, Pause und Abzweigung,
+  Aufnahme-Status in der Statusleiste.
+- Änderungen von außen (z. B. jeder Klick einer laufenden Aufnahme) erscheinen
+  im geöffneten Diagramm, ohne es neu zu laden: Zoom und Ausschnitt bleiben.
+- Befehl **Nicht mehr verwendete Bilder aufräumen** (mit Liste und
+  Bestätigung, Papierkorb).
+- **Schwärzen** von Bereichen in Screenshots, **Drucken / PDF** der Anleitung.
+- Neu angelegte Diagramm-Notizen wechseln zur Diagrammansicht, sobald
+  Obsidian sie erfasst hat.
+
 ## [0.6.0] - 2026-09-29
 
 - **Ein Ablauf = eine Notiz**: Neue und importierte Abläufe sind

@@ -7,7 +7,7 @@ namespace DocuClick.Services;
 /// <see cref="DisplayWidth"/>/<see cref="DisplayHeight"/> so Retina captures
 /// don't produce cards twice the intended size.
 /// </summary>
-public sealed record ScreenshotImage(byte[] Png, int PixelWidth, int PixelHeight, double Scale = 1.0)
+public sealed record ScreenshotImage(byte[] Data, int PixelWidth, int PixelHeight, double Scale = 1.0, string Extension = "png")
 {
     public double DisplayWidth => PixelWidth / Scale;
     public double DisplayHeight => PixelHeight / Scale;

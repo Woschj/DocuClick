@@ -190,6 +190,9 @@ function markdownText(value) {
  * The flow as nested Markdown lists: the main line numbered, each path of a
  * decision point as its own sub-list. Manual cross-connections are left out
  * (they are references, not the order of steps).
+ * Keep in sync with DiagramNote.Steps (C#, core/DocuClick.Core/Services/
+ * DiagramNote.cs): the apps write the same list. tests/fixtures/app-recording.md
+ * is an app recording; document.test.js checks both produce identical text.
  */
 function stepsMarkdown(document) {
   const doc = validateDocument(document);

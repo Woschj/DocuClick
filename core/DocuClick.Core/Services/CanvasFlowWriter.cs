@@ -137,6 +137,12 @@ public sealed class CanvasFlowWriter
         // previously open untouched rather than half-switching to a
         // now-unusable target file.
         var loadedDoc = LoadOrCreate(fullPath);
+        // Screenshots of the previous file are no longer needed in memory.
+        if (_canvasPath != fullPath)
+        {
+            _base64Cache.Clear();
+        }
+
         _canvasPath = fullPath;
         _sessionName = Path.GetFileNameWithoutExtension(canvasFilePath);
         _doc = loadedDoc;
@@ -317,7 +323,7 @@ public sealed class CanvasFlowWriter
         // Immediately cache the screenshot in memory as base64 data URI (zero disk re-read cost later)
         try
         {
-            _base64Cache[imageOutputRelativePath] = "data:image/png;base64," + Convert.ToBase64String(imageBytes);
+            _base64Cache[imageOutputRelativePath] = ImageData.DataUri(imageBytes);
         }
         catch
         {
@@ -384,8 +390,23 @@ public sealed class CanvasFlowWriter
         _cursorNodeId = textNode.Id;
         _cursorY = newY;
 
-        Save();
+        if (ObsidianVault.IsDiagramFile(_canvasPath))
+        {
+            Save();
+            return;
+        }
+
+        // An .html Ablauf with every screenshot embedded costs the whole
+        // file per click (quadratic over a session: 100 clicks wrote ~2 GB).
+        // While clicks come in, write it with image links (the Attachments
+        // folder sits next to it, so it still shows everything), and embed
+        // once things calm down — or at Pause/Stop/app exit (FlushPendingSave).
+        WriteFile(embedImages: false);
+        ScheduleBackgroundSave(EmbedDelayMs);
     }
+
+    /// <summary>Quiet time after the last click before an .html Ablauf is rewritten fully self-contained.</summary>
+    internal const int EmbedDelayMs = 3000;
 
     /// <summary>
     /// Adds a small "◆ Abzweigung" diamond connected from the current node
@@ -1010,7 +1031,7 @@ public sealed class CanvasFlowWriter
 
         try
         {
-            _base64Cache[imageOutputRelativePath] = "data:image/png;base64," + Convert.ToBase64String(imageBytes);
+            _base64Cache[imageOutputRelativePath] = ImageData.DataUri(imageBytes);
         }
         catch
         {
@@ -1127,20 +1148,34 @@ public sealed class CanvasFlowWriter
     /// </summary>
     private (string Id, double X, double Y, int Steps) FindBranchTip(CanvasNode start)
     {
+        // Indexed once per walk: a lookup per step made long paths quadratic.
+        var nextOf = new Dictionary<string, string>();
+        foreach (var edge in _doc.Edges)
+        {
+            if (!edge.Manual)
+            {
+                nextOf.TryAdd(edge.FromNode, edge.ToNode); // first structural edge, as before
+            }
+        }
+
+        var nodesById = new Dictionary<string, CanvasNode>();
+        foreach (var node in _doc.Nodes)
+        {
+            nodesById.TryAdd(node.Id, node);
+        }
+
         var current = start;
         var steps = 0;
-        while (true)
+        var visited = new HashSet<string> { start.Id };
+        while (nextOf.TryGetValue(current.Id, out var nextId)
+            && nodesById.TryGetValue(nextId, out var nextNode)
+            && visited.Add(nextNode.Id))
         {
-            var nextEdge = _doc.Edges.FirstOrDefault(e => e.FromNode == current.Id && !e.Manual);
-            var nextNode = nextEdge is null ? null : _doc.Nodes.FirstOrDefault(n => n.Id == nextEdge.ToNode);
-            if (nextNode is null)
-            {
-                return (current.Id, current.X, current.Y, steps);
-            }
-
             current = nextNode;
             steps++;
         }
+
+        return (current.Id, current.X, current.Y, steps);
     }
 
     private string? GetNodeLabel(string nodeId) =>
@@ -1228,7 +1263,7 @@ public sealed class CanvasFlowWriter
         }
     }
 
-    private void ScheduleBackgroundSave()
+    private void ScheduleBackgroundSave(int delayMs = 150)
     {
         lock (_saveLock)
         {
@@ -1272,7 +1307,7 @@ public sealed class CanvasFlowWriter
             // own doc comment) so it never races a mutation happening
             // concurrently on that same thread — Task.Delay here is purely
             // the debounce timer, not where the write itself runs.
-            Task.Delay(150, token).ContinueWith(t =>
+            Task.Delay(delayMs, token).ContinueWith(t =>
             {
                 if (t.IsCanceled)
                 {
@@ -1303,12 +1338,56 @@ public sealed class CanvasFlowWriter
     }
 
     /// <summary>Writes the loaded document in its file's format: a .docuclick diagram or an .html Ablauf.</summary>
-    private void WriteFile()
+    private void WriteFile(bool embedImages = true)
     {
         var path = _canvasPath!;
-        var text = ObsidianVault.IsDiagramFile(path) ? BuildDiagramText() : BuildLiveHtml();
+        var isDiagram = ObsidianVault.IsDiagramFile(path);
+        if (isDiagram)
+        {
+            KeepExternalEditBeforeWrite(path);
+        }
+
+        var text = isDiagram ? BuildDiagramText() : BuildLiveHtml(embedImages);
         FileSaveRetry.Save(path, () => File.WriteAllText(path, text));
         RememberDiskState(text);
+    }
+
+    /// <summary>
+    /// Last line of defence for the moment between reading a diagram
+    /// (<see cref="SyncWithDisk"/>) and writing it: if the Obsidian plugin
+    /// changed the diagram data in exactly that window, its version is kept
+    /// as a copy next to the file instead of being lost. A change of the
+    /// note's own text only is fine — <see cref="BuildDiagramText"/> composes
+    /// over the note as it is on disk.
+    /// </summary>
+    private void KeepExternalEditBeforeWrite(string path)
+    {
+        if (_diskText is null || ReadStamp(path) == _diskStamp || !File.Exists(path))
+        {
+            return;
+        }
+
+        string current;
+        try
+        {
+            current = File.ReadAllText(path);
+        }
+        catch (IOException)
+        {
+            return;
+        }
+
+        string? DataOf(string text) => ObsidianVault.IsNote(path) ? DiagramNote.ExtractData(text) : text;
+        if (DataOf(current) == DataOf(_diskText))
+        {
+            return;
+        }
+
+        var folder = Path.GetDirectoryName(path)!;
+        var stem = Path.GetFileNameWithoutExtension(path);
+        var copy = Path.Combine(folder, $"{stem} (Stand aus Obsidian {DateTime.Now:yyyy-MM-dd HH-mm-ss}){Path.GetExtension(path)}");
+        File.WriteAllText(copy, current);
+        LogService.Log($"Diagramm wurde unmittelbar vor dem Speichern extern geändert; dieser Stand liegt in {copy}.");
     }
 
     // What this writer last wrote to (or read from) a .docuclick file, to
@@ -1426,11 +1505,11 @@ public sealed class CanvasFlowWriter
     /// of those clicks re-serializes and rewrites *all* of them to disk, not
     /// just the newest one.
     /// </summary>
-    private string BuildLiveHtml()
+    private string BuildLiveHtml(bool embedImages = true)
     {
         _doc.SaveToken ??= CanvasDocumentIo.NewSaveToken();
         var dataJson = JsonSerializer.Serialize(_doc, _jsonOptions);
-        var (nodeSpecs, edgeSpecs) = BuildSpecs(ResolveImageSrc);
+        var (nodeSpecs, edgeSpecs) = BuildSpecs(embedImages ? ResolveImageSrc : LinkImageSrc);
         return HtmlViewerBuilder.BuildPage(_sessionName, nodeSpecs, edgeSpecs, dataJson);
     }
 
@@ -1561,7 +1640,7 @@ public sealed class CanvasFlowWriter
             try
             {
                 var bytes = File.ReadAllBytes(fullImagePath);
-                var dataUri = "data:image/png;base64," + Convert.ToBase64String(bytes);
+                var dataUri = ImageData.DataUri(bytes);
                 _base64Cache[relativeToOutput] = dataUri;
                 return dataUri;
             }
@@ -1572,6 +1651,18 @@ public sealed class CanvasFlowWriter
         }
 
         return ToRelativeUrl(sessionDir, fullImagePath);
+    }
+
+    /// <summary>Screenshot as a link relative to the page (data URIs stay as they are) — for the quick saves while recording.</summary>
+    private string? LinkImageSrc(string relativeToOutput)
+    {
+        if (string.IsNullOrWhiteSpace(relativeToOutput) || relativeToOutput.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.IsNullOrWhiteSpace(relativeToOutput) ? null : relativeToOutput;
+        }
+
+        var sessionDir = Path.GetDirectoryName(_canvasPath!) ?? "";
+        return ToRelativeUrl(sessionDir, Path.Combine(sessionDir, relativeToOutput));
     }
 
     /// <summary>

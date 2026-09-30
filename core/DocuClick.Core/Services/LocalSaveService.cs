@@ -44,6 +44,15 @@ public sealed class LocalSaveService : IDisposable
         _port = port;
     }
 
+    /// <summary>
+    /// Handles commands from the Obsidian plugin (POST /control); set by the
+    /// app, which runs them on its UI thread. Null: control is off.
+    /// </summary>
+    public Func<RemoteCommand, Task<RemoteStatus>>? RemoteControl { get; set; }
+
+    /// <summary>The token the plugin must send (AppConfig.RemoteControlToken, written into the vault by ObsidianAppLink).</summary>
+    public string? RemoteToken { get; set; }
+
     /// <summary>Starts listening; false (logged) if the port is taken — DocuClick then simply works without browser saving.</summary>
     public bool Start()
     {
@@ -95,7 +104,14 @@ public sealed class LocalSaveService : IDisposable
             {
                 client.ReceiveTimeout = client.SendTimeout = 10_000;
                 var stream = client.GetStream();
-                var (method, path, body) = await ReadRequestAsync(stream);
+                var (method, path, headers, body) = await ReadRequestAsync(stream);
+
+                if (method == "POST" && path == "/control")
+                {
+                    var (controlStatus, result) = await HandleControlAsync(headers, body);
+                    await WriteJsonAsync(stream, controlStatus, result);
+                    return;
+                }
 
                 var (status, ok, message) = method == "POST" && path == "/save"
                     ? await HandleSaveAsync(body)
@@ -107,6 +123,80 @@ public sealed class LocalSaveService : IDisposable
                 LogService.Log($"Speicherdienst: Anfrage fehlgeschlagen: {ex.Message}");
             }
         }
+    }
+
+    /// <summary>
+    /// One recording command from the Obsidian plugin. Refused unless it
+    /// carries the pairing token, comes as JSON (a web page cannot send that
+    /// cross-origin without a preflight this service never answers) and has
+    /// no foreign Origin; "start" only accepts a diagram in an Obsidian vault.
+    /// </summary>
+    private async Task<(int Status, RemoteStatus Result)> HandleControlAsync(IReadOnlyDictionary<string, string> headers, string body)
+    {
+        static RemoteStatus Fail(string message) => new(false, message, false, false, null);
+        if (headers.TryGetValue("origin", out var origin) && origin != "app://obsidian.md")
+        {
+            return (403, Fail("Nicht erlaubt."));
+        }
+
+        if (!headers.TryGetValue("content-type", out var type) || !type.StartsWith("application/json", StringComparison.OrdinalIgnoreCase))
+        {
+            return (415, Fail("JSON erwartet."));
+        }
+
+        if (RemoteControl is not { } control || RemoteToken is not { Length: > 0 } expected)
+        {
+            return (503, Fail("Steuerung aus Obsidian ist in DocuClick nicht verfügbar."));
+        }
+
+        RemoteCommand command;
+        try
+        {
+            using var json = JsonDocument.Parse(body);
+            var root = json.RootElement;
+            var token = root.GetProperty("token").GetString() ?? "";
+            if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(token)))
+            {
+                return (403, Fail("Verbindung ungültig: bitte in DocuClick einmal eine Aufnahme in diesem Vault starten."));
+            }
+
+            string? Optional(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+            command = new RemoteCommand(root.GetProperty("action").GetString() ?? "", Optional("file"), Optional("name"));
+        }
+        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return (400, Fail("Ungültige Anfrage."));
+        }
+
+        if (command.Action is not ("status" or "start" or "pause" or "branch"))
+        {
+            return (400, Fail("Unbekannter Befehl."));
+        }
+
+        if (command.Action == "start")
+        {
+            var file = command.File is { Length: > 0 } given ? Path.GetFullPath(given) : "";
+            if (!Path.IsPathRooted(file) || !ObsidianVault.IsDiagramFile(file) || ObsidianVault.FindRoot(Path.GetDirectoryName(file)) is null)
+            {
+                return (403, Fail("Nur Diagramme in einem Obsidian-Vault können so aufgenommen werden."));
+            }
+
+            command = command with { File = file };
+        }
+
+        return (200, await control(command));
+    }
+
+    private static async Task WriteJsonAsync(NetworkStream stream, int status, RemoteStatus result)
+    {
+        var bodyBytes = JsonSerializer.SerializeToUtf8Bytes(new { ok = result.Ok, message = result.Message, recording = result.Recording, paused = result.Paused, file = result.File });
+        var header = $"HTTP/1.1 {status} {(status == 200 ? "OK" : "Error")}\r\n" +
+                     "Content-Type: application/json; charset=utf-8\r\n" +
+                     $"Content-Length: {bodyBytes.Length}\r\n" +
+                     "Cache-Control: no-store\r\n" +
+                     "Connection: close\r\n\r\n";
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(header));
+        await stream.WriteAsync(bodyBytes);
     }
 
     /// <summary>Validates and applies one save. Returns (HTTP status, ok, user-facing message).</summary>
@@ -173,7 +263,7 @@ public sealed class LocalSaveService : IDisposable
         .GroupBy(parts => WebUtility.UrlDecode(parts[0]))
         .ToDictionary(g => g.Key, g => WebUtility.UrlDecode(g.First().ElementAtOrDefault(1) ?? ""));
 
-    private static async Task<(string Method, string Path, string Body)> ReadRequestAsync(NetworkStream stream)
+    private static async Task<(string Method, string Path, Dictionary<string, string> Headers, string Body)> ReadRequestAsync(NetworkStream stream)
     {
         var buffer = new MemoryStream();
         var chunk = new byte[16 * 1024];
@@ -193,11 +283,12 @@ public sealed class LocalSaveService : IDisposable
         var headerText = Encoding.ASCII.GetString(all, 0, headerEnd);
         var lines = headerText.Split("\r\n");
         var requestLine = lines[0].Split(' ');
-        var contentLength = lines.Skip(1)
+        var headers = lines.Skip(1)
             .Select(l => l.Split(':', 2))
-            .Where(p => p.Length == 2 && p[0].Trim().Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
-            .Select(p => int.TryParse(p[1].Trim(), out var n) ? n : 0)
-            .FirstOrDefault();
+            .Where(p => p.Length == 2)
+            .GroupBy(p => p[0].Trim().ToLowerInvariant())
+            .ToDictionary(g => g.Key, g => g.First()[1].Trim());
+        var contentLength = headers.TryGetValue("content-length", out var lengthText) && int.TryParse(lengthText, out var n) ? n : 0;
         if (contentLength is < 0 or > MaxRequestBytes)
         {
             throw new InvalidOperationException("Anfrage zu groß.");
@@ -216,7 +307,7 @@ public sealed class LocalSaveService : IDisposable
             body.Write(chunk, 0, read);
         }
 
-        return (requestLine[0], requestLine.Length > 1 ? requestLine[1].Split('?')[0] : "/", Encoding.UTF8.GetString(body.ToArray()));
+        return (requestLine[0], requestLine.Length > 1 ? requestLine[1].Split('?')[0] : "/", headers, Encoding.UTF8.GetString(body.ToArray()));
     }
 
     private static int IndexOfHeaderEnd(MemoryStream buffer)
