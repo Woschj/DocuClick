@@ -96,9 +96,27 @@ def check(version: str) -> None:
         sys.exit("Release passt nicht zum Tag:\n" + "\n".join(problems))
 
 
+def entries(text: str) -> list[str]:
+    """The top-level list items of a changelog section, each with its continuation lines."""
+    items: list[str] = []
+    for line in text.splitlines():
+        if line.startswith("- ") or not items:
+            items.append(line)
+        else:
+            items[-1] += "\n" + line
+    return [item.strip() for item in items if item.strip()]
+
+
 def notes(version: str) -> str:
-    parts = [f"## {title}\n\n{section(ROOT / changelog, version) or NO_CHANGES}" for title, _, changelog in PARTS.values()]
-    return "\n\n".join(parts) + "\n"
+    """Release notes: entries all parts share once under "Alle Teile", then each part's own."""
+    per_part = {title: entries(section(ROOT / changelog, version) or "") for title, _, changelog in PARTS.values()}
+    shared = [item for item in next(iter(per_part.values())) if all(item in items for items in per_part.values())]
+    blocks = [f"## Alle Teile\n\n" + "\n".join(shared)] if shared else []
+    for title, items in per_part.items():
+        own = [item for item in items if item not in shared and item != NO_CHANGES]
+        if own:
+            blocks.append(f"## {title}\n\n" + "\n".join(own))
+    return "\n\n".join(blocks or [NO_CHANGES]) + "\n"
 
 
 def main() -> None:
