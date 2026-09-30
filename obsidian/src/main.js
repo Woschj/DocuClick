@@ -1,5 +1,5 @@
 /* global DocuClickDocument, VIEWER_TEMPLATE, CYTOSCAPE */
-const { Plugin, PluginSettingTab, FileView, Modal, Setting, Notice, TFile, TFolder, AbstractInputSuggest, MarkdownRenderChild, WorkspaceLeaf, normalizePath } = require("obsidian");
+const { Plugin, PluginSettingTab, FileView, Modal, Setting, Notice, TFile, TFolder, AbstractInputSuggest, MarkdownRenderChild, WorkspaceLeaf, normalizePath, requestUrl } = require("obsidian");
 const VIEW_TYPE = "docuclick-diagram";
 const D = DocuClickDocument;
 const DEFAULT_SETTINGS = { themeMode: "docuclick", background: "#1e1e1e", accent: "#7c3aed", themeExport: true, defaultFolder: "", askFolder: true, imageStorage: "embedded", imageFolder: "DocuClick-Bilder" };
@@ -164,6 +164,20 @@ class NameDialog extends Modal {
   }
   onClose() { this.contentEl.empty(); }
 }
+class TextPrompt extends Modal {
+  constructor(app, title, label, value, submit) { super(app); Object.assign(this, { heading: title, label, value, submit }); }
+  onOpen() {
+    this.titleEl.setText(this.heading);
+    const accept = () => { const value = this.value.trim(); if (!value) return; this.close(); this.submit(value); };
+    new Setting(this.contentEl).setName(this.label).addText(text => {
+      text.setValue(this.value).onChange(value => this.value = value);
+      text.inputEl.addEventListener("keydown", event => { if (event.key === "Enter" && !event.isComposing) accept(); });
+      setTimeout(() => { text.inputEl.focus(); text.inputEl.select(); }, 0);
+    });
+    new Setting(this.contentEl).addButton(button => button.setButtonText("OK").setCta().onClick(accept));
+  }
+  onClose() { this.contentEl.empty(); }
+}
 class ConfirmDialog extends Modal {
   constructor(app, title, text, items, action, run) { super(app); Object.assign(this, { heading: title, text, items, action, run }); }
   onOpen() {
@@ -297,6 +311,8 @@ class DiagramView extends FileView {
   getIcon() { return "workflow"; }
   async onOpen() {
     this.contentEl.addClass("docuclick-view");
+    // Record into this diagram with the DocuClick app (start / pause).
+    this.recordAction = this.addAction?.("circle-dot", "Mit DocuClick aufnehmen", () => { if (this.file) this.plugin.toggleRecording(this.file).catch(report); });
     // Diagram notes: switch to the note's text (own notes, step list); old .docuclick files: convert.
     this.noteAction = this.addAction?.("file-text", "Als Notiz anzeigen", () => { if (this.file) this.plugin.toggleView(this.leaf, this.file).catch(report); });
   }
@@ -522,6 +538,19 @@ module.exports = class DocuClickPlugin extends Plugin {
     this.registerEvent(this.app.metadataCache.on("changed", file => {
       if (this.isDiagramNoteCached(file?.path)) this.showDiagramNotes().catch(report);
     }));
+    // Recording with the DocuClick app (Windows/macOS), paired via app-link.json.
+    this.recording = null;
+    this.statusEl = this.addStatusBarItem?.();
+    this.statusEl?.addClass?.("docuclick-status");
+    this.statusEl?.addEventListener?.("click", () => this.remote("pause").catch(report));
+    const activeDiagram = () => { const file = this.app.workspace.getActiveFile(); return file && ["md", "docuclick"].includes(file.extension) ? file : null; };
+    this.addCommand({
+      id: "record-start", name: "Aufnahme in diesen Ablauf starten (DocuClick-App)",
+      checkCallback: checking => { const file = activeDiagram(); if (!file) return false; if (!checking) this.startRecording(file).catch(report); return true; }
+    });
+    this.addCommand({ id: "record-pause", name: "Aufnahme pausieren (DocuClick-App)", callback: () => this.remote("pause").catch(report) });
+    this.addCommand({ id: "record-branch", name: "Abzweigung setzen (DocuClick-App)", callback: () => this.markDecisionPoint() });
+    this.registerInterval?.(window.setInterval(() => this.remote("status", {}, { quiet: true }).catch(() => {}), 5000));
     this.addCommand({ id: "clean-images", name: "Nicht mehr verwendete Bilder aufräumen", callback: () => this.cleanImages().catch(report) });
     this.app.workspace.onLayoutReady?.(() => this.showDiagramNotes().catch(report));
     this.addCommand({
@@ -604,6 +633,59 @@ module.exports = class DocuClickPlugin extends Plugin {
         for (const file of unused) await this.app.fileManager.trashFile(file);
         new Notice(`DocuClick: ${unused.length} Bild(er) in den Papierkorb verschoben.`);
       }).open();
+  }
+  /** Port and token the DocuClick app wrote into this vault (null: not paired yet). */
+  async appLink() {
+    const path = normalizePath(`${this.manifest?.dir ?? `${this.app.vault.configDir}/plugins/docuclick-diagrams`}/app-link.json`);
+    try {
+      const link = JSON.parse(await this.app.vault.adapter.read(path));
+      return Number.isInteger(link.port) && typeof link.token === "string" ? link : null;
+    } catch { return null; }
+  }
+  /** Sends a command to the running DocuClick app; updates the status bar. */
+  async remote(action, extra = {}, { quiet = false } = {}) {
+    const link = await this.appLink();
+    if (!link) {
+      if (quiet) { this.showRecordingState(null); return null; }
+      throw new Error("Noch nicht mit der DocuClick-App verbunden: In DocuClick für Windows/macOS einmal eine Aufnahme in diesem Vault starten.");
+    }
+    let response;
+    try {
+      response = await requestUrl({ url: `http://127.0.0.1:${link.port}/control`, method: "POST", contentType: "application/json", body: JSON.stringify({ token: link.token, action, ...extra }), throw: false });
+    } catch {
+      this.showRecordingState(null);
+      if (quiet) return null;
+      throw new Error("Die DocuClick-App läuft nicht. Bitte starten und erneut versuchen.");
+    }
+    const result = response.json ?? {};
+    this.showRecordingState(result);
+    if (!result.ok && !quiet) throw new Error(result.message || `Die DocuClick-App hat den Befehl abgelehnt (${response.status}).`);
+    return result;
+  }
+  showRecordingState(state) {
+    this.recording = state;
+    if (!this.statusEl) return;
+    const name = state?.file ? state.file.split(/[\\/]/).pop().replace(/\.(md|docuclick)$/, "") : "";
+    this.statusEl.setText(!state ? "" : state.recording ? `● DocuClick nimmt auf: ${name}` : state.paused ? `❚❚ DocuClick pausiert: ${name}` : "");
+    this.statusEl.setAttribute?.("aria-label", state?.recording ? "Klicken zum Pausieren" : "");
+  }
+  /** Absolute path of a vault file (desktop). */
+  fullPath(file) {
+    const adapter = this.app.vault.adapter;
+    return adapter.getFullPath?.(file.path) ?? `${adapter.getBasePath?.() ?? ""}/${file.path}`;
+  }
+  async startRecording(file) {
+    const result = await this.remote("start", { file: this.fullPath(file) });
+    new Notice(`DocuClick: ${result.message} Jeder Klick erscheint hier im Diagramm.`);
+  }
+  async toggleRecording(file) {
+    const state = await this.remote("status");
+    if (state?.recording && state.file === this.fullPath(file)) { await this.remote("pause"); new Notice("DocuClick: Aufnahme pausiert."); }
+    else await this.startRecording(file);
+  }
+  markDecisionPoint() {
+    new TextPrompt(this.app, "Abzweigung setzen", "Name des neuen Pfads", "", name =>
+      this.remote("branch", { name }).then(result => new Notice(`DocuClick: ${result.message}`)).catch(report)).open();
   }
   /** Opens a diagram (note or .docuclick) as diagram tab in a new tab. */
   async openDiagram(file) {

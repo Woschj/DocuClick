@@ -73,6 +73,22 @@ public sealed class SessionManagerTests : IDisposable
     }
 
     [Fact]
+    public void Recording_into_a_vault_installs_the_plugin_and_pairs_it_with_the_app()
+    {
+        Directory.CreateDirectory(_folder.File(".obsidian"));
+        var config = _config;
+        config.RemoteControlToken = "geheim";
+        using var session = CreateSession(config);
+        session.Start(_folder.File("Ablauf.md"));
+
+        var plugin = _folder.File(".obsidian/plugins/docuclick-diagrams");
+        Assert.True(File.Exists(Path.Combine(plugin, "main.js")));
+        var link = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(plugin, "app-link.json"))).RootElement;
+        Assert.Equal("geheim", link.GetProperty("token").GetString());
+        Assert.Equal(LocalSaveService.Port, link.GetProperty("port").GetInt32());
+    }
+
+    [Fact]
     public void Retina_capture_is_kept_at_full_resolution_when_downscaling_is_off()
     {
         var config = _config;

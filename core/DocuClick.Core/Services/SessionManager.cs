@@ -239,9 +239,18 @@ public sealed class SessionManager : IDisposable
         _currentTargetFileName = targetFilePath;
 
         // Recording into a vault: the plugin that opens the diagram note comes along.
-        if (_config.AutoInstallObsidianPlugin && ObsidianVault.FindRoot(targetDirectory) is { } vaultRoot && ObsidianPluginInstaller.EnsureInstalled(vaultRoot) is { } installMessage)
+        if (ObsidianVault.FindRoot(targetDirectory) is { } vaultRoot)
         {
-            InfoOccurred?.Invoke(installMessage);
+            if (_config.AutoInstallObsidianPlugin && ObsidianPluginInstaller.EnsureInstalled(vaultRoot) is { } installMessage)
+            {
+                InfoOccurred?.Invoke(installMessage);
+            }
+
+            // Lets the plugin in this vault start/pause recording and set decision points.
+            if (_config.RemoteControlToken is { Length: > 0 } token)
+            {
+                ObsidianAppLink.Write(vaultRoot, token);
+            }
         }
 
         StartCapturing();

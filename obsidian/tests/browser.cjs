@@ -44,6 +44,8 @@ const vault = {
   getAbstractFileByPath: path => files.get(path)?.file || folders.get(path),
   createFolder: async path => { if (files.has(path) || folders.has(path)) throw Error('exists'); const folder = new TFolder(path); folders.set(path, folder); return folder; },
   getAllLoadedFiles: () => [...folders.values()],
+  configDir: '.obsidian',
+  adapter: { read: async path => { if (!files.has(path)) throw Error('missing'); return files.get(path).text; }, getFullPath: path => '/vault/' + path },
   getFiles: () => [...files.values()].map(entry => entry.file),
   getMarkdownFiles: () => [...files.values()].map(entry => entry.file).filter(file => file.extension === 'md')
 };
@@ -60,12 +62,13 @@ class Plugin {
   constructor() { this.app = app; }
   registerView(type, factory) { this.factory = factory; }
   registerMarkdownCodeBlockProcessor(language, processor) { window.codeBlocks = {...window.codeBlocks, [language]: processor}; }
+  addStatusBarItem() { const el = document.body.createDiv(); window.statusBar = el; return el; } registerInterval() {}
   register() {} registerExtensions() {} addRibbonIcon() {} addCommand() {} registerEvent() {} addSettingTab() {}
   async loadData() { return window.pluginData || null; } async saveData(data) { window.pluginData = JSON.parse(JSON.stringify(data)); }
 }
 class FileView { constructor() { this.app = app; this.contentEl = document.body.createDiv(); this.contentEl.style = 'height:95vh;display:flex;flex-direction:column'; } }
 window.module = {exports: {}};
-window.require = name => { if (name !== 'obsidian') throw Error(name); return {Plugin, PluginSettingTab: class {}, AbstractInputSuggest: class {}, TFolder, FileView, MarkdownRenderChild, WorkspaceLeaf, Modal: class {}, Setting: class {}, Notice: class {constructor(text) {notices.push(text);}}, TFile, normalizePath: path => path}; };
+window.require = name => { if (name !== 'obsidian') throw Error(name); return {Plugin, PluginSettingTab: class {}, AbstractInputSuggest: class {}, TFolder, FileView, MarkdownRenderChild, WorkspaceLeaf, requestUrl: async request => { window.requests = [...(window.requests || []), request]; return window.fakeApp(JSON.parse(request.body)); }, Modal: class {}, Setting: class {}, Notice: class {constructor(text) {notices.push(text);}}, TFile, normalizePath: path => path}; };
 window.start = async () => {
   const plugin = new module.exports(); await plugin.onload();
   const file = await vault.create('Test.docuclick', JSON.stringify({format:'docuclick-diagram', version:1, canvas:{nodes:[],edges:[]}, flow:{nodes:[],edges:[]}}));
@@ -389,6 +392,22 @@ let browser, socket;
     testHost.plugin.app.metadataCache.resolvedLinks = { 'Notiz.md': { 'Prozesse/Attachments/Ablauf/verlinkt.png': 1 } };
   })()`);
   assert.equal(await evaluate("testHost.plugin.findUnusedImages().then(list => list.map(f => f.path).join())"), "Prozesse/Attachments/Ablauf/999999_000.png");
+  // Recording with the DocuClick app: not paired, paired, app not running.
+  assert.match(await evaluate("testHost.plugin.startRecording(appFile).then(() => 'ok', e => e.message)"), /einmal eine Aufnahme in diesem Vault starten/);
+  await evaluate(`testHost.files.set('.obsidian/plugins/docuclick-diagrams/app-link.json', { file: null, text: JSON.stringify({ port: 47811, token: 'geheim' }) });
+    window.fakeApp = body => ({ status: 200, json: { ok: true, message: 'Aufnahme läuft.', recording: body.action !== 'pause', paused: body.action === 'pause', file: body.file || '/vault/Prozesse/Ablauf.md' } });`);
+  await evaluate("testHost.plugin.startRecording(appFile)");
+  assert.deepEqual(JSON.parse(await evaluate("requests.at(-1).body")), { token: "geheim", action: "start", file: "/vault/Prozesse/Ablauf.md" });
+  assert.equal(await evaluate("requests.at(-1).url + ' ' + requests.at(-1).contentType"), "http://127.0.0.1:47811/control application/json");
+  assert.match(await evaluate("statusBar.textContent"), /DocuClick nimmt auf: Ablauf/);
+  await evaluate("testHost.plugin.remote('branch', { name: 'Fehlerfall' })");
+  assert.equal(await evaluate("JSON.parse(requests.at(-1).body).name"), "Fehlerfall");
+  await evaluate("testHost.plugin.toggleRecording(appFile)"); // same file recording -> pause
+  assert.equal(await evaluate("JSON.parse(requests.at(-1).body).action"), "pause");
+  assert.match(await evaluate("statusBar.textContent"), /pausiert/);
+  await evaluate("window.fakeApp = () => { throw new Error('ECONNREFUSED'); }");
+  assert.match(await evaluate("testHost.plugin.remote('status').then(() => 'ok', e => e.message)"), /läuft nicht/);
+  assert.equal(await evaluate("statusBar.textContent"), "");
   assert.deepEqual(errors, [], "Uncaught browser errors");
   console.log("PASS: sandbox, palette, default folder, colour themes, rename, undo/redo, image move, connect/delete/restore, Vault save, read-only HTML export/search/guide/lightbox, forged message rejection, conflict recovery, close flush, app recording in the vault, diagram notes (open as tab, own text kept, embed, convert)");
 })().catch(error => { console.error(error); process.exitCode=1; }).finally(async () => {

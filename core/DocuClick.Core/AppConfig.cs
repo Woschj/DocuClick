@@ -72,6 +72,9 @@ public sealed class AppConfig
     /// </summary>
     public bool AutoInstallObsidianPlugin { get; set; } = true;
 
+    /// <summary>Secret the Obsidian plugin sends to control recording (see ObsidianAppLink). Created at first start.</summary>
+    public string? RemoteControlToken { get; set; }
+
     private const int MaxRecentOutputPaths = 8;
 
     /// <summary>
