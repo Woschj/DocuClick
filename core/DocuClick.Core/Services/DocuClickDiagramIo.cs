@@ -117,6 +117,11 @@ public static class DocuClickDiagramIo
 
         doc.Nodes.RemoveAll(n => n is null);
         doc.Edges.RemoveAll(e => e is null);
+        foreach (var node in doc.Nodes.Where(n => n.Redactions is not null))
+        {
+            var areas = node.Type == "file" ? ImageRedactor.Clean(node.Redactions) : new List<ImageRedaction>();
+            node.Redactions = areas.Count > 0 ? areas : null;
+        }
 
         var diagramFolder = Path.GetDirectoryName(Path.GetFullPath(path))!;
         var imageRoot = RootFor(path);
@@ -227,7 +232,7 @@ public static class DocuClickDiagramIo
         {
             nodes = doc.Nodes.Select(n => n.Type == "file" ? new CanvasNode
             {
-                Id = n.Id, Type = n.Type, X = n.X, Y = n.Y, Width = n.Width, Height = n.Height, Color = n.Color,
+                Id = n.Id, Type = n.Type, X = n.X, Y = n.Y, Width = n.Width, Height = n.Height, Color = n.Color, Redactions = n.Redactions,
             } : n),
             edges = doc.Edges,
         };

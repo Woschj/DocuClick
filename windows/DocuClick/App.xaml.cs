@@ -420,6 +420,13 @@ public partial class App : Application
                 // reopened later — exactly the "one overlay, not two views"
                 // complaint this replaces.
                 _flowPreviewOverlay = new FlowPreviewOverlay();
+                if (_config!.UseTemplateOverview)
+                {
+                    // Test switch: the shared editor template instead of flow.js
+                    // (the Bridge events below then simply stay unused).
+                    _flowPreviewOverlay.PageHost = new EditorPageHost(_sessionManager!, _flowPreviewOverlay, _flowPreviewOverlay.ImageUrl);
+                }
+
                 _flowPreviewOverlay.Bridge.NodeClicked += OnFlowPreviewNodeClicked;
                 _flowPreviewOverlay.Bridge.PathsProvider = decisionPointId => _sessionManager?.ListPaths(decisionPointId) ?? new List<PathInfo>();
                 _flowPreviewOverlay.Bridge.NewPathRequested += OnNewPathRequested;

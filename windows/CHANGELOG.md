@@ -7,6 +7,28 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [1.17.0] - 2026-09-30
+
+- **Neue Ablauf-Übersicht zum Testen** (Einstellungen → „Neue Ablauf-Übersicht
+  testen“, wirkt beim nächsten Start): das Übersichtsfenster nutzt denselben
+  Editor wie der Ablauf im Browser und das Obsidian-Plugin – mit Schwärzen,
+  Drucken/PDF, Suche und Anleitung. Rechtsklick auf einen Schritt: „Hier
+  weiter aufnehmen“, auf eine Abzweigung: „Neuer Pfad ab hier“; der
+  Schritt, an den der nächste Klick anschließt, ist grün markiert (Schein um
+  die Karte, Rahmen am Screenshot). „Zurück“ nimmt auch aufgenommene Klicks
+  zurück, „Wiederholen“ holt sie wieder. Eine
+  Änderung in der Übersicht, die sich mit einem gerade aufgenommenen Klick
+  überschneidet, wird abgelehnt statt den Klick zu verlieren.
+- **Schwärzen mit Vorschau, nachträglich änderbar, auch Weichzeichnen** (im
+  Editor: Ablauf im Browser, neue Ablauf-Übersicht, Obsidian-Plugin): Flächen
+  werden live gezeigt, lassen sich verschieben, in der Größe ändern, zwischen
+  Schwärzen und Weichzeichnen umschalten und wieder entfernen. Das Original
+  bleibt im Attachments-Ordner, deshalb geht das auch später noch; die
+  .html-Datei enthält nur das bearbeitete Bild. Ein nur eingebettetes Bild
+  (z. B. per „Bild ersetzen“ eingefügt) wird dafür als Original unter
+  `Attachments/Originale/` abgelegt.
+  Auch der draw.io-Export enthält nur die bearbeiteten Screenshots.
+
 ## [1.16.0] - 2026-09-30
 
 - **Screenshots als WebP** (Standard; JPEG und PNG wählbar in den

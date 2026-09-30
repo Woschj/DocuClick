@@ -27,6 +27,7 @@ internal sealed class AppController : IDisposable
     private readonly NativeMenuItem _toggleMenuItem = new("Aufnahme starten");
     private readonly DispatcherTimer _skipModifierPoll;
     private readonly LocalSaveService _saveService;
+    private bool _saveServiceRunning;
     private FlowPreviewWindow? _flowWindow;
     private ZoomCursorBoxOverlay? _zoomCursorBox;
     private bool _dialogOpen;
@@ -56,7 +57,7 @@ internal sealed class AppController : IDisposable
 
         _saveService.RemoteToken = _config.RemoteControlToken;
         _saveService.RemoteControl = command => Dispatcher.UIThread.InvokeAsync(() => HandleRemoteCommand(command)).GetTask();
-        _saveService.Start();
+        _saveServiceRunning = _saveService.Start();
         _session.ZoomToCursorChanged += active => Post(() =>
         {
             _topBar?.UpdateZoomState(active);
@@ -408,6 +409,24 @@ internal sealed class AppController : IDisposable
         }
 
         var window = new FlowPreviewWindow();
+        if (_config.UseTemplateOverview && _saveServiceRunning)
+        {
+            // Test switch: the shared editor template instead of flow.js; the
+            // page and screenshots come from the local service (see FlowPreviewWindow.PageHost).
+            window.PageHost = new EditorPageHost(_session, window, (folder, file) =>
+            {
+                var root = ObsidianVault.FindRoot(folder) ?? folder;
+                var relative = Path.GetRelativePath(root, Path.GetFullPath(Path.Combine(folder, file)));
+                return relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative)
+                    ? null
+                    : _saveService.EditorImageUrl(relative.Replace('\\', '/'));
+            });
+            window.PageUrl = _saveService.EditorPageUrl;
+            var pageHost = window.PageHost;
+            _saveService.EditorPage = () => Dispatcher.UIThread.InvokeAsync(() => pageHost.BuildPage()).GetTask().GetAwaiter().GetResult();
+            _saveService.EditorImageRoot = () => _session.CurrentSessionFolder is { } folder ? ObsidianVault.FindRoot(folder) ?? folder : null;
+        }
+
         var bridge = window.Bridge;
         bridge.PathsProvider = id => _session.ListPaths(id);
         bridge.NodeClicked += nodeId =>

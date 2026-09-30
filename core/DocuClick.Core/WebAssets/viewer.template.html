@@ -69,6 +69,7 @@
     position: absolute; object-fit: cover; border-radius: 8px;
     pointer-events: none; box-shadow: 0 4px 14px rgba(var(--shade), 0.4);
   }
+  .node-image-overlay.recording-current { outline: 4px solid #22c55e; outline-offset: 3px; box-shadow: 0 0 22px 6px rgba(34, 197, 94, 0.65); }
 
   #node-handles { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 1000; }
   .node-handle {
@@ -612,8 +613,21 @@
   /* Redaction (editor): drag a rectangle over the screenshot in the image view. */
   .lightbox-redact-btn { position: absolute; top: 16px; left: 16px; z-index: 3; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border-glass); background: var(--surface-glass); color: var(--text-main); cursor: pointer; font: inherit; font-size: 12px; }
   .lightbox-redact-btn.active { background: var(--accent); color: var(--on-accent); }
-  #lightbox.redacting .lightbox-frame img { cursor: crosshair; }
-  #redact-rect { position: fixed; background: rgba(0, 0, 0, 0.85); outline: 2px dashed var(--accent); pointer-events: none; z-index: 4; }
+  .redact-toolbar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 3; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: 94vw; padding: 6px 8px; border-radius: 10px; border: 1px solid var(--border-glass); background: var(--surface-glass); }
+  .redact-toolbar button { padding: 5px 10px; border-radius: 7px; border: 1px solid var(--border-glass); background: transparent; color: var(--text-main); cursor: pointer; font: inherit; font-size: 12px; }
+  .redact-toolbar button.active, .redact-toolbar button.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+  .redact-toolbar button:disabled { opacity: 0.4; cursor: default; }
+  .redact-hint { font-size: 11px; color: var(--text-muted); padding: 0 4px; }
+  #redact-stage { position: absolute; z-index: 2; border-radius: var(--radius-md); overflow: hidden; }
+  #redact-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #redact-boxes { position: absolute; inset: 0; cursor: crosshair; touch-action: none; }
+  .redact-box { position: absolute; outline: 1px dashed rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); cursor: move; }
+  .redact-box.selected { outline: 2px solid var(--accent); }
+  .redact-box.locked { outline-color: rgba(255, 255, 255, 0.35); cursor: crosshair; }
+  .redact-handle { position: absolute; width: 12px; height: 12px; margin: -6px; border-radius: 3px; background: var(--accent); border: 1px solid #fff; }
+  .redact-handle.nw { left: 0; top: 0; cursor: nwse-resize; } .redact-handle.se { right: 0; bottom: 0; margin: 0 -6px -6px 0; cursor: nwse-resize; }
+  .redact-handle.ne { right: 0; top: 0; margin: -6px -6px 0 0; cursor: nesw-resize; } .redact-handle.sw { left: 0; bottom: 0; margin: 0 0 -6px -6px; cursor: nesw-resize; }
+  #lightbox.redacting .lightbox-nav { display: none; }
 </style>
 </head>
 <body>
@@ -695,12 +709,23 @@
 <div id="lightbox" hidden>
   <button id="lightbox-close-btn" class="lightbox-close-btn" title="Schließen (Esc)">✕</button>
 <!-- DOCUCLICK-EDITOR-START -->
-  <button id="lightbox-redact-btn" class="lightbox-redact-btn" type="button" title="Einen Bereich im Screenshot mit der Maus aufziehen; er wird dauerhaft geschwärzt">▮ Bereich schwärzen</button>
+  <button id="lightbox-redact-btn" class="lightbox-redact-btn" type="button" title="Bereiche im Screenshot schwärzen oder weichzeichnen (mit Vorschau, später änderbar)">▮ Schwärzen / Weichzeichnen</button>
+  <div id="redact-toolbar" class="redact-toolbar" hidden>
+    <button id="redact-tool-black" type="button" title="Neue (und die ausgewählte) Fläche schwärzen">▮ Schwärzen</button>
+    <button id="redact-tool-blur" type="button" title="Neue (und die ausgewählte) Fläche weichzeichnen">▒ Weichzeichnen</button>
+    <button id="redact-delete-btn" type="button" title="Ausgewählte Fläche entfernen (Entf)" disabled>Entfernen</button>
+    <span class="redact-hint">Fläche aufziehen · anklicken zum Verschieben · Ecken ziehen für die Größe</span>
+    <button id="redact-cancel-btn" type="button" title="Änderungen verwerfen (Esc)">Abbrechen</button>
+    <button id="redact-done-btn" type="button" class="primary" title="Übernehmen (Enter)">Fertig</button>
+  </div>
 <!-- DOCUCLICK-EDITOR-END -->
   <button id="lightbox-prev-btn" class="lightbox-nav prev" title="Vorheriger Schritt (←)">‹</button>
   <button id="lightbox-next-btn" class="lightbox-nav next" title="Nächster Schritt (→)">›</button>
   <div class="lightbox-frame">
     <img id="lightbox-img" alt="">
+<!-- DOCUCLICK-EDITOR-START -->
+    <div id="redact-stage" hidden><canvas id="redact-canvas"></canvas><div id="redact-boxes"></div></div>
+<!-- DOCUCLICK-EDITOR-END -->
     <div class="lightbox-bar">
       <span id="lightbox-step-badge" class="lightbox-step-badge">Schritt 1</span>
       <span id="lightbox-title" class="lightbox-title"></span>
@@ -937,6 +962,112 @@ setTimeout(ensureViewFit, 50);
 setTimeout(ensureViewFit, 150);
 setTimeout(ensureViewFit, 400);
 
+// ---- Redactions: blacked-out or blurred areas of a screenshot -----------
+// Stored on the screenshot's canvas file node as docuClickRedactions:
+// [{ x, y, w, h, mode: "black" | "blur" }] in fractions of the image size.
+// The original stays untouched (so areas can be changed later); every view
+// here shows the redacted version. A flow node's redactionsBaked = n says
+// its imageUrl already contains the first n areas (shared HTML files and
+// exports carry only such baked images, never the original).
+const BLANK_IMAGE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'/%3E";
+const embeddedCanvas = (() => {
+  try { return JSON.parse(document.getElementById("docuclick-data")?.textContent || "null"); } catch { return null; }
+})();
+// Viewer: from the embedded document; the editor replaces this with its live one.
+let redactionsOf = (nodeId) => {
+  const nodes = embeddedCanvas?.nodes || [];
+  const text = nodes.find((n) => n.id === nodeId && n.type === "text");
+  const file = text && nodes.find((n) => n.type === "file" && Math.abs(n.x - text.x) < 0.5 && Math.abs(n.y - text.y - 70) < 0.5);
+  return file?.docuClickRedactions || [];
+};
+function pendingRedactions(nodeId) {
+  const node = cy.getElementById(nodeId);
+  return (redactionsOf(nodeId) || []).slice(node.data("redactionsBaked") || 0);
+}
+function loadImage(src) {
+  const image = new Image();
+  // Screenshots served from another origin (the app's overview) must allow
+  // reading their pixels; data URIs are unaffected.
+  if (!/^data:/i.test(src)) image.crossOrigin = "anonymous";
+  image.src = src;
+  return image.decode().then(() => image);
+}
+// Strong enough that text in the area can't be read, on any screenshot size.
+function blurArea(context, x, y, w, h) {
+  const block = Math.max(8, Math.round(Math.max(context.canvas.width, context.canvas.height) / 120));
+  const small = document.createElement("canvas");
+  small.width = Math.max(1, Math.round(w / block)); small.height = Math.max(1, Math.round(h / block));
+  const smallContext = small.getContext("2d");
+  smallContext.imageSmoothingEnabled = true; smallContext.imageSmoothingQuality = "high";
+  smallContext.drawImage(context.canvas, x, y, w, h, 0, 0, small.width, small.height);
+  context.save();
+  context.imageSmoothingEnabled = true; context.imageSmoothingQuality = "high";
+  context.drawImage(small, 0, 0, small.width, small.height, x, y, w, h);
+  context.restore();
+}
+/** Draws image + areas onto canvas (resized to the image). */
+function drawRedacted(canvas, image, areas) {
+  canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+  const context = canvas.getContext("2d");
+  context.drawImage(image, 0, 0);
+  for (const area of areas) {
+    const x = Math.round(area.x * canvas.width), y = Math.round(area.y * canvas.height);
+    const w = Math.max(1, Math.round(area.w * canvas.width)), h = Math.max(1, Math.round(area.h * canvas.height));
+    if (area.mode === "blur") blurArea(context, x, y, w, h);
+    else { context.fillStyle = "#000"; context.fillRect(x, y, w, h); }
+  }
+  return canvas;
+}
+/** The screenshot with the areas burnt in, as data URI (for files that leave the editor). */
+async function redactedDataUrl(src, areas) {
+  const canvas = drawRedacted(document.createElement("canvas"), await loadImage(src), areas);
+  // WebP where the browser can write it (Chromium, Firefox); PNG otherwise.
+  return canvas.toDataURL("image/webp", 0.9);
+}
+const redactedViews = new Map(); // nodeId → { key, url }
+/**
+ * What to show for a node's screenshot: its imageUrl, or — with areas not
+ * yet burnt in — the redacted version (a blank image while that is drawn,
+ * never the original).
+ */
+function shownImage(nodeId) {
+  const node = cy.getElementById(nodeId);
+  const src = node.data("imageUrl");
+  const areas = src ? pendingRedactions(nodeId) : [];
+  if (!areas.length) return src;
+  const key = `${src}|${JSON.stringify(areas)}`;
+  const view = redactedViews.get(nodeId);
+  if (view?.key === key) return view.url || BLANK_IMAGE;
+  if (view?.url) URL.revokeObjectURL(view.url);
+  const entry = { key, url: null };
+  redactedViews.set(nodeId, entry);
+  loadImage(src).then((image) => new Promise((resolve) => drawRedacted(document.createElement("canvas"), image, areas).toBlob(resolve)))
+    .then((blob) => {
+      if (redactedViews.get(nodeId) !== entry || !blob) return;
+      entry.url = URL.createObjectURL(blob);
+      refreshShownImage(nodeId);
+    })
+    .catch(() => {});
+  return BLANK_IMAGE;
+}
+/** Puts the current version of a node's screenshot into every place that shows it. */
+function refreshShownImage(nodeId) {
+  const url = shownImage(nodeId);
+  if (!url) return;
+  const overlay = overlayImgs.get(nodeId);
+  if (overlay && overlay.getAttribute("src") !== url) overlay.src = url;
+  if (!lightbox.hidden && imageNodes[currentLightboxIdx]?.data.id === nodeId && lightboxImg.getAttribute("src") !== url) lightboxImg.src = url;
+  document.querySelectorAll(".guide-card-thumb").forEach((thumb) => {
+    if (thumb.dataset.nodeId === nodeId && thumb.getAttribute("src") !== url) thumb.src = url;
+  });
+}
+/** Like shownImage, but waits until a redacted version is drawn (printing). */
+async function finalImage(nodeId) {
+  const src = cy.getElementById(nodeId).data("imageUrl");
+  const areas = src ? pendingRedactions(nodeId) : [];
+  return areas.length ? redactedDataUrl(src, areas).catch(() => BLANK_IMAGE) : src;
+}
+
 // Overlay images
 const overlayContainer = document.getElementById("image-overlays");
 const overlayImgs = new Map();
@@ -944,7 +1075,7 @@ cy.nodes("[imageUrl]").filter((node) => !!node.data("imageUrl")).forEach((node) 
   const img = document.createElement("img");
   img.className = "node-image-overlay";
   img.alt = "";
-  img.src = node.data("imageUrl");
+  img.src = shownImage(node.id());
   overlayContainer.appendChild(img);
   overlayImgs.set(node.id(), img);
 });
@@ -1002,9 +1133,10 @@ let currentLightboxIdx = -1;
 
 function openLightbox(idx) {
   if (idx < 0 || idx >= imageNodes.length) return;
+  window.docuclickStopRedacting?.(false);
   currentLightboxIdx = idx;
   const node = imageNodes[idx];
-  lightboxImg.src = node.data.imageUrl;
+  lightboxImg.src = shownImage(node.data.id);
   lightboxStepBadge.textContent = `Bild ${idx + 1} von ${imageNodes.length}`;
   lightboxTitle.textContent = node.data.label || "";
   lightboxPrevBtn.disabled = (idx === 0);
@@ -1018,6 +1150,7 @@ function openLightboxByNodeId(nodeId) {
 }
 
 function closeLightbox() {
+  window.docuclickStopRedacting?.(false);
   lightbox.hidden = true;
   currentLightboxIdx = -1;
 }
@@ -1280,6 +1413,7 @@ guideTabImages?.addEventListener("click", () => {
 // one step per block with its full-size screenshot. The browser's print
 // dialog offers "Als PDF speichern".
 function printGuide() {
+  const images = [];
   const container = document.getElementById("print-guide");
   container.innerHTML = "";
   const title = document.createElement("h1");
@@ -1303,17 +1437,16 @@ function printGuide() {
     const number = element.querySelector(".guide-card-num")?.textContent.trim();
     heading.textContent = `${number && number !== "◆" ? number + ". " : ""}${node.length ? node.data("label") || "" : element.textContent.trim()}`;
     step.appendChild(heading);
-    const imageUrl = node.length ? node.data("imageUrl") : null;
-    if (imageUrl) {
+    if (node.length && node.data("imageUrl")) {
       const img = document.createElement("img");
-      img.src = imageUrl;
       img.alt = "";
+      images.push(finalImage(node.id()).then((url) => { img.src = url; }));
       step.appendChild(img);
     }
     container.appendChild(step);
   });
   // Images must be decoded before the print snapshot is taken.
-  Promise.all([...container.querySelectorAll("img")].map((img) => img.decode().catch(() => {}))).then(() => window.print());
+  Promise.all(images).then(() => Promise.all([...container.querySelectorAll("img")].map((img) => img.decode().catch(() => {})))).then(() => window.print());
 }
 document.getElementById("guide-print-btn")?.addEventListener("click", printGuide);
 
@@ -1407,7 +1540,7 @@ function buildGuideList() {
 
     let thumbHtml = "";
     if (imageUrl) {
-      thumbHtml = `<img class="guide-card-thumb" src="${imageUrl}" alt="" loading="lazy" title="Klicken für Vollbild">`;
+      thumbHtml = `<img class="guide-card-thumb" src="${shownImage(nodeId)}" data-node-id="${escapeHtml(nodeId)}" alt="" loading="lazy" title="Klicken für Vollbild">`;
     } else if (!isDecision) {
       const shapeIcon = shape === "ellipse" ? "🟢" : shape === "rhomboid" ? "🔷" : shape === "tag" ? "📑" : shape === "rectangle" ? "📝" : "🟦";
       thumbHtml = `<div class="guide-shape-badge" style="background:${color}22; border: 1px solid ${color}44; color:${color};" title="${shape}">${shapeIcon}</div>`;
@@ -1695,7 +1828,7 @@ if (dataScriptEl) {
   }
 
   if (editorHost) {
-    setStatus("Im Vault gespeichert");
+    setStatus("Änderungen werden automatisch gespeichert");
     saveStatus.title = "Automatisch im Obsidian-Vault gespeichert";
     document.getElementById("download-btn").hidden = true;
     if (editorHost.exportReadOnly) {
@@ -1705,7 +1838,10 @@ if (dataScriptEl) {
       exportButton.className = "dock-btn";
       exportButton.textContent = "HTML-Ansicht";
       exportButton.title = "Eigenständige HTML-Datei ohne Bearbeitungsfunktionen exportieren";
-      exportButton.addEventListener("click", () => editorHost.exportReadOnly(snapshot()));
+      exportButton.addEventListener("click", async () => {
+        try { editorHost.exportReadOnly(await bakedSnapshot()); }
+        catch { setStatus("Export nicht möglich: ein Screenshot konnte nicht geschwärzt werden."); }
+      });
       document.getElementById("guide-toggle-btn").after(exportButton);
     }
   } else if (isEmbedded) {
@@ -1714,14 +1850,15 @@ if (dataScriptEl) {
     setStatus("Einmal in DocuClick öffnen, um Speichern zu aktivieren");
   }
 
-  function buildPatchedHtml() {
+  // state: the document to write (default: as shown; the download passes bakedSnapshot()).
+  function buildPatchedHtml(state = snapshot()) {
     const currentFlowData = {
-      nodes: cy.nodes().map((n) => {
-        const d = { ...n.data() };
+      nodes: state.flow.nodes.map((n) => {
+        const d = { ...n.data };
         if (!d.imageUrl) delete d.imageUrl;
-        return { data: d, position: n.position() };
+        return { data: d, position: n.position };
       }),
-      edges: cy.edges().map((e) => ({ data: e.data() }))
+      edges: state.flow.edges
     };
     // .NET's JsonSerializer (server-side) escapes "<"/">" in
     // string values by default, so a node label can never
@@ -1744,7 +1881,7 @@ if (dataScriptEl) {
     const startIdx = patched.indexOf(startMarker);
     const endIdx = patched.indexOf("<\/script>", startIdx);
     if (startIdx !== -1 && endIdx !== -1) {
-      patched = `${patched.slice(0, startIdx + startMarker.length)}\n${escapeScriptClose(JSON.stringify(canvasDoc, null, 2))}\n${patched.slice(endIdx)}`;
+      patched = `${patched.slice(0, startIdx + startMarker.length)}\n${escapeScriptClose(JSON.stringify(state.canvas, null, 2))}\n${patched.slice(endIdx)}`;
     }
 
     // 2. Patch flowData variable (Cytoscape JSON data)
@@ -1755,8 +1892,11 @@ if (dataScriptEl) {
     return patched;
   }
 
-  document.getElementById("download-btn")?.addEventListener("click", () => {
-    const blob = new Blob([buildPatchedHtml()], { type: "text/html" });
+  document.getElementById("download-btn")?.addEventListener("click", async () => {
+    let state;
+    try { state = await bakedSnapshot(); }
+    catch { setStatus("Download nicht möglich: ein Screenshot konnte nicht geschwärzt werden."); return; }
+    const blob = new Blob([buildPatchedHtml(state)], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -1788,7 +1928,7 @@ if (dataScriptEl) {
       try {
         await editorHost.save(snapshot());
         dirty = editRevision !== revision;
-        setStatus("✓ Im Vault gespeichert");
+        setStatus("✓ Gespeichert");
       } catch (error) {
         dirty = true;
         setStatus("Nicht gespeichert: " + error.message);
@@ -2382,8 +2522,11 @@ if (dataScriptEl) {
             textNode.width = 380;
             textNode.height = 60;
             let imgSib = findImageSibling(textNode);
+            node.removeData("redactionsBaked");
             if (imgSib) {
               imgSib.file = modalImageDataUrl;
+              // Areas belong to the old screenshot.
+              delete imgSib.docuClickRedactions;
             } else {
               imgSib = {
                 id: randomId(),
@@ -2614,6 +2757,17 @@ if (dataScriptEl) {
 
       const items = [];
       items.push({ header: nodeLabel.length > 28 ? nodeLabel.slice(0, 28) + "…" : nodeLabel });
+
+      // Recording host (the DocuClick app's Ablauf-Übersicht): where the next
+      // click lands, and new paths from a decision point.
+      const recordingHost = editorHost?.recording;
+      if (recordingHost) {
+        items.push({ icon: "▶", primary: true, label: "Hier weiter aufnehmen", action: () => recordingHost.jumpTo(nodeId) });
+        if (node.data("shape") === "diamond" || nodeLabel.includes("Abzweigung")) {
+          items.push({ icon: "＋", label: "Neuer Pfad ab hier …", action: () => recordingHost.newPath(nodeId) });
+        }
+        items.push({ separator: true });
+      }
 
       if (hasImage) {
         const idx = imageNodes.findIndex((n) => n.data.id === nodeId);
@@ -2924,19 +3078,20 @@ if (dataScriptEl) {
     cy.nodes().forEach(node => {
       if (node.data("imageUrl")) {
         const img = document.createElement("img");
-        img.className = "node-image-overlay"; img.alt = ""; img.src = node.data("imageUrl");
+        img.className = "node-image-overlay"; img.alt = ""; img.src = shownImage(node.id());
         overlayContainer.appendChild(img); overlayImgs.set(node.id(), img);
       }
       createHandlesForNode(node);
     });
     buildGuideList(); scheduleViewerRaf();
+    if (typeof currentNodeId !== "undefined" && currentNodeId) setCurrentNode(currentNodeId);
   }
   // The file changed outside the editor (e.g. the DocuClick app recorded a
-  // step): show it and start a fresh history; nothing to save.
+  // step): show it as a new history entry, so "Zurück" can undo it like an
+  // own edit (which then saves the earlier state); nothing to save now.
   function replaceDocument(state) {
     applyState(state);
-    history = [JSON.stringify(snapshot())]; historyIndex = 0;
-    updateHistoryButtons();
+    recordHistory();
   }
   document.addEventListener("keydown", e => {
     if (!(e.ctrlKey || e.metaKey) || e.altKey || e.target.closest("input, textarea, [contenteditable]")) return;
@@ -2946,7 +3101,23 @@ if (dataScriptEl) {
     if (e.key.toLowerCase() === "s") { e.preventDefault(); saveNow(); }
   });
   updateHistoryButtons();
-  if (editorHost) editorHost.ready?.({ snapshot, undo: () => restoreHistory(-1), redo: () => restoreHistory(1), replace: replaceDocument });
+  // Recording host: marks the step the next recorded click attaches to —
+  // a green glow around the card (the screenshot covers most of the card, so
+  // its own image gets a green frame too).
+  cy.style().selector("node.recording-current").style({
+    "border-width": 6, "border-color": "#22c55e", "border-style": "solid",
+    "underlay-color": "#22c55e", "underlay-opacity": 0.45, "underlay-padding": 10, "underlay-shape": "round-rectangle",
+  }).update();
+  let currentNodeId = null;
+  function setCurrentNode(nodeId) {
+    currentNodeId = nodeId || null;
+    cy.nodes(".recording-current").removeClass("recording-current");
+    overlayImgs.forEach((img) => img.classList.remove("recording-current"));
+    if (!currentNodeId) return;
+    cy.getElementById(currentNodeId).addClass("recording-current");
+    overlayImgs.get(currentNodeId)?.classList.add("recording-current");
+  }
+  if (editorHost) editorHost.ready?.({ snapshot, undo: () => restoreHistory(-1), redo: () => restoreHistory(1), replace: replaceDocument, setCurrent: setCurrentNode });
 
   function tryConnect(fromId, toId) {
     if (fromId === toId) return;
@@ -2972,72 +3143,208 @@ if (dataScriptEl) {
     scheduleSave();
   }
 
-  // ---- Redaction: black out an area of a screenshot for good -----------
-  // In the image view: "Bereich schwärzen", drag a rectangle over the image.
-  // The pixels are replaced in the stored screenshot (not an overlay), so
-  // exports and the HTML view never contain them. The original image file of
-  // a recording stays on disk until cleaned up ("Nicht mehr verwendete Bilder
-  // aufräumen" in the Obsidian plugin).
-  const redactButton = document.getElementById("lightbox-redact-btn");
-  const lightboxFrame = document.querySelector("#lightbox .lightbox-frame");
-  let redactDrag = null, redactRect = null;
-  const setRedacting = (on) => {
-    lightbox.classList.toggle("redacting", on);
-    redactButton?.classList.toggle("active", on);
-    if (redactButton) redactButton.textContent = on ? "Bereich aufziehen … (Esc: abbrechen)" : "▮ Bereich schwärzen";
-    if (!on) { redactRect?.remove(); redactRect = null; redactDrag = null; }
+  // ---- Redaction editor: black out or blur areas of a screenshot --------
+  // In the image view: "Schwärzen / Weichzeichnen" opens an editor over the
+  // screenshot with a live preview. Drag on the image to add an area, click
+  // an area to select it, drag it to move, the corner handles to resize,
+  // Entf to delete; the two tool buttons set the kind of new areas (and of
+  // the selected one). "Fertig" stores the areas on the screenshot's file
+  // node (see redactionsOf); the original stays, so they can be changed
+  // later. Areas already burnt into the image (redactionsBaked, e.g. in a
+  // shared HTML file) are shown locked.
+  redactionsOf = (nodeId) => {
+    const textNode = textNodesById.get(nodeId);
+    return (textNode && findImageSibling(textNode)?.docuClickRedactions) || [];
   };
-  redactButton?.addEventListener("click", (e) => { e.stopPropagation(); setRedacting(!lightbox.classList.contains("redacting")); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && lightbox.classList.contains("redacting")) { e.stopImmediatePropagation(); setRedacting(false); } }, true);
-  lightboxImg.addEventListener("mousedown", (e) => {
-    if (!lightbox.classList.contains("redacting")) return;
-    e.preventDefault(); e.stopPropagation();
-    redactDrag = { x: e.clientX, y: e.clientY };
-    redactRect = document.createElement("div"); redactRect.id = "redact-rect";
-    document.body.appendChild(redactRect);
-  });
-  window.addEventListener("mousemove", (e) => {
-    if (!redactDrag || !redactRect) return;
-    const box = lightboxImg.getBoundingClientRect();
-    const x1 = Math.max(box.left, Math.min(redactDrag.x, e.clientX)), y1 = Math.max(box.top, Math.min(redactDrag.y, e.clientY));
-    const x2 = Math.min(box.right, Math.max(redactDrag.x, e.clientX)), y2 = Math.min(box.bottom, Math.max(redactDrag.y, e.clientY));
-    Object.assign(redactRect.style, { left: `${x1}px`, top: `${y1}px`, width: `${Math.max(0, x2 - x1)}px`, height: `${Math.max(0, y2 - y1)}px` });
-  });
-  window.addEventListener("mouseup", async (e) => {
-    if (!redactDrag || !redactRect) return;
-    const box = lightboxImg.getBoundingClientRect(), area = redactRect.getBoundingClientRect();
-    setRedacting(false);
-    if (area.width < 3 || area.height < 3 || currentLightboxIdx < 0) return;
-    const scaleX = lightboxImg.naturalWidth / box.width, scaleY = lightboxImg.naturalHeight / box.height;
-    await redactImage(imageNodes[currentLightboxIdx].data.id, {
-      x: (area.left - box.left) * scaleX, y: (area.top - box.top) * scaleY, width: area.width * scaleX, height: area.height * scaleY,
-    });
-  });
-  async function redactImage(nodeId, rect) {
-    const node = cy.getElementById(nodeId);
-    const source = new Image();
-    source.src = node.data("imageUrl");
-    await source.decode();
-    const canvas = document.createElement("canvas");
-    canvas.width = source.naturalWidth; canvas.height = source.naturalHeight;
-    const context = canvas.getContext("2d");
-    context.drawImage(source, 0, 0);
-    context.fillStyle = "#000";
-    context.fillRect(Math.floor(rect.x), Math.floor(rect.y), Math.ceil(rect.width), Math.ceil(rect.height));
-    // WebP where the browser can write it (Chromium, Firefox); PNG otherwise.
-    const url = canvas.toDataURL("image/webp", 0.9);
-    node.data("imageUrl", url);
-    overlayImgs.get(nodeId)?.setAttribute("src", url);
-    const entry = imageNodes.find((n) => n.data.id === nodeId);
-    if (entry) entry.data.imageUrl = url;
+  const redactButton = document.getElementById("lightbox-redact-btn");
+  const redactToolbar = document.getElementById("redact-toolbar");
+  const redactStage = document.getElementById("redact-stage");
+  const redactCanvas = document.getElementById("redact-canvas");
+  const redactBoxes = document.getElementById("redact-boxes");
+  const redactTools = { black: document.getElementById("redact-tool-black"), blur: document.getElementById("redact-tool-blur") };
+  const redactDeleteButton = document.getElementById("redact-delete-btn");
+  let redactEdit = null; // { nodeId, image, locked, areas, selected, tool, drag }
+  const MIN_AREA = 0.004;
+  const clamp01 = (value) => Math.min(1, Math.max(0, value));
+
+  /** Sets the areas of a node's screenshot (all of them, locked ones first) and saves. */
+  function setRedactions(nodeId, areas) {
     const textNode = textNodesById.get(nodeId);
     const sibling = textNode && findImageSibling(textNode);
-    if (sibling) sibling.file = url;
-    if (!lightbox.hidden) lightboxImg.src = url;
+    if (!sibling) { setStatus("Für diesen Schritt ist kein Screenshot gespeichert."); return false; }
+    const clean = areas.filter((a) => a.w >= MIN_AREA && a.h >= MIN_AREA)
+      .map((a) => ({ x: +a.x.toFixed(5), y: +a.y.toFixed(5), w: +a.w.toFixed(5), h: +a.h.toFixed(5), mode: a.mode === "blur" ? "blur" : "black" }));
+    if (JSON.stringify(clean) === JSON.stringify(sibling.docuClickRedactions || [])) return true;
+    if (clean.length) sibling.docuClickRedactions = clean; else delete sibling.docuClickRedactions;
+    refreshShownImage(nodeId);
     buildGuideList();
     scheduleSave();
+    return true;
   }
-  window.docuclickRedactImage = redactImage; // tests
+  window.docuclickSetRedactions = setRedactions; // tests
+
+  function placeRedactStage() {
+    if (!redactEdit) return;
+    Object.assign(redactStage.style, { left: `${lightboxImg.offsetLeft}px`, top: `${lightboxImg.offsetTop}px`, width: `${lightboxImg.offsetWidth}px`, height: `${lightboxImg.offsetHeight}px` });
+  }
+  let redactFrame = null;
+  function renderRedactEdit() {
+    if (!redactEdit || redactFrame) return;
+    redactFrame = requestAnimationFrame(() => {
+      redactFrame = null;
+      if (!redactEdit) return;
+      drawRedacted(redactCanvas, redactEdit.image, redactEdit.areas.slice(redactEdit.locked));
+      redactBoxes.innerHTML = "";
+      redactEdit.areas.forEach((area, index) => {
+        const box = document.createElement("div");
+        box.className = "redact-box" + (index < redactEdit.locked ? " locked" : "") + (index === redactEdit.selected ? " selected" : "");
+        box.dataset.index = index;
+        Object.assign(box.style, { left: `${area.x * 100}%`, top: `${area.y * 100}%`, width: `${area.w * 100}%`, height: `${area.h * 100}%` });
+        box.title = index < redactEdit.locked ? "Fest eingebrannt (in dieser Datei nicht mehr änderbar)" : area.mode === "blur" ? "Weichgezeichnet" : "Geschwärzt";
+        if (index === redactEdit.selected) {
+          for (const corner of ["nw", "ne", "sw", "se"]) {
+            const handle = document.createElement("span");
+            handle.className = `redact-handle ${corner}`; handle.dataset.corner = corner;
+            box.appendChild(handle);
+          }
+        }
+        redactBoxes.appendChild(box);
+      });
+      for (const [mode, button] of Object.entries(redactTools)) {
+        const selected = redactEdit.areas[redactEdit.selected];
+        button.classList.toggle("active", (selected ? selected.mode : redactEdit.tool) === mode);
+      }
+      redactDeleteButton.disabled = redactEdit.selected < 0;
+    });
+  }
+  async function startRedacting() {
+    const entry = imageNodes[currentLightboxIdx];
+    if (!entry) return;
+    const nodeId = entry.data.id;
+    const textNode = textNodesById.get(nodeId);
+    if (!textNode || !findImageSibling(textNode)) { setStatus("Für diesen Schritt ist kein Screenshot gespeichert."); return; }
+    let image;
+    try { image = await loadImage(cy.getElementById(nodeId).data("imageUrl")); }
+    catch { setStatus("Bearbeiten hier nicht möglich (Bild nicht lesbar). Bitte nach der Aufnahme erneut versuchen."); return; }
+    const locked = Math.min(cy.getElementById(nodeId).data("redactionsBaked") || 0, redactionsOf(nodeId).length);
+    redactEdit = { nodeId, image, locked, areas: redactionsOf(nodeId).map((a) => ({ ...a })), selected: -1, tool: redactEdit?.tool || "black", drag: null };
+    lightbox.classList.add("redacting");
+    redactToolbar.hidden = false; redactStage.hidden = false; redactButton.hidden = true;
+    placeRedactStage(); renderRedactEdit();
+  }
+  function stopRedacting(apply) {
+    if (!redactEdit) return;
+    const { nodeId, areas } = redactEdit;
+    redactEdit = null;
+    lightbox.classList.remove("redacting");
+    redactToolbar.hidden = true; redactStage.hidden = true; redactButton.hidden = false;
+    if (apply) setRedactions(nodeId, areas);
+  }
+  window.docuclickStopRedacting = stopRedacting; // lightbox navigation / close
+  redactButton?.addEventListener("click", (e) => { e.stopPropagation(); startRedacting(); });
+  document.getElementById("redact-done-btn")?.addEventListener("click", (e) => { e.stopPropagation(); stopRedacting(true); });
+  document.getElementById("redact-cancel-btn")?.addEventListener("click", (e) => { e.stopPropagation(); stopRedacting(false); });
+  for (const [mode, button] of Object.entries(redactTools)) {
+    button?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!redactEdit) return;
+      redactEdit.tool = mode;
+      const selected = redactEdit.areas[redactEdit.selected];
+      if (selected) selected.mode = mode;
+      renderRedactEdit();
+    });
+  }
+  const deleteSelectedArea = () => {
+    if (!redactEdit || redactEdit.selected < redactEdit.locked) return;
+    redactEdit.areas.splice(redactEdit.selected, 1);
+    redactEdit.selected = -1;
+    renderRedactEdit();
+  };
+  redactDeleteButton?.addEventListener("click", (e) => { e.stopPropagation(); deleteSelectedArea(); });
+  redactToolbar?.addEventListener("click", (e) => e.stopPropagation());
+  document.addEventListener("keydown", (e) => {
+    if (!redactEdit) return;
+    if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); stopRedacting(false); }
+    else if (e.key === "Enter") { e.preventDefault(); e.stopImmediatePropagation(); stopRedacting(true); }
+    else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); e.stopImmediatePropagation(); deleteSelectedArea(); }
+    else if (e.key === "ArrowLeft" || e.key === "ArrowRight") e.stopImmediatePropagation();
+  }, true);
+  window.addEventListener("resize", placeRedactStage);
+
+  const stagePoint = (e) => {
+    const box = redactBoxes.getBoundingClientRect();
+    return { x: clamp01((e.clientX - box.left) / box.width), y: clamp01((e.clientY - box.top) / box.height) };
+  };
+  redactBoxes?.addEventListener("pointerdown", (e) => {
+    if (!redactEdit || e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const point = stagePoint(e);
+    const boxEl = e.target.closest(".redact-box");
+    const index = boxEl ? Number(boxEl.dataset.index) : -1;
+    if (e.target.dataset.corner && index === redactEdit.selected) {
+      const a = redactEdit.areas[index];
+      // Resize: the opposite corner stays where it is.
+      const fixed = { x: e.target.dataset.corner.includes("w") ? a.x + a.w : a.x, y: e.target.dataset.corner.includes("n") ? a.y + a.h : a.y };
+      redactEdit.drag = { kind: "size", index, fixed };
+    } else if (index >= redactEdit.locked) {
+      redactEdit.selected = index;
+      const a = redactEdit.areas[index];
+      redactEdit.drag = { kind: "move", index, dx: point.x - a.x, dy: point.y - a.y };
+    } else {
+      redactEdit.areas.push({ x: point.x, y: point.y, w: 0, h: 0, mode: redactEdit.tool });
+      redactEdit.selected = redactEdit.areas.length - 1;
+      redactEdit.drag = { kind: "size", index: redactEdit.selected, fixed: point, isNew: true };
+    }
+    try { redactBoxes.setPointerCapture(e.pointerId); } catch { /* synthetic events */ }
+    renderRedactEdit();
+  });
+  redactBoxes?.addEventListener("pointermove", (e) => {
+    const drag = redactEdit?.drag;
+    if (!drag) return;
+    const point = stagePoint(e), a = redactEdit.areas[drag.index];
+    if (drag.kind === "move") {
+      a.x = clamp01(Math.min(point.x - drag.dx, 1 - a.w)); a.y = clamp01(Math.min(point.y - drag.dy, 1 - a.h));
+    } else {
+      a.x = Math.min(drag.fixed.x, point.x); a.y = Math.min(drag.fixed.y, point.y);
+      a.w = Math.abs(point.x - drag.fixed.x); a.h = Math.abs(point.y - drag.fixed.y);
+    }
+    renderRedactEdit();
+  });
+  const endRedactDrag = () => {
+    const drag = redactEdit?.drag;
+    if (!drag) return;
+    redactEdit.drag = null;
+    const a = redactEdit.areas[drag.index];
+    // A click without dragging adds nothing (and just clears the selection).
+    if (drag.isNew && (a.w < MIN_AREA || a.h < MIN_AREA)) { redactEdit.areas.splice(drag.index, 1); redactEdit.selected = -1; }
+    renderRedactEdit();
+  };
+  redactBoxes?.addEventListener("pointerup", endRedactDrag);
+  redactBoxes?.addEventListener("pointercancel", endRedactDrag);
+  redactStage?.addEventListener("click", (e) => e.stopPropagation());
+
+  /**
+   * The document for a file that leaves the editor (HTML download, read-only
+   * export): every screenshot with areas gets them burnt in, and an embedded
+   * original is replaced too, so the file never contains it.
+   */
+  async function bakedSnapshot() {
+    const state = snapshot();
+    const texts = new Map(state.canvas.nodes.filter((n) => n.type === "text").map((n) => [n.id, n]));
+    for (const node of state.flow.nodes) {
+      const src = node.data.imageUrl, text = texts.get(node.data.id);
+      const file = text && state.canvas.nodes.find((n) => n.type === "file" && Math.abs(n.x - text.x) < 0.5 && Math.abs(n.y - (text.y + TEXT_NODE_HEIGHT + TEXT_TO_IMAGE_GAP)) < 0.5);
+      const areas = file?.docuClickRedactions || [];
+      const baked = node.data.redactionsBaked || 0;
+      if (!src || areas.length <= baked) continue;
+      const url = await redactedDataUrl(src, areas.slice(baked));
+      node.data.imageUrl = url;
+      node.data.redactionsBaked = areas.length;
+      if (/^data:/i.test(file.file || "")) file.file = url;
+    }
+    return state;
+  }
+  window.docuclickBakedSnapshot = bakedSnapshot; // tests
 }
 // DOCUCLICK-EDITOR-END
 </script>

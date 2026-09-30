@@ -5,6 +5,14 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [0.8.0] - 2026-09-30
+
+- **Schwärzen mit Vorschau, nachträglich änderbar, auch Weichzeichnen**: Die
+  Flächen werden live im Bild gezeigt, lassen sich verschieben, in der Größe
+  ändern, zwischen Schwärzen und Weichzeichnen umschalten und wieder
+  entfernen – auch später noch, weil das Original erhalten bleibt. Die
+  HTML-Ansicht und heruntergeladene Kopien enthalten nur das bearbeitete Bild.
+
 ## [0.7.0] - 2026-09-30
 
 - **Aufnahme mit der DocuClick-App steuern**: Knopf „Mit DocuClick

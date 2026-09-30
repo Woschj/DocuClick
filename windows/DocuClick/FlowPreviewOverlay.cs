@@ -82,6 +82,35 @@ public sealed class FlowPreviewOverlay : Window, IFlowEditorHost
         set => Bridge.CurrentSessionFolder = value;
     }
 
+    /// <summary>
+    /// Set (before the window is shown) to use the shared editor template —
+    /// the same editor as the .html file in a browser and the Obsidian plugin
+    /// — instead of flow.js (AppConfig.UseTemplateOverview).
+    /// </summary>
+    public EditorPageHost? PageHost { get; set; }
+
+    // Template mode: the page is written here and served as https://docuclick.editor/,
+    // screenshots come from https://docuclick.session/ (the vault root, or the
+    // session folder outside a vault).
+    private static readonly string EditorPageFolder = System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DocuClick", "EditorPage");
+    private string? _sessionImageRoot;
+    private int _pageVersion;
+
+    /// <summary>(session folder, file node value) → the screenshot's URL for the template page; null outside the mapped folder.</summary>
+    public string? ImageUrl(string folder, string file)
+    {
+        var root = ObsidianVault.FindRoot(folder) ?? folder;
+        var full = System.IO.Path.GetFullPath(System.IO.Path.Combine(folder, file));
+        var relative = System.IO.Path.GetRelativePath(root, full);
+        if (relative.StartsWith("..", StringComparison.Ordinal) || System.IO.Path.IsPathRooted(relative))
+        {
+            return null;
+        }
+
+        return "https://docuclick.session/" + string.Join("/", relative.Split('\\', '/').Select(Uri.EscapeDataString));
+    }
+
     private readonly Microsoft.Web.WebView2.Wpf.WebView2 _webView;
     private readonly Border _canvasHost;
     private readonly TextBlock _collapseIcon;
@@ -145,7 +174,14 @@ public sealed class FlowPreviewOverlay : Window, IFlowEditorHost
             e.Handled = true;
             if (_webViewReady && _webView?.CoreWebView2 is not null)
             {
-                _webView.CoreWebView2.PostWebMessageAsJson(FlowEditorBridge.FitViewMessage);
+                if (PageHost is not null)
+                {
+                    _ = _webView.CoreWebView2.ExecuteScriptAsync("typeof ensureViewFit === 'function' && ensureViewFit()");
+                }
+                else
+                {
+                    _webView.CoreWebView2.PostWebMessageAsJson(FlowEditorBridge.FitViewMessage);
+                }
             }
         };
 
@@ -342,12 +378,55 @@ public sealed class FlowPreviewOverlay : Window, IFlowEditorHost
         // with mouse/keyboard access to the running app.
         _webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
         _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+        if (PageHost is not null)
+        {
+            System.IO.Directory.CreateDirectory(EditorPageFolder);
+            _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                "docuclick.editor", EditorPageFolder, CoreWebView2HostResourceAccessKind.Allow);
+            _webView.NavigationCompleted += (_, _) => _webViewReady = true;
+            LoadTemplatePage();
+            return;
+        }
+
         _webView.NavigationCompleted += (_, _) =>
         {
             _webViewReady = true;
             _webView.CoreWebView2.PostWebMessageAsJson(Bridge.BuildPreviewMessage(Bridge.LastPreview));
         };
         _webView.CoreWebView2.Navigate("https://docuclick.flowpreview/index.html");
+    }
+
+    /// <summary>
+    /// Template mode: (re)builds the page for the loaded flow — at start and
+    /// when another file is loaded; later clicks reach the running page as
+    /// messages (EditorPageHost.OnSessionChanged), so zoom and undo stay.
+    /// </summary>
+    private void LoadTemplatePage()
+    {
+        if (PageHost is null || _webView.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        var folder = CurrentSessionFolder;
+        var root = folder is null ? null : ObsidianVault.FindRoot(folder) ?? folder;
+        if (root is not null && root != _sessionImageRoot)
+        {
+            if (_sessionImageRoot is not null)
+            {
+                _webView.CoreWebView2.ClearVirtualHostNameToFolderMapping("docuclick.session");
+            }
+
+            _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                "docuclick.session", root, CoreWebView2HostResourceAccessKind.Allow);
+            _sessionImageRoot = root;
+        }
+
+        var html = PageHost.BuildPage()
+            ?? "<!doctype html><meta charset=\"utf-8\"><body style=\"background:#0b0f19;color:#94a3b8;font:13px system-ui;padding:24px\">Noch kein Ablauf geladen.</body>";
+        System.IO.File.WriteAllText(System.IO.Path.Combine(EditorPageFolder, "index.html"), html);
+        _webViewReady = false;
+        _webView.CoreWebView2.Navigate($"https://docuclick.editor/index.html?v={++_pageVersion}");
     }
 
     /// <summary>
@@ -377,6 +456,12 @@ public sealed class FlowPreviewOverlay : Window, IFlowEditorHost
     {
         try
         {
+            if (PageHost is not null)
+            {
+                await PageHost.HandleMessageAsync(json);
+                return;
+            }
+
             await Bridge.HandleMessageAsync(json);
         }
         catch (Exception ex)
@@ -493,6 +578,25 @@ public sealed class FlowPreviewOverlay : Window, IFlowEditorHost
     /// <summary>Stores the latest preview and pushes it to the WebView (once it's ready to receive messages — see <see cref="InitializeWebViewAsync"/>).</summary>
     public void UpdatePreview(FlowPreview preview, bool isRecordedClick = false)
     {
+        if (PageHost is not null)
+        {
+            if (_webView.CoreWebView2 is null)
+            {
+                return; // the first page is built once the WebView2 is ready
+            }
+
+            if (PageHost.NeedsNewPage)
+            {
+                LoadTemplatePage();
+            }
+            else
+            {
+                PageHost.OnSessionChanged();
+            }
+
+            return;
+        }
+
         var message = Bridge.BuildPreviewMessage(preview, isRecordedClick);
         if (_webViewReady)
         {

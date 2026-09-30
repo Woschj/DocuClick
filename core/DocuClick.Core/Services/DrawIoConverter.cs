@@ -145,7 +145,9 @@ public static class DrawIoConverter
             else
             {
                 var screenshotPath = FindScreenshotPath(canvas, canvasNode, outputPath);
-                var screenshot = LoadAsPng(screenshotPath); // missing/moved attachment → 1×1 placeholder, the card is still exported
+                // missing/moved attachment → 1×1 placeholder, the card is still exported;
+                // blacked-out / blurred areas are burnt in, the export never carries the original.
+                var screenshot = LoadAsPng(screenshotPath, FindImageSibling(canvas, canvasNode)?.Redactions);
                 cellId = BuildCard(root, x, cellY, ++stepCounter, canvasNode.Text ?? "", screenshot, accent);
             }
 
@@ -181,10 +183,12 @@ public static class DrawIoConverter
     private static string AccentFor(int column) =>
         column == 0 ? MainColor : BranchColors[FlowPreviewBranching.StableColumnHash(column) % BranchColors.Length];
 
+    private static CanvasNode? FindImageSibling(CanvasDocument canvas, CanvasNode textNode) => canvas.Nodes.FirstOrDefault(n =>
+        n.Type == "file" && Math.Abs(n.X - textNode.X) < 0.5 && Math.Abs(n.Y - (textNode.Y + CanvasFlowWriter.TextNodeHeight + CanvasFlowWriter.TextToImageGap)) < 0.5);
+
     private static string? FindScreenshotPath(CanvasDocument canvas, CanvasNode textNode, string outputPath)
     {
-        var imageSibling = canvas.Nodes.FirstOrDefault(n =>
-            n.Type == "file" && Math.Abs(n.X - textNode.X) < 0.5 && Math.Abs(n.Y - (textNode.Y + CanvasFlowWriter.TextNodeHeight + CanvasFlowWriter.TextToImageGap)) < 0.5);
+        var imageSibling = FindImageSibling(canvas, textNode);
         return imageSibling?.File is not { } relativePath ? null
             : DocuClickDiagramIo.IsImageDataUri(relativePath) ? relativePath // embedded (browser editor, Obsidian plugin)
             : Path.Combine(outputPath, relativePath);
@@ -373,9 +377,10 @@ public static class DrawIoConverter
     /// and re-encoded as PNG — draw.io's image cells here always declare
     /// image/png. Unreadable/missing files become a 1×1 placeholder.
     /// </summary>
-    private static ScreenshotImage LoadAsPng(string? path)
+    private static ScreenshotImage LoadAsPng(string? path, IReadOnlyList<ImageRedaction>? areas)
     {
         using var bitmap = Decode(path) ?? new SKBitmap(1, 1);
+        ImageRedactor.Draw(bitmap, areas);
         using var image = SKImage.FromBitmap(bitmap);
         using var data = image.Encode(SKEncodedImageFormat.Png, 100);
         return new ScreenshotImage(data.ToArray(), bitmap.Width, bitmap.Height);

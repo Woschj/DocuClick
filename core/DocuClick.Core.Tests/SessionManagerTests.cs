@@ -169,6 +169,95 @@ public sealed class SessionManagerTests : IDisposable
         Assert.Contains(CanvasDocumentIo.Load(path).Nodes, n => n.Text == "Im Browser umbenannt");
     }
 
+    [Fact]
+    public async Task Redacted_areas_are_burnt_into_the_html_but_the_original_file_stays()
+    {
+        var path = _folder.File("Test.html");
+        using (var session = CreateSession(_config))
+        {
+            session.Start(path);
+            _capture.NextFrame = () => new CapturedFrame(White(40, 40), new ScreenRect(0, 0, 40, 40), 1.0);
+            WaitForCapture(session, () => _input.Click(new ScreenPoint(5, 5)));
+
+            var edited = CanvasDocumentIo.Load(path);
+            var image = edited.Nodes.First(n => n.Type == "file");
+            image.Redactions = new List<ImageRedaction> { new() { X = 0, Y = 0, W = 1, H = 1, Mode = "black" } };
+            await session.ApplyExternalEdit(path, edited);
+            session.Stop();
+        }
+
+        var html = File.ReadAllText(path);
+        var doc = CanvasDocumentIo.Load(path);
+        var file = doc.Nodes.Single(n => n.Type == "file");
+        Assert.Equal("black", Assert.Single(file.Redactions!).Mode);
+        var original = File.ReadAllBytes(Path.Combine(_folder.Path, file.File!));
+        Assert.InRange(SKBitmap.Decode(original).GetPixel(20, 20).Red, 235, 255);
+        Assert.DoesNotContain(Convert.ToBase64String(original), html);
+
+        var flow = System.Text.Json.Nodes.JsonNode.Parse(System.Text.RegularExpressions.Regex.Match(html, @"const flowData = (\{.*?\});\r?\n").Groups[1].Value)!;
+        var shown = flow["nodes"]!.AsArray().Select(n => n!["data"]!).Single(d => d["imageUrl"] is not null);
+        Assert.Equal(1, (int)shown["redactionsBaked"]!);
+        var src = (string)shown["imageUrl"]!;
+        Assert.InRange(SKBitmap.Decode(Convert.FromBase64String(src[(src.IndexOf(',') + 1)..])).GetPixel(20, 20).Red, 0, 10);
+    }
+
+    [Fact]
+    public async Task An_embedded_image_with_areas_keeps_its_original_as_file_not_in_the_html()
+    {
+        var path = _folder.File("Test.html");
+        using var white = White(30, 30);
+        using var png = SKImage.FromBitmap(white).Encode(SKEncodedImageFormat.Png, 100);
+        var dataUri = ImageData.DataUri(png.ToArray());
+        using (var session = CreateSession(_config))
+        {
+            session.Start(path);
+            _capture.NextFrame = () => new CapturedFrame(White(20, 20), new ScreenRect(0, 0, 20, 20), 1.0);
+            WaitForCapture(session, () => _input.Click(new ScreenPoint(5, 5)));
+
+            var edited = CanvasDocumentIo.Load(path);
+            var image = edited.Nodes.First(n => n.Type == "file");
+            image.File = dataUri;
+            image.Redactions = new List<ImageRedaction> { new() { X = 0.5, Y = 0.5, W = 0.5, H = 0.5, Mode = "blur" } };
+            await session.ApplyExternalEdit(path, edited);
+            await session.ApplyExternalEdit(path, CanvasDocumentIo.Load(path)); // saving again reuses the stored original
+            session.Stop();
+        }
+
+        var html = File.ReadAllText(path);
+        Assert.DoesNotContain(dataUri[(dataUri.IndexOf(',') + 1)..], html);
+        var file = CanvasDocumentIo.Load(path).Nodes.Single(n => n.Type == "file");
+        Assert.StartsWith("Attachments/Originale/", file.File);
+        Assert.Single(Directory.GetFiles(Path.Combine(_folder.Path, "Attachments", "Originale")));
+        Assert.Equal(png.ToArray(), File.ReadAllBytes(Path.Combine(_folder.Path, file.File!)));
+    }
+
+    [Fact]
+    public void Blurred_areas_make_fine_detail_unreadable()
+    {
+        using var stripes = new SKBitmap(240, 120);
+        using (var canvas = new SKCanvas(stripes))
+        {
+            canvas.Clear(SKColors.White);
+            using var black = new SKPaint { Color = SKColors.Black };
+            for (var x = 0; x < 240; x += 4)
+            {
+                if (x % 8 != 0) canvas.DrawRect(x, 0, 4, 120, black);
+            }
+        }
+
+        using var png = SKImage.FromBitmap(stripes).Encode(SKEncodedImageFormat.Png, 100);
+        var result = ImageRedactor.Apply(png.ToArray(), new List<ImageRedaction>
+        {
+            new() { X = 0, Y = 0, W = 0.5, H = 1, Mode = "blur" },
+            new() { X = 2, Y = double.NaN, W = 1, H = 1, Mode = "evil" }, // ignored
+        });
+
+        using var redacted = SKBitmap.Decode(result);
+        var blurred = redacted.GetPixel(50, 60);
+        Assert.InRange(blurred.Red, 60, 200);
+        Assert.InRange(redacted.GetPixel(201, 60).Red, 235, 255); // outside the area: unchanged
+    }
+
     private static SKBitmap White(int width, int height)
     {
         var bitmap = new SKBitmap(width, height);
@@ -177,6 +266,103 @@ public sealed class SessionManagerTests : IDisposable
     }
 
     public void Dispose() => _folder.Dispose();
+
+    private sealed class PageHost : IFlowEditorHost
+    {
+        public Queue<string?> Answers { get; } = new();
+        public List<System.Text.Json.JsonElement> Posted { get; } = new();
+        public Task<string?> PromptTextAsync(string? title = null, string? label = null, string? initialValue = null) => Task.FromResult(Answers.Count > 0 ? Answers.Dequeue() : null);
+        public Task<string?> PickImageFileAsync() => Task.FromResult<string?>(null);
+        public Task<bool> ConfirmAsync(string message) => Task.FromResult(false);
+        public void PostToWeb(string json) => Posted.Add(System.Text.Json.JsonDocument.Parse(json).RootElement.Clone());
+    }
+
+    private static string Save(int request, string canvasJson) =>
+        $$"""{ "kind": "save", "request": {{request}}, "canvas": {{canvasJson}} }""";
+
+    [Fact]
+    public async Task The_template_overview_saves_page_edits_and_receives_new_clicks()
+    {
+        using var session = CreateSession(_config);
+        session.Start(_folder.File("Test.html"));
+        _capture.NextFrame = () => new CapturedFrame(White(40, 20), new ScreenRect(0, 0, 40, 20), 1.0);
+        WaitForCapture(session, () => _input.Click(new ScreenPoint(5, 5)));
+
+        var web = new PageHost();
+        var host = new EditorPageHost(session, web, (folder, file) => "https://docuclick.session/" + file);
+        var page = host.BuildPage()!;
+        Assert.Contains("window.docuclickEditorHost", page);
+        Assert.Contains("https://docuclick.session/Attachments/Test/", page); // screenshots by URL, not embedded
+
+        // An edit in the page (rename) is saved into the file; the resulting update is not echoed back as a replace.
+        var canvas = session.GetEditorDocument(f => f)!.CanvasJson;
+        await host.HandleMessageAsync(Save(1, canvas.Replace("Linksklick", "Umbenannt")));
+        Assert.Null(web.Posted.Last().GetProperty("error").GetString());
+        Assert.Contains("Umbenannt", File.ReadAllText(_folder.File("Test.html")));
+        host.OnSessionChanged();
+        Assert.Equal("setCurrent", web.Posted.Last().GetProperty("kind").GetString());
+
+        // A new click reaches the page as a replace with the new step marked as current.
+        WaitForCapture(session, () => _input.Click(new ScreenPoint(6, 6)));
+        host.OnSessionChanged();
+        var replace = web.Posted.Last();
+        Assert.Equal("replace", replace.GetProperty("kind").GetString());
+        Assert.Equal(2, replace.GetProperty("flow").GetProperty("nodes").GetArrayLength());
+        var newest = replace.GetProperty("flow").GetProperty("nodes")[1].GetProperty("data").GetProperty("id").GetString();
+        Assert.Equal(newest, replace.GetProperty("currentId").GetString());
+
+        // "Hier weiter aufnehmen" goes through the session (which resumes at the end
+        // of that step's path) and only moves the marker in the page.
+        var first = replace.GetProperty("flow").GetProperty("nodes")[0].GetProperty("data").GetProperty("id").GetString();
+        await host.HandleMessageAsync($$"""{ "kind": "jumpTo", "nodeId": "{{first}}" }""");
+        host.OnSessionChanged();
+        Assert.Equal("setCurrent", web.Posted.Last().GetProperty("kind").GetString());
+        Assert.Equal(newest, web.Posted.Last().GetProperty("nodeId").GetString());
+    }
+
+    [Fact]
+    public async Task Undo_in_the_page_takes_back_a_recorded_click_and_recording_continues_from_there()
+    {
+        using var session = CreateSession(_config);
+        session.Start(_folder.File("Test.html"));
+        _capture.NextFrame = () => new CapturedFrame(White(40, 20), new ScreenRect(0, 0, 40, 20), 1.0);
+        WaitForCapture(session, () => _input.Click(new ScreenPoint(5, 5)));
+        var web = new PageHost();
+        var host = new EditorPageHost(session, web, (folder, file) => file);
+        host.BuildPage();
+        var beforeSecondClick = session.GetEditorDocument(f => f)!.CanvasJson;
+        WaitForCapture(session, () => _input.Click(new ScreenPoint(6, 6)));
+        host.OnSessionChanged(); // the page shows the second click
+
+        await host.HandleMessageAsync(Save(3, beforeSecondClick)); // "Zurück" in the page
+
+        Assert.Null(web.Posted.Last().GetProperty("error").GetString());
+        Assert.Single(session.GetPreview()!.Nodes);
+        WaitForCapture(session, () => _input.Click(new ScreenPoint(7, 7)));
+        var preview = session.GetPreview()!;
+        Assert.Equal(2, preview.Nodes.Count);
+        Assert.Single(preview.Edges); // the next click attaches to the remaining step
+    }
+
+    [Fact]
+    public async Task A_page_save_based_on_an_older_state_never_drops_a_recorded_click()
+    {
+        using var session = CreateSession(_config);
+        session.Start(_folder.File("Test.html"));
+        _capture.NextFrame = () => new CapturedFrame(White(40, 20), new ScreenRect(0, 0, 40, 20), 1.0);
+        WaitForCapture(session, () => _input.Click(new ScreenPoint(5, 5)));
+        var web = new PageHost();
+        var host = new EditorPageHost(session, web, (folder, file) => file);
+        host.BuildPage();
+        var stale = session.GetEditorDocument(f => f)!.CanvasJson;
+
+        WaitForCapture(session, () => _input.Click(new ScreenPoint(6, 6))); // recorded, page not updated yet
+        await host.HandleMessageAsync(Save(7, stale.Replace("Linksklick", "Umbenannt")));
+
+        Assert.Equal("replace", web.Posted[^2].GetProperty("kind").GetString()); // page gets the newer state
+        Assert.Contains("weiter aufgenommen", web.Posted[^1].GetProperty("error").GetString());
+        Assert.Equal(2, session.GetPreview()!.Nodes.Count); // the second click is still there
+    }
 
     private sealed class FakeInput : IInputMonitor
     {

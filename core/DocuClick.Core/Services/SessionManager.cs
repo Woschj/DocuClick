@@ -90,6 +90,10 @@ public sealed class SessionManager : IDisposable
     /// <summary>Retrieves the current flow preview snapshot from the writer thread.</summary>
     public FlowPreview? GetPreview() => RunOnWriterQueue(() => _writer.GetPreview());
 
+    /// <summary>The loaded flow for an app-hosted editor page (see <see cref="EditorPageHost"/>); null without a loaded file.</summary>
+    public EditorDocument? GetEditorDocument(Func<string, string?> image) =>
+        HasActiveSession ? RunOnWriterQueue(() => _writer.BuildEditorDocument(image)) : null;
+
     /// <summary>Whether "Zoom-auf-Cursor" is currently active (see <see cref="ToggleZoomToCursor"/>).</summary>
     public bool IsZoomToCursorActive => _zoomToCursorActive;
 

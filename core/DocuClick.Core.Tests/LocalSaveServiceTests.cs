@@ -169,4 +169,27 @@ public sealed class LocalSaveServiceTests : IDisposable
         _service.RemoteToken = "geheim";
         Assert.Equal(HttpStatusCode.ServiceUnavailable, (await ControlAsync(new { token = "geheim", action = "status" })).Status);
     }
+
+    [Fact]
+    public async Task The_editor_page_and_its_screenshots_are_served_only_with_the_token_and_only_images_below_the_root()
+    {
+        Directory.CreateDirectory(_folder.File("Attachments"));
+        File.WriteAllBytes(_folder.File("Attachments/a.png"), TestImages.Png(4, 4).Data);
+        File.WriteAllText(_folder.File("geheim.txt"), "x");
+        _service.EditorPage = () => "<html>Übersicht</html>";
+        _service.EditorImageRoot = () => _folder.Path;
+        var origin = $"http://127.0.0.1:{_port}";
+
+        using var page = await Http.GetAsync(_service.EditorPageUrl(1));
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        Assert.Equal("<html>Übersicht</html>", await page.Content.ReadAsStringAsync());
+        using var image = await Http.GetAsync(origin + _service.EditorImageUrl("Attachments/a.png"));
+        Assert.Equal("image/png", image.Content.Headers.ContentType?.MediaType);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await Http.GetAsync($"{origin}/editor/page?t=falsch")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Http.GetAsync(origin + _service.EditorImageUrl("Attachments/a.png").Replace(_service.EditorToken, "falsch"))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Http.GetAsync(origin + _service.EditorImageUrl("geheim.txt"))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Http.GetAsync(origin + _service.EditorImageUrl("../x.png"))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Http.GetAsync(origin + _service.EditorImageUrl("/etc/passwd.png"))).StatusCode);
+    }
 }
