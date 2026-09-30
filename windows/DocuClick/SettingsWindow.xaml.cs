@@ -55,7 +55,6 @@ public partial class SettingsWindow : Window
             .FirstOrDefault(item => string.Equals((string)item.Tag, _config.ScreenshotFormat, StringComparison.OrdinalIgnoreCase))
             ?? ScreenshotFormatBox.Items[0];
         AutoInstallObsidianPluginBox.IsChecked = _config.AutoInstallObsidianPlugin;
-        UseTemplateOverviewBox.IsChecked = _config.UseTemplateOverview;
 
         _startStopModifiers = _config.StartStopModifiers;
         _startStopKey = _config.StartStopKey;
@@ -256,7 +255,6 @@ public partial class SettingsWindow : Window
             : "None";
         _config.ScreenshotFormat = ScreenshotFormatBox.SelectedItem is ComboBoxItem format ? (string)format.Tag : "WebP";
         _config.AutoInstallObsidianPlugin = AutoInstallObsidianPluginBox.IsChecked == true;
-        _config.UseTemplateOverview = UseTemplateOverviewBox.IsChecked == true;
 
         _config.StartStopModifiers = _startStopModifiers;
         _config.StartStopKey = _startStopKey;

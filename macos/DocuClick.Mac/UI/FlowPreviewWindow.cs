@@ -3,7 +3,6 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using DocuClick.Mac.Platform;
 using DocuClick.Services;
@@ -11,10 +10,12 @@ using DocuClick.Services;
 namespace DocuClick.Mac.UI;
 
 /// <summary>
-/// The Ablauf-Übersicht on macOS: the exact same Cytoscape page (WebAssets/
-/// flow.js) as on Windows, hosted in Avalonia's NativeWebView (WebKit), with
-/// the shared <see cref="FlowEditorBridge"/> handling every message — so the
-/// editor behaves identically on both platforms. Looks like the Windows
+/// The Ablauf-Übersicht on macOS: the shared editor template (the same editor
+/// as the .html file in a browser, the Obsidian plugin and the Windows app),
+/// hosted in Avalonia's NativeWebView (WebKit), with <see cref="EditorPageHost"/>
+/// handling its messages. The page and its screenshots come from the app's
+/// local service (<see cref="PageUrl"/>), since WebKit cannot read the
+/// session folder from a page loaded as text. Looks like the Windows
 /// panel too: borderless and translucent (dark glass), with its own header
 /// (einpassen, einklappen, schließen), draggable by the header and resizable
 /// from the bottom-right grip. Focusable (unlike the top bar): it's a full
@@ -33,17 +34,10 @@ internal sealed class FlowPreviewWindow : Window, IFlowEditorHost
     private bool _collapsed;
     private double _expandedHeight;
 
-    public FlowEditorBridge Bridge { get; }
-
-    /// <summary>
-    /// Set (before the window opens) to use the shared editor template instead
-    /// of flow.js (AppConfig.UseTemplateOverview). The page and its
-    /// screenshots come from the app's local service (<see cref="PageUrl"/>),
-    /// since WebKit cannot read the session folder from a page loaded as text.
-    /// </summary>
+    /// <summary>The page's counterpart in the app; set before the window opens.</summary>
     public EditorPageHost? PageHost { get; set; }
 
-    /// <summary>Template mode: URL of the editor page for a given version (a new version forces a reload).</summary>
+    /// <summary>URL of the editor page for a given version (a new version forces a reload); null if the local service isn't running.</summary>
     public Func<int, string>? PageUrl { get; set; }
 
     private int _pageVersion;
@@ -53,8 +47,6 @@ internal sealed class FlowPreviewWindow : Window, IFlowEditorHost
 
     public FlowPreviewWindow()
     {
-        Bridge = new FlowEditorBridge(this);
-
         Title = "DocuClick · Ablauf-Übersicht";
         Width = 1000;
         Height = 720;
@@ -89,14 +81,7 @@ internal sealed class FlowPreviewWindow : Window, IFlowEditorHost
         fit.PointerPressed += (_, e) =>
         {
             e.Handled = true;
-            if (PageHost is not null)
-            {
-                _ = _webView.InvokeScript("typeof ensureViewFit === 'function' && ensureViewFit()");
-            }
-            else
-            {
-                PostToWeb(FlowEditorBridge.FitViewMessage);
-            }
+            _ = _webView.InvokeScript("typeof ensureViewFit === 'function' && ensureViewFit()");
         };
         var collapse = HeaderIcon(_collapseGlyph, "Ein-/Ausklappen");
         collapse.PointerPressed += (_, e) =>
@@ -175,13 +160,13 @@ internal sealed class FlowPreviewWindow : Window, IFlowEditorHost
                 }
                 else
                 {
-                    _webView.NavigateToString(BuildPage(), new Uri(WebAssetsDir + "/"));
+                    _webView.NavigateToString(UnavailablePage);
                 }
             }
         };
     }
 
-    /// <summary>Template mode: (re)loads the editor page — at start and when another file is loaded.</summary>
+    /// <summary>(Re)loads the editor page — at start and when another file is loaded.</summary>
     private void LoadTemplatePage()
     {
         _pageReady = false;
@@ -189,21 +174,10 @@ internal sealed class FlowPreviewWindow : Window, IFlowEditorHost
         _webView.Navigate(new Uri(PageUrl!(++_pageVersion)));
     }
 
-    private static string WebAssetsDir => Path.Combine(AppContext.BaseDirectory, "WebAssets");
-
-    /// <summary>
-    /// index.html with its stylesheet and scripts inlined: loaded as a string,
-    /// WebKit needs no file-access grant for the app bundle, and the host
-    /// marker switches flow.js's bridge to Avalonia's invokeCSharpAction.
-    /// </summary>
-    private static string BuildPage()
-    {
-        string Read(string relative) => File.ReadAllText(Path.Combine(WebAssetsDir, relative));
-        return Read("index.html")
-            .Replace("<link rel=\"stylesheet\" href=\"flow.css\">", $"<style>\n{Read("flow.css")}\n</style>")
-            .Replace("<script src=\"vendor/cytoscape.min.js\"></script>", $"<script>\n{Read("vendor/cytoscape.min.js")}\n</script>")
-            .Replace("<script src=\"flow.js\"></script>", $"<script>window.__docuclickHost = \"avalonia\";</script>\n<script>\n{Read("flow.js")}\n</script>");
-    }
+    // Without the local service (port taken by another program) there is no page to show.
+    private const string UnavailablePage = "<!doctype html><meta charset=\"utf-8\"><body style=\"background:transparent;color:#cbd5e1;font:13px -apple-system,system-ui;padding:24px\">"
+        + "Die Ablauf-Übersicht ist gerade nicht verfügbar: DocuClicks lokaler Dienst (Port 47811) konnte nicht starten – vermutlich belegt ihn ein anderes Programm. "
+        + "Die Aufnahme läuft trotzdem; den Ablauf im Browser oder in Obsidian öffnen, oder DocuClick neu starten.</body>";
 
     private void MakeWebViewTransparent()
     {
@@ -317,10 +291,7 @@ internal sealed class FlowPreviewWindow : Window, IFlowEditorHost
             if (PageHost is not null)
             {
                 await PageHost.HandleMessageAsync(json);
-                return;
             }
-
-            await Bridge.HandleMessageAsync(json);
         }
         catch (Exception ex)
         {
@@ -328,26 +299,25 @@ internal sealed class FlowPreviewWindow : Window, IFlowEditorHost
         }
     }
 
-    public void UpdatePreview(FlowPreview preview, bool isRecordedClick = false)
+    /// <summary>The session changed (click recorded, jump, new path, file switch): bring the page up to date.</summary>
+    public void UpdatePreview()
     {
-        if (PageHost is not null)
+        if (PageHost is null || PageUrl is null)
         {
-            if (PageHost.NeedsNewPage)
-            {
-                if (IsVisible || _pageVersion > 0)
-                {
-                    LoadTemplatePage();
-                }
-            }
-            else
-            {
-                PageHost.OnSessionChanged();
-            }
-
             return;
         }
 
-        PostToWeb(Bridge.BuildPreviewMessage(preview, isRecordedClick));
+        if (PageHost.NeedsNewPage)
+        {
+            if (IsVisible || _pageVersion > 0)
+            {
+                LoadTemplatePage();
+            }
+        }
+        else
+        {
+            PageHost.OnSessionChanged();
+        }
     }
 
     // --- IFlowEditorHost --------------------------------------------------------
@@ -356,12 +326,6 @@ internal sealed class FlowPreviewWindow : Window, IFlowEditorHost
     {
         if (!_pageReady)
         {
-            // Only the latest preview matters before the page exists.
-            if (json.Contains("\"type\":\"preview\"", StringComparison.Ordinal))
-            {
-                _pending.Clear();
-            }
-
             _pending.Enqueue(json);
             return;
         }
@@ -373,17 +337,4 @@ internal sealed class FlowPreviewWindow : Window, IFlowEditorHost
 
     public async Task<string?> PromptTextAsync(string? title = null, string? label = null, string? initialValue = null) =>
         await new BranchNameWindow(title, label, initialValue).ShowAndWaitAsync();
-
-    public async Task<string?> PickImageFileAsync()
-    {
-        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "DocuClick - Bild auswählen",
-            AllowMultiple = false,
-            FileTypeFilter = new[] { FilePickerFileTypes.ImageAll, FilePickerFileTypes.All }
-        });
-        return files.FirstOrDefault()?.TryGetLocalPath();
-    }
-
-    public Task<bool> ConfirmAsync(string message) => ConfirmWindow.AskAsync(message);
 }

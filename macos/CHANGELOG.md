@@ -8,6 +8,14 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [1.19.0] - 2026-09-30
+
+- **Die neue Ablauf-Übersicht ist jetzt die einzige**: der Schalter „Neue
+  Ablauf-Übersicht testen“ entfällt, die alte Übersicht ist entfernt. Im
+  Rechtsklick-Menü gibt es „Neuer Pfad ab hier …“ jetzt an jedem Schritt
+  (wie in der alten Übersicht) und an einer Abzweigung „Pfad „…“
+  fortsetzen“ für jeden Pfad.
+
 ## [1.18.0] - 2026-09-30
 
 - **Ein Release für alles**: Windows-App, macOS-App und Obsidian-Plugin

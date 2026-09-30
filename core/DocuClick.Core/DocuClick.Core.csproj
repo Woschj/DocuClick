@@ -18,10 +18,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The Ablauf page (Cytoscape.js + flow.js): HtmlViewerBuilder inlines
-         cytoscape.min.js into every recorded .html file, and both apps'
-         Ablauf-Übersicht load index.html/flow.js in a web view — so these
-         ship as loose files next to every app that references the core. -->
+    <!-- The editor template and Cytoscape.js: HtmlViewerBuilder builds every
+         recorded .html file from them, and both apps' Ablauf-Übersicht shows
+         the same page (EditorPageHost) — so these ship as loose files next to
+         every app that references the core. -->
     <Content Include="WebAssets\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

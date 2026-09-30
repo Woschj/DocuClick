@@ -108,14 +108,25 @@ def entries(text: str) -> list[str]:
 
 
 def notes(version: str) -> str:
-    """Release notes: entries all parts share once under "Alle Teile", then each part's own."""
+    """Release notes: each entry once, under the parts it belongs to ("Alle Teile", "Windows und macOS", …)."""
     per_part = {title: entries(section(ROOT / changelog, version) or "") for title, _, changelog in PARTS.values()}
-    shared = [item for item in next(iter(per_part.values())) if all(item in items for items in per_part.values())]
-    blocks = [f"## Alle Teile\n\n" + "\n".join(shared)] if shared else []
-    for title, items in per_part.items():
-        own = [item for item in items if item not in shared and item != NO_CHANGES]
-        if own:
-            blocks.append(f"## {title}\n\n" + "\n".join(own))
+    groups: dict[tuple[str, ...], list[str]] = {}
+    for items in per_part.values():
+        for item in items:
+            if item == NO_CHANGES:
+                continue
+            owners = tuple(title for title, other in per_part.items() if item in other)
+            if item not in groups.setdefault(owners, []):
+                groups[owners].append(item)
+
+    def heading(owners: tuple[str, ...]) -> str:
+        if len(owners) == len(PARTS):
+            return "Alle Teile"
+        return owners[0] if len(owners) == 1 else ", ".join(owners[:-1]) + " und " + owners[-1]
+
+    # Shared entries first, then each part's own.
+    ordered = sorted(groups.items(), key=lambda group: -len(group[0]))
+    blocks = [f"## {heading(owners)}\n\n" + "\n".join(items) for owners, items in ordered]
     return "\n\n".join(blocks or [NO_CHANGES]) + "\n"
 
 
