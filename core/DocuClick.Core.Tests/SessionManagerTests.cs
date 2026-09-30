@@ -51,6 +51,27 @@ public sealed class SessionManagerTests : IDisposable
         Assert.Equal(1, _sounds.Captured);
     }
 
+    [Theory]
+    [InlineData("WebP", "webp", "image/webp")]
+    [InlineData("Jpeg", "jpg", "image/jpeg")]
+    [InlineData("Png", "png", "image/png")]
+    public void Screenshots_are_saved_in_the_configured_format(string format, string extension, string mime)
+    {
+        var config = _config;
+        config.ScreenshotFormat = format;
+        using var session = CreateSession(config);
+        session.Start(_folder.File("Test.html"));
+
+        _capture.NextFrame = () => new CapturedFrame(White(200, 100), new ScreenRect(0, 0, 200, 100), 1.0);
+        var bytes = WaitForCapture(session, () => _input.Click(new ScreenPoint(10, 10)));
+        session.Stop();
+
+        Assert.Equal(mime, ImageData.MimeType(bytes));
+        var file = Assert.Single(Directory.GetFiles(_folder.File("Attachments"), "*", SearchOption.AllDirectories));
+        Assert.EndsWith("." + extension, file);
+        Assert.Contains($"data:{mime};base64,", File.ReadAllText(_folder.File("Test.html"))); // right type in the page
+    }
+
     [Fact]
     public void Retina_capture_is_kept_at_full_resolution_when_downscaling_is_off()
     {

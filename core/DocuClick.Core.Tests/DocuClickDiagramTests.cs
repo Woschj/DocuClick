@@ -6,7 +6,7 @@ namespace DocuClick.Core.Tests;
 /// <summary>Recording into an Obsidian vault: the .docuclick format shared with the DocuClick Diagrams plugin.</summary>
 public sealed class DocuClickDiagramTests : IDisposable
 {
-    private static readonly string Png = "data:image/png;base64," + Convert.ToBase64String(TestImages.Png(3, 2).Png);
+    private static readonly string Png = "data:image/png;base64," + Convert.ToBase64String(TestImages.Png(3, 2).Data);
 
     private readonly TempFolder _vault = new();
     private readonly AppConfig _config = new();
@@ -100,7 +100,7 @@ public sealed class DocuClickDiagramTests : IDisposable
     private void WritePluginStyleDiagram()
     {
         Directory.CreateDirectory(_vault.File("DocuClick-Bilder"));
-        File.WriteAllBytes(_vault.File("DocuClick-Bilder/abc.png"), TestImages.Png(4, 4).Png);
+        File.WriteAllBytes(_vault.File("DocuClick-Bilder/abc.png"), TestImages.Png(4, 4).Data);
         Directory.CreateDirectory(Path.GetDirectoryName(Diagram)!);
         File.WriteAllText(Diagram, $$"""
             {

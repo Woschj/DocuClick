@@ -54,6 +54,24 @@ public sealed class AppConfig
 
     public string AttachmentsFolder { get; set; } = "Attachments";
 
+    /// <summary>
+    /// File format of new screenshots: "WebP" (default — about 3–8× smaller
+    /// than PNG at no visible loss for screen content, shown by every
+    /// browser, Obsidian and the Ablauf-Übersicht), "Jpeg" or "Png"
+    /// (lossless, largest). Existing screenshots keep their format.
+    /// </summary>
+    public string ScreenshotFormat { get; set; } = "WebP";
+
+    /// <summary>Quality 50–100 for WebP/JPEG (ignored for PNG).</summary>
+    public int ScreenshotQuality { get; set; } = 85;
+
+    /// <summary>
+    /// Install/update the DocuClick Diagrams plugin in an Obsidian vault the
+    /// app records into (see ObsidianPluginInstaller). Off: the plugin is
+    /// managed by hand, e.g. when it was changed locally.
+    /// </summary>
+    public bool AutoInstallObsidianPlugin { get; set; } = true;
+
     private const int MaxRecentOutputPaths = 8;
 
     /// <summary>

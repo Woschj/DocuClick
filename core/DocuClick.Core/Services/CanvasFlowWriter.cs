@@ -323,7 +323,7 @@ public sealed class CanvasFlowWriter
         // Immediately cache the screenshot in memory as base64 data URI (zero disk re-read cost later)
         try
         {
-            _base64Cache[imageOutputRelativePath] = "data:image/png;base64," + Convert.ToBase64String(imageBytes);
+            _base64Cache[imageOutputRelativePath] = ImageData.DataUri(imageBytes);
         }
         catch
         {
@@ -1016,7 +1016,7 @@ public sealed class CanvasFlowWriter
 
         try
         {
-            _base64Cache[imageOutputRelativePath] = "data:image/png;base64," + Convert.ToBase64String(imageBytes);
+            _base64Cache[imageOutputRelativePath] = ImageData.DataUri(imageBytes);
         }
         catch
         {
@@ -1625,7 +1625,7 @@ public sealed class CanvasFlowWriter
             try
             {
                 var bytes = File.ReadAllBytes(fullImagePath);
-                var dataUri = "data:image/png;base64," + Convert.ToBase64String(bytes);
+                var dataUri = ImageData.DataUri(bytes);
                 _base64Cache[relativeToOutput] = dataUri;
                 return dataUri;
             }

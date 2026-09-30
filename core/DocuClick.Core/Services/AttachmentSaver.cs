@@ -24,10 +24,10 @@ public static class AttachmentSaver
         // which itself is dated) — repeating either in every single
         // filename was pure redundancy. Time-of-day + milliseconds is still
         // enough to stay unique within one session's folder.
-        var imageFileName = $"{timestamp:HHmmss_fff}.png";
+        var imageFileName = $"{timestamp:HHmmss_fff}.{screenshot.Extension}";
         var fullPath = Path.Combine(attachmentsDir, imageFileName);
 
-        var bytes = screenshot.Png;
+        var bytes = screenshot.Data;
         File.WriteAllBytes(fullPath, bytes);
 
         return (Path.Combine(subfolder, imageFileName), bytes);

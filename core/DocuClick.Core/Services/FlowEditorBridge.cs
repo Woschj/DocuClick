@@ -344,7 +344,7 @@ public sealed class FlowEditorBridge
         var fullPath = Path.Combine(CurrentSessionFolder, outputRelativePath);
         try
         {
-            var result = $"data:image/png;base64,{Convert.ToBase64String(File.ReadAllBytes(fullPath))}";
+            var result = ImageData.DataUri(File.ReadAllBytes(fullPath));
             _imageDataUriCache[outputRelativePath] = result;
             return result;
         }

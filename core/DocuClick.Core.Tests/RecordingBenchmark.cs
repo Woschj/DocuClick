@@ -72,6 +72,36 @@ public sealed class RecordingBenchmark : IDisposable
         File.WriteAllLines(output, lines);
     }
 
+    /// <summary>Size and encode time of the real screenshots per format (see AppConfig.ScreenshotFormat).</summary>
+    [Fact]
+    public void Screenshot_formats()
+    {
+        var output = Environment.GetEnvironmentVariable("DOCUCLICK_BENCH");
+        if (string.IsNullOrEmpty(output))
+        {
+            return;
+        }
+
+        var lines = new List<string>();
+        var bitmaps = Directory.GetFiles(Path.Combine(RepoRoot(), "docs", "screenshots"), "*.png").Order()
+            .Select(path => SkiaSharp.SKBitmap.Decode(path)).Select(b => b.Resize(new SkiaSharp.SKImageInfo(1440, 1440 * b.Height / b.Width), new SkiaSharp.SKSamplingOptions(SkiaSharp.SKCubicResampler.Mitchell))).ToArray(); // typical window size
+        foreach (var (name, format, quality) in new[] { ("PNG", SkiaSharp.SKEncodedImageFormat.Png, 100), ("WebP 85", SkiaSharp.SKEncodedImageFormat.Webp, 85), ("JPEG 85", SkiaSharp.SKEncodedImageFormat.Jpeg, 85) })
+        {
+            long bytes = 0;
+            var watch = Stopwatch.StartNew();
+            foreach (var bitmap in bitmaps)
+            {
+                using var image = SkiaSharp.SKImage.FromBitmap(bitmap);
+                using var data = image.Encode(format, quality);
+                bytes += data.Size;
+            }
+
+            lines.Add($"{name}: {bytes / bitmaps.Length / 1024} KB/screenshot, {watch.Elapsed.TotalMilliseconds / bitmaps.Length:F0} ms/encode");
+        }
+
+        File.AppendAllLines(output, lines);
+    }
+
     private static string RepoRoot()
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)

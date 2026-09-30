@@ -239,7 +239,7 @@ public sealed class SessionManager : IDisposable
         _currentTargetFileName = targetFilePath;
 
         // Recording into a vault: the plugin that opens the diagram note comes along.
-        if (ObsidianVault.FindRoot(targetDirectory) is { } vaultRoot && ObsidianPluginInstaller.EnsureInstalled(vaultRoot) is { } installMessage)
+        if (_config.AutoInstallObsidianPlugin && ObsidianVault.FindRoot(targetDirectory) is { } vaultRoot && ObsidianPluginInstaller.EnsureInstalled(vaultRoot) is { } installMessage)
         {
             InfoOccurred?.Invoke(installMessage);
         }
@@ -999,7 +999,7 @@ public sealed class SessionManager : IDisposable
             FlowPreviewChanged?.Invoke(_writer.GetPreview(), true);
 
             LogService.Log($"Eintrag geschrieben: \"{description}\" -> {targetFileName}");
-            LastScreenshotCaptured?.Invoke(screenshot.Png);
+            LastScreenshotCaptured?.Invoke(screenshot.Data);
 
             if (_config.EnableClickSound)
             {
@@ -1054,7 +1054,7 @@ public sealed class SessionManager : IDisposable
         }
     }
 
-    /// <summary>PNG-encodes the highlighted capture, first scaling HiDPI captures down to 1 pixel per point if configured.</summary>
+    /// <summary>Encodes the highlighted capture in the configured format (WebP, JPEG or PNG), first scaling HiDPI captures down to 1 pixel per point if configured.</summary>
     private ScreenshotImage Encode(SKBitmap bitmap, double scale)
     {
         var source = bitmap;
@@ -1075,8 +1075,14 @@ public sealed class SessionManager : IDisposable
         try
         {
             using var image = SKImage.FromBitmap(source);
-            using var data = image.Encode(SKEncodedImageFormat.Png, 100);
-            return new ScreenshotImage(data.ToArray(), source.Width, source.Height, scale);
+            var (format, extension) = _config.ScreenshotFormat?.ToLowerInvariant() switch
+            {
+                "png" => (SKEncodedImageFormat.Png, "png"),
+                "jpeg" or "jpg" => (SKEncodedImageFormat.Jpeg, "jpg"),
+                _ => (SKEncodedImageFormat.Webp, "webp"),
+            };
+            using var data = image.Encode(format, Math.Clamp(_config.ScreenshotQuality, 50, 100));
+            return new ScreenshotImage(data.ToArray(), source.Width, source.Height, scale, extension);
         }
         finally
         {

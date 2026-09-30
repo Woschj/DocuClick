@@ -51,6 +51,10 @@ public partial class SettingsWindow : Window
         CaptureOnEnterBox.IsChecked = _config.CaptureOnEnter;
         CaptureOnRightClickBox.IsChecked = _config.CaptureOnRightClick;
         SelectSkipModifier(_config.SkipRecordingModifier);
+        ScreenshotFormatBox.SelectedItem = ScreenshotFormatBox.Items.Cast<ComboBoxItem>()
+            .FirstOrDefault(item => string.Equals((string)item.Tag, _config.ScreenshotFormat, StringComparison.OrdinalIgnoreCase))
+            ?? ScreenshotFormatBox.Items[0];
+        AutoInstallObsidianPluginBox.IsChecked = _config.AutoInstallObsidianPlugin;
 
         _startStopModifiers = _config.StartStopModifiers;
         _startStopKey = _config.StartStopKey;
@@ -249,6 +253,8 @@ public partial class SettingsWindow : Window
         _config.SkipRecordingModifier = SkipModifierBox.SelectedItem is ComboBoxItem selected
             ? (string)selected.Tag
             : "None";
+        _config.ScreenshotFormat = ScreenshotFormatBox.SelectedItem is ComboBoxItem format ? (string)format.Tag : "WebP";
+        _config.AutoInstallObsidianPlugin = AutoInstallObsidianPluginBox.IsChecked == true;
 
         _config.StartStopModifiers = _startStopModifiers;
         _config.StartStopKey = _startStopKey;
