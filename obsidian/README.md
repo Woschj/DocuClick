@@ -311,7 +311,6 @@ keinen Zielpfad angeben. Die Host-Seite validiert jedes gespeicherte Dokument.
 
 Noch nicht enthalten: Links aus einzelnen Schritten auf andere Notizen,
 Mobile-/Touch-Anpassung, draw.io-Export im Plugin und separate Bildanhänge.
-Die Desktop-App verwendet für ihre eigene Ablaufübersicht weiterhin `flow.js`; deren vollständige Zusammenführung ist ein weiterer Umbau.
 
 ## Tests und Release
 

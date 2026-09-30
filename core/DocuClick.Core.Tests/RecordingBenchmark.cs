@@ -5,23 +5,14 @@ namespace DocuClick.Core.Tests;
 
 /// <summary>
 /// Measures a long recording (100 clicks with real UI screenshots from
-/// docs/screenshots) through the writer and the Ablauf-Übersicht bridge:
-/// time per click, bytes written to disk, final file size and the size of
-/// the preview messages sent to the web view. Runs only with
+/// docs/screenshots) through the writer: time per click, bytes written to
+/// disk and the final file size. Runs only with
 /// DOCUCLICK_BENCH=&lt;result file&gt;; the numbers are for comparing versions,
 /// not a pass/fail test.
 /// </summary>
 public sealed class RecordingBenchmark : IDisposable
 {
     private readonly TempFolder _folder = new();
-
-    private sealed class Host : IFlowEditorHost
-    {
-        public Task<string?> PromptTextAsync(string? title = null, string? label = null, string? initialValue = null) => Task.FromResult<string?>(null);
-        public Task<string?> PickImageFileAsync() => Task.FromResult<string?>(null);
-        public Task<bool> ConfirmAsync(string message) => Task.FromResult(false);
-        public void PostToWeb(string json) { }
-    }
 
     [Fact]
     public void Hundred_clicks()
@@ -47,15 +38,14 @@ public sealed class RecordingBenchmark : IDisposable
             var target = Path.Combine(folder, "Ablauf" + (vault ? ".md" : ".html"));
             var writer = new CanvasFlowWriter(new AppConfig());
             writer.StartSession(target);
-            var bridge = new FlowEditorBridge(new Host()) { CurrentSessionFolder = folder };
-            long written = 0, previewBytes = 0;
+            long written = 0;
             var clickTimes = new List<double>();
             var watch = new Stopwatch();
             for (var i = 0; i < 100; i++)
             {
                 watch.Restart();
                 writer.AddClickNode($"Linksklick auf Schritt {i + 1}", shots[i % shots.Length], DateTime.Now.AddMilliseconds(i));
-                previewBytes += bridge.BuildPreviewMessage(writer.GetPreview(), isRecordedClick: true).Length;
+                writer.GetPreview();
                 watch.Stop();
                 clickTimes.Add(watch.Elapsed.TotalMilliseconds);
                 written += new FileInfo(target).Length;
@@ -66,7 +56,7 @@ public sealed class RecordingBenchmark : IDisposable
             var stopMs = watch.Elapsed.TotalMilliseconds;
             var attachments = Directory.GetFiles(folder, "*", SearchOption.AllDirectories).Where(f => !f.Equals(target)).Sum(f => new FileInfo(f).Length);
             lines.Add($"{mode}: first10 {clickTimes.Take(10).Average():F1} ms/click, last10 {clickTimes.TakeLast(10).Average():F1} ms/click, total {clickTimes.Sum() / 1000:F2} s, stop {stopMs:F0} ms, " +
-                $"written {written / 1048576.0:F1} MB, file {new FileInfo(target).Length / 1048576.0:F2} MB, images {attachments / 1048576.0:F1} MB, preview messages {previewBytes / 1048576.0:F1} MB");
+                $"written {written / 1048576.0:F1} MB, file {new FileInfo(target).Length / 1048576.0:F2} MB, images {attachments / 1048576.0:F1} MB");
         }
 
         File.WriteAllLines(output, lines);

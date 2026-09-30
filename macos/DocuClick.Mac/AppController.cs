@@ -390,8 +390,7 @@ internal sealed class AppController : IDisposable
         }
 
         var window = EnsureFlowWindow();
-        window.Bridge.CurrentSessionFolder = _session.CurrentSessionFolder;
-        window.UpdatePreview(preview, isRecordedClick);
+        window.UpdatePreview();
         if (!_flowWindowManuallyHidden && !window.IsVisible)
         {
             // Shown without taking focus from the app being recorded.
@@ -409,10 +408,9 @@ internal sealed class AppController : IDisposable
         }
 
         var window = new FlowPreviewWindow();
-        if (_config.UseTemplateOverview && _saveServiceRunning)
+        if (_saveServiceRunning)
         {
-            // Test switch: the shared editor template instead of flow.js; the
-            // page and screenshots come from the local service (see FlowPreviewWindow.PageHost).
+            // The page and screenshots come from the local service (see FlowPreviewWindow).
             window.PageHost = new EditorPageHost(_session, window, (folder, file) =>
             {
                 var root = ObsidianVault.FindRoot(folder) ?? folder;
@@ -427,27 +425,6 @@ internal sealed class AppController : IDisposable
             _saveService.EditorImageRoot = () => _session.CurrentSessionFolder is { } folder ? ObsidianVault.FindRoot(folder) ?? folder : null;
         }
 
-        var bridge = window.Bridge;
-        bridge.PathsProvider = id => _session.ListPaths(id);
-        bridge.NodeClicked += nodeId =>
-        {
-            if (_session.HasActiveSession)
-            {
-                _session.JumpToNode(nodeId);
-            }
-        };
-        bridge.NewPathRequested += (id, name) => _session.StartNewPath(id, name);
-        bridge.ContinuePathRequested += id => _session.ContinuePath(id);
-        bridge.RenameRequested += (id, label) => _session.RenameNode(id, label);
-        bridge.DeleteRequested += id => _session.DeleteNode(id);
-        bridge.ConnectRequested += (from, to) => _session.ConnectNodes(from, to);
-        bridge.DisconnectRequested += (from, to) => _session.DisconnectNodes(from, to);
-        bridge.SetEdgeStyleRequested += (from, to, color, style) => _session.SetEdgeStyle(from, to, color, style);
-        bridge.ReverseEdgeRequested += (from, to) => _session.ReverseEdge(from, to);
-        bridge.MoveRequested += (id, x, y) => _session.MoveNode(id, x, y);
-        bridge.BatchMoveRequested += moves => _session.MoveNodes(moves);
-        bridge.AddNodeRequested += (label, x, y, shape, color) => _session.AddManualNode(label, x, y, shape, color);
-        bridge.AddImageNodeRequested += (label, path, x, y) => _session.AddManualImageNode(label, path, x, y);
         window.CloseRequested += () =>
         {
             _flowWindowManuallyHidden = true;

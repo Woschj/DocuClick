@@ -204,61 +204,26 @@ enthält folgende Bereiche:
 
 Zusätzlich öffnet sich automatisch die
 **Ablauf-Übersicht** — ein frei verschiebbares, größenveränderliches
-Panel mit einer Miniaturkarte des gesamten Ablaufs (per Maus frei
-zoom-/schwenkbar): der aktuelle Knoten ist rot hervorgehoben und trägt ein
-gelbes, leicht pulsierendes "Nächster Klick hier ▶"-Schild, jeder Pfad
-bekommt seine eigene Farbe aus einer festen Palette. Im großen
-Editier-Fenster sitzt oben zusätzlich eine eigene Werkzeugleiste
-(Schrittzähler, Suchfeld zum Hervorheben/Ausgrauen von Knoten nach
-Text, "+ Element"-Button, Zoom-Buttons). Darüber/darin lässt sich der
-Ablauf direkt bearbeiten:
+Fenster mit demselben Editor wie der Ablauf im Browser und die
+Diagrammansicht des Obsidian-Plugins (Suche, Anleitung, Drucken/PDF,
+Schwärzen/Weichzeichnen, Zurück/Wiederholen, Formen, Farben, Verbindungen).
+Der Schritt, an den der nächste Klick anschließt, ist grün markiert.
+Änderungen speichert die Übersicht sofort in die Datei; neue Klicks
+erscheinen darin, ohne dass Zoom oder Ausschnitt verloren gehen.
 
-- **Klick auf die Beschriftung eines Knotens**: öffnet sofort ein
-  mehrzeiliges Textfeld direkt an der Karte — <kbd>Shift</kbd>+<kbd>Enter</kbd>
-  fügt einen Zeilenumbruch ein, <kbd>Enter</kbd> oder ein Klick daneben
-  speichert. **Doppelklick auf den ganzen Knoten** öffnet stattdessen den
-  klassischen Umbenennen-Dialog (auch dieser jetzt mehrzeilig,
-  <kbd>Strg</kbd>+<kbd>Enter</kbd> zum Bestätigen).
-- **Rechtsklick auf einen Knoten**: Kontextmenü mit "→ Weiter" (Aufnahme
-  dorthin springen), "+ Neuer Pfad ab hier" (neuen benannten Pfad
-  abzweigen), allen bereits vorhandenen Pfaden ab diesem Punkt,
-  "Umbenennen" und "Löschen" (löscht bei mehreren abzweigenden Pfaden
-  nach Rückfrage den gesamten nachfolgenden Ast).
-- **Verbinden per Ziehpunkt**: jede Karte zeigt beim Herannähern des
-  Mauszeigers vier kleine Ziehpunkte (oben/rechts/unten/links) — von einem
-  davon auf eine andere Karte ziehen erstellt eine manuelle Querverbindung
-  (großzügiger Einrast-Radius, fühlt sich an wie in draw.io/Visio). Rein
-  additiv (verändert nichts an der bestehenden Struktur), standardmäßig
-  durchgezogen und in der Akzentfarbe des Ausgangsknotens statt gestrichelt
-  grau. Per Rechtsklick auf die Verbindungslinie öffnet sich ein Menü mit
-  9 Akzentfarben, "Linienstil: Durchgezogen/Gestrichelt" zum Umschalten,
-  "⇄ Richtung umkehren" und "Verbindung löschen" — Farbe/Linienstil bleiben
-  dauerhaft in der Datei gespeichert. Löschen geht auch per <kbd>Entf</kbd>/
-  <kbd>Rücktaste</kbd> bei ausgewählter Verbindung — das gilt für **jede**
-  Verbindung, nicht nur manuell hinzugefügte: auch eine strukturelle Kante
-  aus der eigentlichen Aufnahme lässt sich so auftrennen (der abgetrennte
-  Knoten wird dadurch zu einer neuen, eigenständigen Wurzel im Baum statt
-  gelöscht zu werden), nur die Kanten rund um Abzweigungspunkte/Pfad-Anfänge
-  bleiben geschützt.
-- **Rechtsklick auf die leere Fläche** oder der **"+ Element"-Button** in
-  der Werkzeugleiste (nur im großen Editier-Fenster): fügt eines von sechs
-  Flowchart-Elementen an dieser Stelle ein — 🟢 Start/Ende, 🟦 Prozessschritt,
-  🔶 Entscheidung (Raute), 🔷 Eingabe/Ausgabe (Parallelogramm), 📑 Dokument,
-  📝 Notiz — jeweils mit eigener Akzentfarbe. Ganz ohne Screenshot und ohne
-  Verbindungen angelegt, danach ganz normal umbenennbar, verschiebbar und
-  verbindbar wie jeder aufgezeichnete Knoten auch; erscheinen auch im
-  draw.io-Export als passende Vektorform.
-- **"📷 Bild einfügen..."** im selben Rechtsklick-Menü: fügt statt eines
-  leeren Flowchart-Elements einen Schritt mit einem selbst gewählten
-  Bild ein (öffnet einen Datei-Dialog für PNG/JPG/JPEG/WEBP/BMP) — nützlich
-  für Screenshots, die nicht live mit DocuClick aufgenommen wurden, oder
-  Diagramme/Fotos, die einen Schritt illustrieren sollen.
-- **Umschalt+Ziehen** wählt mehrere Knoten per Rahmen aus — Ziehen an
-  irgendeiner der ausgewählten Karten verschiebt danach alle gemeinsam.
-  <kbd>Entf</kbd>/<kbd>Rücktaste</kbd> löscht die Auswahl (Knoten wie
-  Verbindungen) gesammelt.
+**Rechtsklick auf einen Schritt** bietet zusätzlich zu den Bearbeiten-
+Funktionen:
 
-Ein Klick auf einen Knoten in der Ablauf-Übersicht springt sofort dorthin
+- **Hier weiter aufnehmen**: der nächste Klick knüpft an diesen Schritt an.
+- **Neuer Pfad ab hier …**: fragt nach einem Namen und zweigt ab diesem
+  Schritt einen neuen benannten Pfad ab.
+- **Pfad „…“ fortsetzen** (an einer Abzweigung, je Pfad): die Aufnahme
+  knüpft dort an, wo dieser Pfad zuletzt endete.
+
+„Zurück“ nimmt auch gerade aufgenommene Klicks zurück, „Wiederholen“ holt
+sie wieder.
+
+„Hier weiter aufnehmen“ springt sofort dorthin
 — egal ob gerade aufgezeichnet wird oder die Session nur **pausiert** ist
 (siehe [Ablauf nachträglich
 fortsetzen](#ablauf-nachträglich-fortsetzen-an-einem-bestimmten-punkt-statt-am-dateiende)):
@@ -350,12 +315,12 @@ Erfolgsfall) — das lässt sich direkt abbilden:
   ausgehende Pfad ist von Anfang an ein echtes, benanntes, in der
   Ablauf-Übersicht auswählbares Objekt.
 - **Weitere Pfade**: über die Ablauf-Übersicht (Rechtsklick auf die Raute
-  oder einen beliebigen anderen Knoten → "+ Neuer Pfad ab hier") lassen
+  oder einen beliebigen anderen Knoten → „Neuer Pfad ab hier …“) lassen
   sich jederzeit zusätzliche benannte Pfade abzweigen — nicht nur von
   einer Abzweigungs-Raute aus, sondern von jedem beliebigen bereits
   aufgezeichneten Knoten.
-- **Einen Pfad fortsetzen**: Rechtsklick auf den Ursprungsknoten in der
-  Ablauf-Übersicht zeigt alle davon abzweigenden Pfade zur Auswahl — die
+- **Einen Pfad fortsetzen**: Rechtsklick auf die Abzweigung in der
+  Ablauf-Übersicht zeigt je Pfad „Pfad „…“ fortsetzen“ — die
   Aufnahme knüpft dann genau dort an, wo dieser Pfad zuletzt endete, egal
   wie viele andere Klicks zwischenzeitlich aufgezeichnet wurden.
 
@@ -398,8 +363,8 @@ Einstellungen (kein Neustart nötig).
 
 ### Ablauf nachträglich fortsetzen (an einem bestimmten Punkt statt am Dateiende)
 
-Ein Klick auf einen beliebigen Knoten in der Ablauf-Übersicht springt
-sofort dorthin — der nächste aufgezeichnete Klick knüpft danach genau an
+„Hier weiter aufnehmen“ (Rechtsklick auf einen beliebigen Knoten in der
+Ablauf-Übersicht) springt sofort dorthin — der nächste aufgezeichnete Klick knüpft danach genau an
 diesem Punkt an statt am Dateiende, unabhängig davon, wie viele andere
 Klicks zwischenzeitlich woanders aufgezeichnet wurden. Das funktioniert
 jederzeit, solange irgendein Ablauf aktiv geladen ist: während einer
@@ -408,8 +373,8 @@ laufenden Aufnahme, bei **pausierter** Aufnahme (siehe
 oder in einer per Tray-Menü **"Ablauf öffnen..."** geladenen Datei ganz
 ohne laufende Aufnahme. Eine eigene "Ansatzpunkt für die nächste Session"-
 Markierung ist dafür nicht mehr nötig — praktisch bedeutet das: zum
-gezielten Fortsetzen einfach pausieren statt stoppen, den gewünschten
-Knoten anklicken und mit "Fortsetzen" weiteraufnehmen.
+gezielten Fortsetzen einfach pausieren statt stoppen, beim gewünschten
+Knoten „Hier weiter aufnehmen“ wählen und mit "Fortsetzen" weiteraufnehmen.
 
 ## Start/Stopp per Hotkey
 
@@ -526,22 +491,6 @@ git push origin v1.18.0
 
 Offene Punkte: Feinschliff bei Multi-Monitor/DPI-Kantenfällen, robustere
 Fehlerbehandlung in Randfällen.
-
-### Ablauf-Übersicht: Performance
-
-Die Ablauf-Übersicht (WebView2 + Cytoscape.js) aktualisiert bei jeder
-Aktion nur noch die tatsächlich geänderten Knoten/Kanten/DOM-Overlays
-statt bei jedem Klick den kompletten Graphen neu aufzubauen — merklich
-flüssiger bei langen Sessions. Verschieben und neue Elemente platzieren
-speichert zusätzlich leicht entprellt (150 ms) im Hintergrund statt
-synchron bei jedem einzelnen Zwischenschritt, damit Ziehen nicht ruckelt;
-"Pausieren"/"Neue Session"/App-Ende erzwingen weiterhin einen sofortigen,
-vollständigen Speichervorgang. Alle Bild-/Beschriftungs-/Ziehpunkt-Overlays
-laufen zusätzlich über einen gemeinsamen `requestAnimationFrame`-Takt statt
-unabhängig voneinander, und Overlays außerhalb des sichtbaren Bereichs
-werden bei schnellem Pan/Zoom übersprungen (Viewport-Culling); das
-Verschieben mehrerer ausgewählter Knoten sendet dafür nur eine einzige
-Nachricht statt einer pro Knoten.
 
 ### `tools/`
 

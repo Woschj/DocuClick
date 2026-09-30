@@ -25,26 +25,13 @@ using Orientation = System.Windows.Controls.Orientation;
 namespace DocuClick;
 
 /// <summary>
-/// Freely draggable, semi-transparent minimap of the current flow (Canvas
-/// mode — the only live-recording branching mode). The diagram itself —
-/// every node, its pan/zoom/click/drag interaction — renders inside an embedded
-/// <see cref="Microsoft.Web.WebView2.Wpf.WebView2"/> running a small local
-/// HTML/JS page (<c>WebAssets/</c>, Cytoscape.js) instead of hand-drawn WPF
-/// shapes. That's a deliberate rewrite: repeated rounds of WPF-specific
-/// bugs (window activation eating the first click, ScrollViewer marking
-/// clicks "Handled" regardless of target, drag-threshold/routed-event
-/// fights) kept resurfacing even after each individual fix — browser
-/// pointer-event handling is the battle-tested tool for exactly this job.
-///
-/// Only the *rendering and gesture* layer moved into the WebView; every
-/// decision about what a gesture *means* still lives here in C#, via the
-/// same public event contract as before
-/// (<see cref="NodeClicked"/>/<see cref="NewPathRequested"/>/
-/// <see cref="ContinuePathRequested"/>/<see cref="PathsProvider"/>/
-/// <see cref="RenameRequested"/>/<see cref="DeleteRequested"/>/
-/// <see cref="ConnectRequested"/>) — App.xaml.cs and SessionManager needed
-/// no changes for this rewrite. See WebAssets/flow.js for the other half of
-/// the message protocol.
+/// The Ablauf-Übersicht: a freely draggable, semi-transparent window with the
+/// shared editor template (WebAssets/viewer.template.html — the same editor
+/// as the .html file in a browser, the Obsidian plugin and the macOS app) in
+/// a <see cref="Microsoft.Web.WebView2.Wpf.WebView2"/>. <see cref="PageHost"/>
+/// handles its messages: the page edits and saves the whole document, newly
+/// recorded clicks reach it as messages, and it adds the recording actions
+/// ("Hier weiter aufnehmen", "Neuer Pfad ab hier").
 /// </summary>
 public sealed class FlowPreviewOverlay : Window, IFlowEditorHost
 {
@@ -60,36 +47,19 @@ public sealed class FlowPreviewOverlay : Window, IFlowEditorHost
     // relying on stacking order.
     private const double ResizeGripSize = 16;
 
-    // One fixed size for the whole editing window (card sizes themselves
-    // are decided by FlowEditorBridge, shared with macOS).
+    // One fixed size for the whole editing window.
     private const double PanelWidth = 1000;
     private const double PanelHeight = 720;
     private double _panelWidth = PanelWidth;
     private double _panelHeight = PanelHeight;
 
-    /// <summary>
-    /// The shared message protocol (DocuClick.Core FlowEditorBridge): parses
-    /// what flow.js reports and builds what it renders. App.xaml.cs
-    /// subscribes to its events; this window only hosts the WebView2 and
-    /// provides the native dialogs (see the IFlowEditorHost members below).
-    /// </summary>
-    public FlowEditorBridge Bridge { get; }
-
     /// <summary>Absolute folder of the loaded session — screenshots are resolved relative to it.</summary>
-    public string? CurrentSessionFolder
-    {
-        get => Bridge.CurrentSessionFolder;
-        set => Bridge.CurrentSessionFolder = value;
-    }
+    public string? CurrentSessionFolder { get; set; }
 
-    /// <summary>
-    /// Set (before the window is shown) to use the shared editor template —
-    /// the same editor as the .html file in a browser and the Obsidian plugin
-    /// — instead of flow.js (AppConfig.UseTemplateOverview).
-    /// </summary>
-    public EditorPageHost? PageHost { get; set; }
+    /// <summary>The page's counterpart in the app (messages, saves, recorded clicks).</summary>
+    public EditorPageHost PageHost { get; }
 
-    // Template mode: the page is written here and served as https://docuclick.editor/,
+    // The page is written here and served as https://docuclick.editor/,
     // screenshots come from https://docuclick.session/ (the vault root, or the
     // session folder outside a vault).
     private static readonly string EditorPageFolder = System.IO.Path.Combine(
@@ -123,9 +93,9 @@ public sealed class FlowPreviewOverlay : Window, IFlowEditorHost
     /// <summary>Fired when the header's close (✕) icon is clicked — App.xaml.cs hides rather than destroys the window, so <see cref="UpdatePreview"/> keeps the state current for whenever the TopBar's reopen button brings it back.</summary>
     public event Action? CloseRequested;
 
-    public FlowPreviewOverlay()
+    public FlowPreviewOverlay(SessionManager session)
     {
-        Bridge = new FlowEditorBridge(this);
+        PageHost = new EditorPageHost(session, this, ImageUrl);
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = Brushes.Transparent;
@@ -174,14 +144,7 @@ public sealed class FlowPreviewOverlay : Window, IFlowEditorHost
             e.Handled = true;
             if (_webViewReady && _webView?.CoreWebView2 is not null)
             {
-                if (PageHost is not null)
-                {
-                    _ = _webView.CoreWebView2.ExecuteScriptAsync("typeof ensureViewFit === 'function' && ensureViewFit()");
-                }
-                else
-                {
-                    _webView.CoreWebView2.PostWebMessageAsJson(FlowEditorBridge.FitViewMessage);
-                }
+                _ = _webView.CoreWebView2.ExecuteScriptAsync("typeof ensureViewFit === 'function' && ensureViewFit()");
             }
         };
 
@@ -328,12 +291,10 @@ public sealed class FlowPreviewOverlay : Window, IFlowEditorHost
     }
 
     /// <summary>
-    /// Points the WebView2 at the local <c>WebAssets/</c> page and wires up
-    /// the message protocol described in <see cref="OnWebMessageReceived"/>.
-    /// Uses a virtual hostname rather than a bare <c>file://</c> navigation
-    /// — the recommended WebView2 approach, and needed for
-    /// <c>fetch()</c>/relative-path loading to behave like a normal site
-    /// instead of hitting local-file CORS restrictions.
+    /// Sets up the WebView2 and loads the editor page (see <see cref="LoadTemplatePage"/>).
+    /// Uses virtual hostnames rather than bare <c>file://</c> navigation — the
+    /// recommended WebView2 approach, so the page may read the screenshots'
+    /// pixels (redaction) instead of hitting local-file restrictions.
     /// </summary>
     private async Task InitializeWebViewAsync()
     {
@@ -365,12 +326,8 @@ public sealed class FlowPreviewOverlay : Window, IFlowEditorHost
             return;
         }
 
-        var webAssetsDir = System.IO.Path.Combine(AppContext.BaseDirectory, "WebAssets");
-        _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-            "docuclick.flowpreview", webAssetsDir, CoreWebView2HostResourceAccessKind.Allow);
-        // The diagram has its own right-click context menu (Umbenennen/
-        // Löschen, see flow.js) — the browser's default one would just be
-        // visual noise on top of it.
+        // The editor has its own right-click context menu — the browser's
+        // default one would just be visual noise on top of it.
         _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
         // No DevTools on this HUD panel — it only ever navigates to our own
         // bundled WebAssets, so there's nothing to debug via F12 in normal
@@ -378,32 +335,21 @@ public sealed class FlowPreviewOverlay : Window, IFlowEditorHost
         // with mouse/keyboard access to the running app.
         _webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
         _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
-        if (PageHost is not null)
-        {
-            System.IO.Directory.CreateDirectory(EditorPageFolder);
-            _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                "docuclick.editor", EditorPageFolder, CoreWebView2HostResourceAccessKind.Allow);
-            _webView.NavigationCompleted += (_, _) => _webViewReady = true;
-            LoadTemplatePage();
-            return;
-        }
-
-        _webView.NavigationCompleted += (_, _) =>
-        {
-            _webViewReady = true;
-            _webView.CoreWebView2.PostWebMessageAsJson(Bridge.BuildPreviewMessage(Bridge.LastPreview));
-        };
-        _webView.CoreWebView2.Navigate("https://docuclick.flowpreview/index.html");
+        System.IO.Directory.CreateDirectory(EditorPageFolder);
+        _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+            "docuclick.editor", EditorPageFolder, CoreWebView2HostResourceAccessKind.Allow);
+        _webView.NavigationCompleted += (_, _) => _webViewReady = true;
+        LoadTemplatePage();
     }
 
     /// <summary>
-    /// Template mode: (re)builds the page for the loaded flow — at start and
+    /// (Re)builds the page for the loaded flow — at start and
     /// when another file is loaded; later clicks reach the running page as
     /// messages (EditorPageHost.OnSessionChanged), so zoom and undo stay.
     /// </summary>
     private void LoadTemplatePage()
     {
-        if (PageHost is null || _webView.CoreWebView2 is null)
+        if (_webView.CoreWebView2 is null)
         {
             return;
         }
@@ -430,13 +376,10 @@ public sealed class FlowPreviewOverlay : Window, IFlowEditorHost
     }
 
     /// <summary>
-    /// Routes a gesture reported from flow.js to the exact same public
-    /// events/dialogs the old hand-drawn WPF canvas used — see the class
-    /// doc comment for why the decision logic itself never moved. Only
-    /// captures the raw message here and defers the actual handling (see
-    /// <see cref="HandleWebMessage"/>) to a fresh dispatcher operation:
-    /// several cases below show a modal dialog (BranchNameWindow) or
-    /// MessageBox, and doing that synchronously from directly inside
+    /// Hands a message from the page to <see cref="PageHost"/>. Only captures
+    /// the raw message here and defers the actual handling to a fresh
+    /// dispatcher operation: "Neuer Pfad ab hier" shows a modal dialog
+    /// (BranchNameWindow), and doing that synchronously from directly inside
     /// WebView2's own WebMessageReceived callback froze the whole window
     /// outright (confirmed in testing — clicking "Abzweigung setzen" hung
     /// the app immediately) rather than merely risking a re-entrancy edge
@@ -456,13 +399,7 @@ public sealed class FlowPreviewOverlay : Window, IFlowEditorHost
     {
         try
         {
-            if (PageHost is not null)
-            {
-                await PageHost.HandleMessageAsync(json);
-                return;
-            }
-
-            await Bridge.HandleMessageAsync(json);
+            await PageHost.HandleMessageAsync(json);
         }
         catch (Exception ex)
         {
@@ -575,36 +512,25 @@ public sealed class FlowPreviewOverlay : Window, IFlowEditorHost
     }
 
 
-    /// <summary>Stores the latest preview and pushes it to the WebView (once it's ready to receive messages — see <see cref="InitializeWebViewAsync"/>).</summary>
-    public void UpdatePreview(FlowPreview preview, bool isRecordedClick = false)
+    /// <summary>The session changed (click recorded, jump, new path, file switch): bring the page up to date.</summary>
+    public void UpdatePreview()
     {
-        if (PageHost is not null)
+        if (_webView.CoreWebView2 is null)
         {
-            if (_webView.CoreWebView2 is null)
-            {
-                return; // the first page is built once the WebView2 is ready
-            }
-
-            if (PageHost.NeedsNewPage)
-            {
-                LoadTemplatePage();
-            }
-            else
-            {
-                PageHost.OnSessionChanged();
-            }
-
-            return;
+            return; // the first page is built once the WebView2 is ready
         }
 
-        var message = Bridge.BuildPreviewMessage(preview, isRecordedClick);
-        if (_webViewReady)
+        if (PageHost.NeedsNewPage)
         {
-            _webView.CoreWebView2.PostWebMessageAsJson(message);
+            LoadTemplatePage();
+        }
+        else
+        {
+            PageHost.OnSessionChanged();
         }
     }
 
-    // --- IFlowEditorHost: native dialogs for FlowEditorBridge ---------------
+    // --- IFlowEditorHost ------------------------------------------------------
     // ModalDialogDepth tells the TopBar/overlay activation hook that a
     // modal dialog is open (see NativeMethods.DeliverActivatingClick).
 
@@ -615,37 +541,6 @@ public sealed class FlowPreviewOverlay : Window, IFlowEditorHost
         try
         {
             return Task.FromResult(nameWindow.ShowDialog() == true ? nameWindow.BranchName : null);
-        }
-        finally
-        {
-            NativeMethods.ModalDialogDepth--;
-        }
-    }
-
-    public Task<string?> PickImageFileAsync()
-    {
-        var dialog = new Microsoft.Win32.OpenFileDialog
-        {
-            Title = "DocuClick - Bild auswählen",
-            Filter = "Bilder (*.png;*.jpg;*.jpeg;*.webp;*.bmp)|*.png;*.jpg;*.jpeg;*.webp;*.bmp|Alle Dateien (*.*)|*.*"
-        };
-        NativeMethods.ModalDialogDepth++;
-        try
-        {
-            return Task.FromResult(dialog.ShowDialog(this) == true ? dialog.FileName : null);
-        }
-        finally
-        {
-            NativeMethods.ModalDialogDepth--;
-        }
-    }
-
-    public Task<bool> ConfirmAsync(string message)
-    {
-        NativeMethods.ModalDialogDepth++;
-        try
-        {
-            return Task.FromResult(MessageBox.Show(this, message, "DocuClick", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes);
         }
         finally
         {

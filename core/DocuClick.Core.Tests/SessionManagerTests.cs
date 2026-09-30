@@ -272,8 +272,6 @@ public sealed class SessionManagerTests : IDisposable
         public Queue<string?> Answers { get; } = new();
         public List<System.Text.Json.JsonElement> Posted { get; } = new();
         public Task<string?> PromptTextAsync(string? title = null, string? label = null, string? initialValue = null) => Task.FromResult(Answers.Count > 0 ? Answers.Dequeue() : null);
-        public Task<string?> PickImageFileAsync() => Task.FromResult<string?>(null);
-        public Task<bool> ConfirmAsync(string message) => Task.FromResult(false);
         public void PostToWeb(string json) => Posted.Add(System.Text.Json.JsonDocument.Parse(json).RootElement.Clone());
     }
 
@@ -318,6 +316,37 @@ public sealed class SessionManagerTests : IDisposable
         host.OnSessionChanged();
         Assert.Equal("setCurrent", web.Posted.Last().GetProperty("kind").GetString());
         Assert.Equal(newest, web.Posted.Last().GetProperty("nodeId").GetString());
+    }
+
+    [Fact]
+    public async Task A_new_path_can_start_at_any_step_and_be_continued_later_from_the_page()
+    {
+        using var session = CreateSession(_config);
+        var path = _folder.File("Test.html");
+        session.Start(path);
+        _capture.NextFrame = () => new CapturedFrame(White(40, 20), new ScreenRect(0, 0, 40, 20), 1.0);
+        WaitForCapture(session, () => _input.Click(new ScreenPoint(5, 5)));
+        WaitForCapture(session, () => _input.Click(new ScreenPoint(6, 6)));
+        var web = new PageHost();
+        var host = new EditorPageHost(session, web, (folder, file) => file);
+        host.BuildPage();
+        string Step(string text) => CanvasDocumentIo.Load(path).Nodes.Single(n => n.Type == "text" && n.Text == text).Id;
+
+        // "Neuer Pfad ab hier" on an ordinary recorded step (not a decision point).
+        var steps = CanvasDocumentIo.Load(path).Nodes.Where(n => n.Type == "text").OrderBy(n => n.Y).ToList();
+        web.Answers.Enqueue("Fehlerfall");
+        await host.HandleMessageAsync($$"""{ "kind": "newPath", "nodeId": "{{steps[0].Id}}" }""");
+        WaitForCapture(session, () => _input.Click(new ScreenPoint(7, 7)));
+        var pathStart = Step("↳ Pfad: Fehlerfall");
+        var doc = CanvasDocumentIo.Load(path);
+        Assert.Contains(doc.Edges, e => e.FromNode == steps[0].Id && e.ToNode == pathStart);
+        var pathStep = doc.Edges.Single(e => e.FromNode == pathStart).ToNode;
+
+        // Back to the main line, then "Pfad „Fehlerfall“ fortsetzen": the next click follows that path's last step.
+        await host.HandleMessageAsync($$"""{ "kind": "jumpTo", "nodeId": "{{steps[1].Id}}" }""");
+        await host.HandleMessageAsync($$"""{ "kind": "continuePath", "nodeId": "{{pathStart}}" }""");
+        WaitForCapture(session, () => _input.Click(new ScreenPoint(8, 8)));
+        Assert.Single(CanvasDocumentIo.Load(path).Edges, e => e.FromNode == pathStep);
     }
 
     [Fact]

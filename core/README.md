@@ -10,12 +10,13 @@ Zusammenführen beide Apps und das Plugin prüfen.
 
 - `Services/`: Session-Logik (`SessionManager`), Ablauf-Datei
   (`CanvasFlowWriter`, `CanvasDocumentIo`, `HtmlViewerBuilder`), draw.io-Export,
-  Speicherdienst für Browser-Änderungen (`LocalSaveService`), Protokoll der
-  Ablauf-Übersicht (`FlowEditorBridge`), Konfiguration, Log.
+  Speicherdienst für Browser-Änderungen (`LocalSaveService`), Anbindung der
+  Ablauf-Übersicht (`EditorPageHost`), Konfiguration, Log.
 - `Platform/`: Schnittstellen, die jede App implementiert (Eingabe,
   Screenshots, Element-Erkennung, Vordergrundfenster, Töne).
-- `WebAssets/`: Ablauf-Übersicht (`index.html`, `flow.js`, `flow.css`), HTML-
-  Vorlage der Ablauf-Datei (`viewer.template.html`), Cytoscape.js.
+- `WebAssets/`: der gemeinsame Editor (`viewer.template.html`) – Vorlage jeder
+  Ablauf-Datei, Ablauf-Übersicht beider Apps und Ansicht im Obsidian-Plugin –
+  und Cytoscape.js.
 
 Tests (laufen auf jedem Betriebssystem):
 

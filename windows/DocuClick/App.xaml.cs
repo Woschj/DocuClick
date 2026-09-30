@@ -388,12 +388,6 @@ public partial class App : Application
         }
     }
 
-    /// <summary>Ablauf-Übersicht popup: "+ Neuer Pfad" was chosen and named.</summary>
-    private void OnNewPathRequested(string decisionPointId, string pathName) => _sessionManager?.StartNewPath(decisionPointId, pathName);
-
-    /// <summary>Ablauf-Übersicht popup: an existing path was chosen to continue.</summary>
-    private void OnContinuePathRequested(string pathStartNodeId) => _sessionManager?.ContinuePath(pathStartNodeId);
-
     private void OnFlowPreviewChanged(FlowPreview? preview, bool isRecordedClick)
     {
         // Fires from SessionManager's dedicated writer thread for every
@@ -419,28 +413,7 @@ public partial class App : Application
                 // came up broken-looking and non-editable until manually
                 // reopened later — exactly the "one overlay, not two views"
                 // complaint this replaces.
-                _flowPreviewOverlay = new FlowPreviewOverlay();
-                if (_config!.UseTemplateOverview)
-                {
-                    // Test switch: the shared editor template instead of flow.js
-                    // (the Bridge events below then simply stay unused).
-                    _flowPreviewOverlay.PageHost = new EditorPageHost(_sessionManager!, _flowPreviewOverlay, _flowPreviewOverlay.ImageUrl);
-                }
-
-                _flowPreviewOverlay.Bridge.NodeClicked += OnFlowPreviewNodeClicked;
-                _flowPreviewOverlay.Bridge.PathsProvider = decisionPointId => _sessionManager?.ListPaths(decisionPointId) ?? new List<PathInfo>();
-                _flowPreviewOverlay.Bridge.NewPathRequested += OnNewPathRequested;
-                _flowPreviewOverlay.Bridge.ContinuePathRequested += OnContinuePathRequested;
-                _flowPreviewOverlay.Bridge.RenameRequested += (nodeId, newLabel) => _sessionManager?.RenameNode(nodeId, newLabel);
-                _flowPreviewOverlay.Bridge.DeleteRequested += nodeId => _sessionManager?.DeleteNode(nodeId);
-                _flowPreviewOverlay.Bridge.ConnectRequested += (fromId, toId) => _sessionManager?.ConnectNodes(fromId, toId);
-                _flowPreviewOverlay.Bridge.DisconnectRequested += (fromId, toId) => _sessionManager?.DisconnectNodes(fromId, toId);
-                _flowPreviewOverlay.Bridge.SetEdgeStyleRequested += (fromId, toId, color, lineStyle) => _sessionManager?.SetEdgeStyle(fromId, toId, color, lineStyle);
-                _flowPreviewOverlay.Bridge.ReverseEdgeRequested += (fromId, toId) => _sessionManager?.ReverseEdge(fromId, toId);
-                _flowPreviewOverlay.Bridge.MoveRequested += (nodeId, x, y) => _sessionManager?.MoveNode(nodeId, x, y);
-                _flowPreviewOverlay.Bridge.BatchMoveRequested += moves => _sessionManager?.MoveNodes(moves);
-                _flowPreviewOverlay.Bridge.AddNodeRequested += (label, x, y, shape, color) => _sessionManager?.AddManualNode(label, x, y, shape, color);
-                _flowPreviewOverlay.Bridge.AddImageNodeRequested += (label, imagePath, x, y) => _sessionManager?.AddManualImageNode(label, imagePath, x, y);
+                _flowPreviewOverlay = new FlowPreviewOverlay(_sessionManager!);
                 _flowPreviewOverlay.CloseRequested += () =>
                 {
                     _flowPreviewManuallyHidden = true;
@@ -449,7 +422,7 @@ public partial class App : Application
             }
 
             _flowPreviewOverlay.CurrentSessionFolder = _sessionManager?.CurrentSessionFolder;
-            _flowPreviewOverlay.UpdatePreview(preview, isRecordedClick);
+            _flowPreviewOverlay.UpdatePreview();
             if (!_flowPreviewManuallyHidden)
             {
                 _flowPreviewOverlay.Show();
@@ -497,19 +470,6 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Clicking a node in the Ablauf-Übersicht jumps the live cursor there
-    /// — whether actively recording or just paused — so the next click
-    /// attaches at that point instead of the file's end. A no-op if
-    /// nothing is loaded at all (nothing to click on in that case anyway).
-    /// </summary>
-    private void OnFlowPreviewNodeClicked(string nodeId)
-    {
-        if (_sessionManager!.HasActiveSession)
-        {
-            _sessionManager.JumpToNode(nodeId);
-        }
-    }
-
     /// <summary>Shows the session-start file picker; null means the user cancelled.</summary>
     private string? PromptForSessionFile()
     {

@@ -72,12 +72,6 @@ public sealed class AppConfig
     /// </summary>
     public bool AutoInstallObsidianPlugin { get; set; } = true;
 
-    /// <summary>
-    /// Test switch (Windows): the Ablauf-Übersicht uses the shared editor
-    /// template — same editor as the .html file in a browser and the Obsidian
-    /// plugin, with redaction and printing — instead of the older flow.js page.
-    /// </summary>
-    public bool UseTemplateOverview { get; set; }
 
     /// <summary>Secret the Obsidian plugin sends to control recording (see ObsidianAppLink). Created at first start.</summary>
     public string? RemoteControlToken { get; set; }

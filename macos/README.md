@@ -56,9 +56,12 @@ die Berechtigungen bei Updates erhalten.
 4. **Ablauf-Übersicht**: schwebendes, durchscheinendes Fenster mit dem
    Ablauf. Verschieben an der Kopfzeile, Größe an allen Rändern oder am
    Griff unten rechts ändern, ⛶ passt die Ansicht ein, – klappt ein, ✕
-   schließt (über **Ablauf** in der Top-Leiste wieder öffnen). Karten
-   verschieben, per Doppelklick umbenennen, per Rechtsklick löschen,
-   verbinden oder Abzweigungen anlegen.
+   schließt (über **Ablauf** in der Top-Leiste wieder öffnen). Derselbe
+   Editor wie im Browser und in Obsidian (Suche, Anleitung, Drucken/PDF,
+   Schwärzen/Weichzeichnen, Zurück/Wiederholen). Rechtsklick auf einen
+   Schritt: **Hier weiter aufnehmen**, **Neuer Pfad ab hier …** und an einer
+   Abzweigung **Pfad „…“ fortsetzen**. Seite und Screenshots kommen über den
+   lokalen Dienst der App (nur 127.0.0.1).
 5. **Abzweigung**: **⌃⌥D** fragt nach dem Namen des Pfads, setzt eine
    Abzweigungs-Raute hinter den letzten Schritt, und die nächsten Klicks
    landen im neuen Pfad. Weitere Pfade: Rechtsklick auf einen Schritt in

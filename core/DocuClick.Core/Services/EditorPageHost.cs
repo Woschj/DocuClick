@@ -5,6 +5,21 @@ using System.Text.Json.Nodes;
 namespace DocuClick.Services;
 
 /// <summary>
+/// What <see cref="EditorPageHost"/> needs from the window hosting the
+/// Ablauf-Übersicht's web view (WPF + WebView2 on Windows, Avalonia + WebKit
+/// on macOS). The prompt is async so both a blocking WPF ShowDialog and an
+/// awaited Avalonia dialog fit.
+/// </summary>
+public interface IFlowEditorHost
+{
+    /// <summary>The name/label prompt (BranchNameWindow). Null title/label/initial value = the dialog's defaults ("Pfad benennen").</summary>
+    Task<string?> PromptTextAsync(string? title = null, string? label = null, string? initialValue = null);
+
+    /// <summary>Delivers one JSON message to the page.</summary>
+    void PostToWeb(string json);
+}
+
+/// <summary>
 /// The app's Ablauf-Übersicht built on the shared editor template
 /// (WebAssets/viewer.template.html) — the same editor as the .html file in a
 /// browser and the Obsidian plugin, instead of the separate flow.js page.
@@ -14,7 +29,7 @@ namespace DocuClick.Services;
 /// aufnehmen", "Neuer Pfad ab hier") through the template's recording host.
 ///
 /// Messages page → app (JSON): {kind:"ready"}, {kind:"save", request, canvas},
-/// {kind:"jumpTo", nodeId}, {kind:"newPath", nodeId}.
+/// {kind:"jumpTo", nodeId}, {kind:"newPath", nodeId}, {kind:"continuePath", nodeId}.
 /// App → page: {kind:"saved", request, error?}, {kind:"replace", canvas, flow,
 /// currentId}, {kind:"setCurrent", nodeId}.
 /// </summary>
@@ -129,6 +144,11 @@ public sealed class EditorPageHost
                 _session.JumpToNode(root.GetProperty("nodeId").GetString()!);
                 break;
 
+            case "continuePath":
+                // Resumes where that path last ended.
+                _session.ContinuePath(root.GetProperty("nodeId").GetString()!);
+                break;
+
             case "newPath":
             {
                 var nodeId = root.GetProperty("nodeId").GetString()!;
@@ -219,6 +239,7 @@ public sealed class EditorPageHost
     recording: {
       jumpTo: (nodeId) => toHost({ kind: "jumpTo", nodeId }),
       newPath: (nodeId) => toHost({ kind: "newPath", nodeId }),
+      continuePath: (nodeId) => toHost({ kind: "continuePath", nodeId }),
     },
   };
 })();

@@ -2759,12 +2759,16 @@ if (dataScriptEl) {
       items.push({ header: nodeLabel.length > 28 ? nodeLabel.slice(0, 28) + "…" : nodeLabel });
 
       // Recording host (the DocuClick app's Ablauf-Übersicht): where the next
-      // click lands, and new paths from a decision point.
+      // click lands, a new named path from any step, and the paths that
+      // already start here (continued where each one ended).
       const recordingHost = editorHost?.recording;
       if (recordingHost) {
         items.push({ icon: "▶", primary: true, label: "Hier weiter aufnehmen", action: () => recordingHost.jumpTo(nodeId) });
-        if (node.data("shape") === "diamond" || nodeLabel.includes("Abzweigung")) {
-          items.push({ icon: "＋", label: "Neuer Pfad ab hier …", action: () => recordingHost.newPath(nodeId) });
+        items.push({ icon: "＋", label: "Neuer Pfad ab hier …", action: () => recordingHost.newPath(nodeId) });
+        if (recordingHost.continuePath) {
+          node.outgoers("edge").filter((e) => !e.data("manual")).targets()
+            .filter((t) => (t.data("label") || "").startsWith("↳ Pfad: "))
+            .forEach((start) => items.push({ icon: "↳", label: `Pfad „${start.data("label").slice(8)}“ fortsetzen`, action: () => recordingHost.continuePath(start.id()) }));
         }
         items.push({ separator: true });
       }
