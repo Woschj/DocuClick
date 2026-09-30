@@ -5,6 +5,10 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [1.19.0] - 2026-09-30
+
+- Keine eigenen Änderungen; Version an die anderen Teile angeglichen.
+
 ## [1.18.0] - 2026-09-30
 
 - **Ein Release für alles**: Windows-App, macOS-App und Obsidian-Plugin

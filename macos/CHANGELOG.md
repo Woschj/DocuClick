@@ -8,7 +8,7 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
-## [Unreleased]
+## [1.19.0] - 2026-09-30
 
 - **Die neue Ablauf-Übersicht ist jetzt die einzige**: der Schalter „Neue
   Ablauf-Übersicht testen“ entfällt, die alte Übersicht ist entfernt. Im
