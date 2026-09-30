@@ -91,7 +91,9 @@ public static class DiagramNote
     /// <summary>
     /// The flow as nested Markdown lists — main line numbered, each path of a
     /// decision point as its own sub-list; manual cross-connections left out.
-    /// Same output as stepsMarkdown in the plugin (checked by the shared fixture).
+    /// Same output as stepsMarkdown in the plugin (obsidian/src/document.js) —
+    /// change both together; obsidian/tests/document.test.js compares them on
+    /// the shared fixture (regenerate it with DOCUCLICK_WRITE_FIXTURES=1).
     /// </summary>
     public static string Steps(CanvasDocument doc)
     {

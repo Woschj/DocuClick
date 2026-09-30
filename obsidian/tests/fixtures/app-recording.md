@@ -18,7 +18,7 @@ docuclick: diagramm
   "canvas": {
     "nodes": [
       {
-        "id": "262ea505bb3d49ee95bb762fe626a655",
+        "id": "e775fb09546a49fbbe2edb0420f72802",
         "type": "group",
         "x": -8,
         "y": -8,
@@ -26,7 +26,7 @@ docuclick: diagramm
         "height": 356
       },
       {
-        "id": "2a8d2da5846f4de8930b42418e5f1580",
+        "id": "05a01e9d0bf6469ca2cf5e9c270126e3",
         "type": "text",
         "text": "Linksklick auf „Anmelden“",
         "x": 0,
@@ -35,7 +35,7 @@ docuclick: diagramm
         "height": 60
       },
       {
-        "id": "023c165aa51849628c3a906cf52ae43a",
+        "id": "b72096e4948c415db73f05d92842cf45",
         "type": "file",
         "x": 0,
         "y": 70,
@@ -43,7 +43,7 @@ docuclick: diagramm
         "height": 270
       },
       {
-        "id": "7c8c1880b97e48eda6145e11c254eb7d",
+        "id": "a75c4a7bc5234575bd2037ef35b70b1a",
         "type": "text",
         "text": "◆ Abzweigung",
         "x": 0,
@@ -53,7 +53,7 @@ docuclick: diagramm
         "color": "6"
       },
       {
-        "id": "bcc36c1775914bdab8593300269781ba",
+        "id": "acf50c3eede9448f9d36e5608c908ffb",
         "type": "text",
         "text": "↳ Pfad: Erfolg",
         "x": 460,
@@ -63,7 +63,7 @@ docuclick: diagramm
         "color": "4"
       },
       {
-        "id": "4a6c318cef1c47fdaaddce7bada8ed33",
+        "id": "ac9858628b4a4032b4e41fb2ca16a7d6",
         "type": "group",
         "x": 452,
         "y": 632,
@@ -71,7 +71,7 @@ docuclick: diagramm
         "height": 356
       },
       {
-        "id": "d8faf790ad3649568cce858d0376548d",
+        "id": "f88fa8645f5c4bc0b898ca255cf4537b",
         "type": "text",
         "text": "Linksklick auf „Weiter“",
         "x": 460,
@@ -80,7 +80,7 @@ docuclick: diagramm
         "height": 60
       },
       {
-        "id": "6d93d10e28234e6db4fa4729caed8517",
+        "id": "463d213c2a72405e8019223e57068f7a",
         "type": "file",
         "x": 460,
         "y": 710,
@@ -90,25 +90,34 @@ docuclick: diagramm
     ],
     "edges": [
       {
-        "id": "2ad66f701435487d82df8c364882c4ff",
-        "fromNode": "2a8d2da5846f4de8930b42418e5f1580",
-        "toNode": "7c8c1880b97e48eda6145e11c254eb7d",
+        "id": "fd2d45985a5440bcba833afbaeb82f9e",
+        "fromNode": "05a01e9d0bf6469ca2cf5e9c270126e3",
+        "toNode": "a75c4a7bc5234575bd2037ef35b70b1a",
         "fromSide": "bottom",
         "toSide": "top"
       },
       {
-        "id": "e7e024c5afcc4af4bd6bff2a516f296b",
-        "fromNode": "7c8c1880b97e48eda6145e11c254eb7d",
-        "toNode": "bcc36c1775914bdab8593300269781ba",
+        "id": "75773e7a28fa4e30b095dbbc605b8caa",
+        "fromNode": "a75c4a7bc5234575bd2037ef35b70b1a",
+        "toNode": "acf50c3eede9448f9d36e5608c908ffb",
         "fromSide": "bottom",
         "toSide": "top"
       },
       {
-        "id": "0911211df90e42cca927714f96c58f7e",
-        "fromNode": "bcc36c1775914bdab8593300269781ba",
-        "toNode": "d8faf790ad3649568cce858d0376548d",
+        "id": "02b7166be030439cbefa011710b272aa",
+        "fromNode": "acf50c3eede9448f9d36e5608c908ffb",
+        "toNode": "f88fa8645f5c4bc0b898ca255cf4537b",
         "fromSide": "bottom",
         "toSide": "top"
+      },
+      {
+        "id": "e50f106d1dc7432d87603a9faa71a866",
+        "fromNode": "05a01e9d0bf6469ca2cf5e9c270126e3",
+        "toNode": "f88fa8645f5c4bc0b898ca255cf4537b",
+        "fromSide": "bottom",
+        "toSide": "top",
+        "docuClickManual": true,
+        "lineStyle": "solid"
       }
     ]
   },
@@ -116,7 +125,7 @@ docuclick: diagramm
     "nodes": [
       {
         "data": {
-          "id": "2a8d2da5846f4de8930b42418e5f1580",
+          "id": "05a01e9d0bf6469ca2cf5e9c270126e3",
           "label": "Linksklick auf „Anmelden“",
           "color": "#2563EB",
           "shape": "round-rectangle",
@@ -129,7 +138,7 @@ docuclick: diagramm
       },
       {
         "data": {
-          "id": "7c8c1880b97e48eda6145e11c254eb7d",
+          "id": "a75c4a7bc5234575bd2037ef35b70b1a",
           "label": "◆ Abzweigung",
           "color": "#6B7280",
           "shape": "diamond",
@@ -142,7 +151,7 @@ docuclick: diagramm
       },
       {
         "data": {
-          "id": "bcc36c1775914bdab8593300269781ba",
+          "id": "acf50c3eede9448f9d36e5608c908ffb",
           "label": "↳ Pfad: Erfolg",
           "color": "#0891B2",
           "shape": "round-rectangle",
@@ -155,7 +164,7 @@ docuclick: diagramm
       },
       {
         "data": {
-          "id": "d8faf790ad3649568cce858d0376548d",
+          "id": "f88fa8645f5c4bc0b898ca255cf4537b",
           "label": "Linksklick auf „Weiter“",
           "color": "#0891B2",
           "shape": "round-rectangle",
@@ -170,9 +179,9 @@ docuclick: diagramm
     "edges": [
       {
         "data": {
-          "id": "2a8d2da5846f4de8930b42418e5f1580->7c8c1880b97e48eda6145e11c254eb7d",
-          "source": "2a8d2da5846f4de8930b42418e5f1580",
-          "target": "7c8c1880b97e48eda6145e11c254eb7d",
+          "id": "05a01e9d0bf6469ca2cf5e9c270126e3->a75c4a7bc5234575bd2037ef35b70b1a",
+          "source": "05a01e9d0bf6469ca2cf5e9c270126e3",
+          "target": "a75c4a7bc5234575bd2037ef35b70b1a",
           "color": "#6B7280",
           "manual": false,
           "lineStyle": "solid"
@@ -180,9 +189,9 @@ docuclick: diagramm
       },
       {
         "data": {
-          "id": "7c8c1880b97e48eda6145e11c254eb7d->bcc36c1775914bdab8593300269781ba",
-          "source": "7c8c1880b97e48eda6145e11c254eb7d",
-          "target": "bcc36c1775914bdab8593300269781ba",
+          "id": "a75c4a7bc5234575bd2037ef35b70b1a->acf50c3eede9448f9d36e5608c908ffb",
+          "source": "a75c4a7bc5234575bd2037ef35b70b1a",
+          "target": "acf50c3eede9448f9d36e5608c908ffb",
           "color": "#0891B2",
           "manual": false,
           "lineStyle": "solid"
@@ -190,19 +199,29 @@ docuclick: diagramm
       },
       {
         "data": {
-          "id": "bcc36c1775914bdab8593300269781ba->d8faf790ad3649568cce858d0376548d",
-          "source": "bcc36c1775914bdab8593300269781ba",
-          "target": "d8faf790ad3649568cce858d0376548d",
+          "id": "acf50c3eede9448f9d36e5608c908ffb->f88fa8645f5c4bc0b898ca255cf4537b",
+          "source": "acf50c3eede9448f9d36e5608c908ffb",
+          "target": "f88fa8645f5c4bc0b898ca255cf4537b",
           "color": "#0891B2",
           "manual": false,
+          "lineStyle": "solid"
+        }
+      },
+      {
+        "data": {
+          "id": "manual-05a01e9d0bf6469ca2cf5e9c270126e3->f88fa8645f5c4bc0b898ca255cf4537b",
+          "source": "05a01e9d0bf6469ca2cf5e9c270126e3",
+          "target": "f88fa8645f5c4bc0b898ca255cf4537b",
+          "color": "#2563EB",
+          "manual": true,
           "lineStyle": "solid"
         }
       }
     ]
   },
   "images": {
-    "2a8d2da5846f4de8930b42418e5f1580": "Prozesse/Attachments/Ablauf/155742_758.png",
-    "d8faf790ad3649568cce858d0376548d": "Prozesse/Attachments/Ablauf/155742_773.png"
+    "05a01e9d0bf6469ca2cf5e9c270126e3": "Prozesse/Attachments/Ablauf/182142_895.png",
+    "f88fa8645f5c4bc0b898ca255cf4537b": "Prozesse/Attachments/Ablauf/182142_914.png"
   }
 }
 %%

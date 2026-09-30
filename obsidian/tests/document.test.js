@@ -148,7 +148,8 @@ test("a diagram note recorded by the DocuClick apps is valid and has the same st
   const raw = JSON.parse(D.noteData(note));
   const doc = D.validateDocument(raw);
   assert.equal(doc.flow.nodes.length, 4);
-  assert.equal(doc.flow.edges.length, 3);
+  assert.equal(doc.flow.edges.length, 4); // 3 steps + 1 manual cross-connection
+  assert.equal(doc.flow.edges.filter(e => e.data.manual).length, 1);
   // Screenshots are vault files the plugin loads via "images", keyed by step id.
   const ids = new Set(doc.flow.nodes.map(n => n.data.id));
   assert.equal(Object.keys(raw.images).length, 2);

@@ -315,6 +315,9 @@ public sealed class DocuClickDiagramTests : IDisposable
             Click(writer, "Linksklick auf „Anmelden“");
             Assert.True(writer.MarkDecisionPoint("Erfolg").Success);
             Click(writer, "Linksklick auf „Weiter“");
+            var steps = writer.GetPreview().Nodes;
+            // A manual cross-connection: the step lists (C# and JS) must both leave it out.
+            Assert.True(writer.ConnectNodes(steps.First().Id, steps.Last().Id).Success); // a shortcut; loops are refused
             writer.Stop();
             Directory.CreateDirectory(Path.GetDirectoryName(fixture)!);
             File.Copy(Note, fixture, overwrite: true);

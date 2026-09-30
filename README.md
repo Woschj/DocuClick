@@ -83,6 +83,14 @@ dotnet build macos/DocuClick.Mac.slnx                    # macOS-App (nur auf de
 python3 obsidian/build.py                                # Obsidian-Plugin
 ```
 
+Releases: `python3 tools/release.py windows 1.16.0 obsidian 0.7.0` setzt
+Versionen und Changelog-Datum; nach dem Merge auf `main` mit `--tag` die Tags
+anlegen und pushen (`git push origin v1.16.0 obsidian-v0.7.0`).
+
+Messung langer Aufnahmen: `DOCUCLICK_BENCH=ergebnis.txt dotnet test --project
+core/DocuClick.Core.Tests -- --filter-class "*RecordingBenchmark"` (100 Klicks
+mit echten Screenshots, Zeit pro Klick, geschriebene Daten).
+
 Die CI-Workflows in [.github/workflows/](.github/workflows/) sind nach
 Bereich getrennt (`windows.yml`, `macos.yml`, `obsidian.yml`). Bei Pull
 Requests läuft jeder nur, wenn sein Bereich oder der gemeinsame Kern

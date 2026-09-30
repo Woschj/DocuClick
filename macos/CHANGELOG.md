@@ -8,6 +8,14 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [Unreleased]
+
+- Wie Windows (siehe [Windows-Changelog](../windows/CHANGELOG.md)): WebP-
+  Screenshots, deutlich schnellere lange Aufnahmen, Steuerung aus Obsidian,
+  Schwärzen und Drucken, abschaltbare Plugin-Installation. Startet Obsidian
+  eine Aufnahme ohne erteilte Berechtigungen, öffnet sich der
+  Berechtigungs-Assistent.
+
 ## [0.2.0] - 2026-09-29
 
 - **Aufnehmen in einen Obsidian-Vault**: In einem Vault legt DocuClick eine

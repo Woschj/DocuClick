@@ -142,6 +142,46 @@ Gleichzeitig in App und Diagramm-Tab dasselbe ändern sollte man vermeiden:
 Schreiben beide im selben Moment, sichert das Plugin seine Fassung als
 `… – lokale Änderungen.docuclick` (siehe unten).
 
+### Aufnahme aus Obsidian steuern
+
+Läuft DocuClick für Windows oder macOS, lässt sich die Aufnahme direkt aus
+Obsidian bedienen:
+
+- Im Diagramm-Tab oben rechts **Mit DocuClick aufnehmen** (Punkt-Symbol):
+  startet die Aufnahme in genau dieses Diagramm, ein zweiter Klick pausiert.
+- Befehle: **Aufnahme in diesen Ablauf starten**, **Aufnahme pausieren**,
+  **Abzweigung setzen** (fragt nach dem Namen des neuen Pfads).
+- Die Statusleiste unten zeigt „● DocuClick nimmt auf: …“; ein Klick darauf
+  pausiert.
+
+Die Verbindung richtet die App selbst ein: Sobald sie einmal in diesen Vault
+aufgenommen hat, liegt im Plugin-Ordner `app-link.json` mit einem geheimen
+Schlüssel. Die App nimmt Befehle nur über `127.0.0.1` an, nur mit diesem
+Schlüssel und nur für Diagramme in einem Vault. Webseiten können keine
+Aufnahme auslösen.
+
+### Bilder aufräumen
+
+Gelöschte Schritte hinterlassen ihre Screenshot-Dateien. Befehl **Nicht mehr
+verwendete Bilder aufräumen** listet Bilder in den DocuClick-Ordnern
+(`Attachments/<Ablauf>/` neben einem Diagramm, Ordner verwendeter Bilder,
+Bildordner des Plugins), die kein Diagramm und keine Notiz mehr verwendet,
+und verschiebt sie nach Bestätigung in den Papierkorb.
+
+### Schwärzen und Drucken
+
+- **Schwärzen**: In der Bildansicht eines Screenshots **Bereich schwärzen**
+  und mit der Maus ein Rechteck aufziehen. Die Pixel werden im gespeicherten
+  Bild ersetzt (keine Überlagerung), fehlen also auch in jeder Weitergabe.
+  Die Originaldatei einer Aufnahme bleibt liegen, bis sie aufgeräumt wird.
+- **Drucken / PDF**: In der Anleitung das Drucker-Symbol. Gedruckt wird die
+  Anleitung so, wie sie gefiltert ist (Pfad, „Nur Screenshots“), ein Schritt
+  pro Block mit großem Screenshot; im Druckdialog „Als PDF speichern“. Das
+  geht auch in der exportierten HTML-Ansicht.
+
+Neue Klicks einer laufenden Aufnahme erscheinen im geöffneten Diagramm, ohne
+dass es neu geladen wird: Zoom und Ausschnitt bleiben.
+
 ### Diagramm in eine andere Notiz einbetten
 
 Etwa für eine Übersichtsseite: ein Codeblock `docuclick` mit dem Pfad der
@@ -285,7 +325,8 @@ API-Grundlage: [Obsidian API](https://github.com/obsidianmd/obsidian-api),
 [Vault API](https://github.com/obsidianmd/obsidian-developer-docs/blob/main/en/Plugins/Vault.md).
 Cytoscapes MIT-Lizenz liegt im gebauten Paket als `THIRD-PARTY-NOTICES.txt` bei.
 
-Release: Version in `manifest.json` und [CHANGELOG.md](CHANGELOG.md) anheben,
-dann `git tag obsidian-v0.1.1 && git push origin obsidian-v0.1.1`. Die CI
+Release: Änderungen unter `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md)
+eintragen, `python3 tools/release.py obsidian 0.7.0` (setzt Version und Datum),
+nach dem Merge auf `main` dasselbe mit `--tag` und die Tags pushen. Die CI
 ([.github/workflows/obsidian.yml](../.github/workflows/obsidian.yml)) hängt
 ZIP sowie `main.js`, `manifest.json` und `styles.css` an das Release.
