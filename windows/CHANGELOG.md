@@ -7,7 +7,7 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
-## [Unreleased]
+## [1.17.0] - 2026-09-30
 
 - **Neue Ablauf-Übersicht zum Testen** (Einstellungen → „Neue Ablauf-Übersicht
   testen“, wirkt beim nächsten Start): das Übersichtsfenster nutzt denselben

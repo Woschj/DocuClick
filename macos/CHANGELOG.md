@@ -8,7 +8,7 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
-## [Unreleased]
+## [0.4.0] - 2026-09-30
 
 - Testschalter „Neue Ablauf-Übersicht testen“ (Einstellungen): Die
   Ablauf-Übersicht nutzt denselben Editor wie die .html-Datei und das
