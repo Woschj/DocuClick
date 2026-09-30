@@ -25,7 +25,8 @@ public static class HtmlViewerBuilder
     private static readonly Lazy<string> ViewerTemplate = new(() =>
         File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "WebAssets", "viewer.template.html")));
 
-    public sealed record NodeSpec(string Id, string Label, double X, double Y, string Color, string Shape, string? ImageSrc);
+    /// <param name="RedactionsBaked">How many of the screenshot's areas <paramref name="ImageSrc"/> already contains (see ImageRedactor); null for none.</param>
+    public sealed record NodeSpec(string Id, string Label, double X, double Y, string Color, string Shape, string? ImageSrc, int? RedactionsBaked = null);
 
     public sealed record EdgeSpec(string Source, string Target, string Color, bool Manual, string LineStyle = "solid");
 
@@ -39,7 +40,7 @@ public static class HtmlViewerBuilder
     {
         nodes = nodes.Select((n, idx) => new
         {
-            data = new { id = n.Id, label = n.Label, color = n.Color, shape = n.Shape, imageUrl = n.ImageSrc, stepIndex = idx + 1 },
+            data = new { id = n.Id, label = n.Label, color = n.Color, shape = n.Shape, imageUrl = n.ImageSrc, redactionsBaked = n.RedactionsBaked, stepIndex = idx + 1 },
             position = new { x = n.X, y = n.Y },
         }),
         edges = edges.Select(e => new

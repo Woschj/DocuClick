@@ -168,12 +168,18 @@ verwendete Bilder aufräumen** listet Bilder in den DocuClick-Ordnern
 Bildordner des Plugins), die kein Diagramm und keine Notiz mehr verwendet,
 und verschiebt sie nach Bestätigung in den Papierkorb.
 
-### Schwärzen und Drucken
+### Schwärzen, Weichzeichnen und Drucken
 
-- **Schwärzen**: In der Bildansicht eines Screenshots **Bereich schwärzen**
-  und mit der Maus ein Rechteck aufziehen. Die Pixel werden im gespeicherten
-  Bild ersetzt (keine Überlagerung), fehlen also auch in jeder Weitergabe.
-  Die Originaldatei einer Aufnahme bleibt liegen, bis sie aufgeräumt wird.
+- **Schwärzen / Weichzeichnen**: In der Bildansicht eines Screenshots
+  **Schwärzen / Weichzeichnen** öffnet eine Vorschau. Eine Fläche mit der Maus
+  aufziehen; oben wählen, ob neue (und die ausgewählte) Fläche geschwärzt oder
+  weichgezeichnet wird. Eine Fläche anklicken, um sie zu verschieben, an den
+  Ecken die Größe zu ändern oder sie zu entfernen (Entf). **Fertig** (Enter)
+  übernimmt, **Abbrechen** (Esc) verwirft.
+  Das Original bleibt im Diagramm erhalten, die Flächen lassen sich also
+  jederzeit ändern. Alles, was das Diagramm verlässt – **HTML-Ansicht**, der
+  Download einer Kopie, die HTML-Datei der DocuClick-App –, enthält nur das
+  bearbeitete Bild, nie das Original.
 - **Drucken / PDF**: In der Anleitung das Drucker-Symbol. Gedruckt wird die
   Anleitung so, wie sie gefiltert ist (Pfad, „Nur Screenshots“), ein Schritt
   pro Block mit großem Screenshot; im Druckdialog „Als PDF speichern“. Das

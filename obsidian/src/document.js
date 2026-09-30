@@ -7,6 +7,14 @@ function check(condition, message) { if (!condition) throw new Error(message); }
 function finite(value) { check(Number.isFinite(value) && Math.abs(value) <= 1e8, "Ungültige Diagrammkoordinate."); return value; }
 function label(value) { check(typeof value === "string" && value.length <= 100000, "Ungültiger Text."); return value; }
 function id(value) { check(typeof value === "string" && /^[a-zA-Z0-9_-]{1,160}$/.test(value), "Ungültige Knoten-ID."); return value; }
+/** Blacked-out / blurred areas of a screenshot (fractions of the image), see the template. */
+function redactions(value) {
+  if (!Array.isArray(value)) return [];
+  const unit = v => Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0;
+  return value.slice(0, 500).filter(a => a && typeof a === "object")
+    .map(a => ({ x: unit(a.x), y: unit(a.y), w: unit(a.w), h: unit(a.h), mode: a.mode === "blur" ? "blur" : "black" }))
+    .filter(a => a.w > 0 && a.h > 0);
+}
 function color(value) { return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : "#3b82f6"; }
 function safeJson(value) { return JSON.stringify(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026"); }
 function escapeHtml(value) { return String(value).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]); }
@@ -42,6 +50,8 @@ function validateDocument(input) {
     if (n.shape) result.shape = SHAPES.has(n.shape) ? n.shape : "round-rectangle";
     // The plugin never reads a path supplied by imported content.
     if (imageUri(n.file)) result.file = n.file;
+    const areas = n.type === "file" ? redactions(n.docuClickRedactions) : [];
+    if (areas.length) result.docuClickRedactions = areas;
     return result;
   });
   const renderedIds = new Set();
@@ -50,6 +60,8 @@ function validateDocument(input) {
     check(textIds.has(nodeId) && !renderedIds.has(nodeId), "Inkonsistente Diagrammknoten."); renderedIds.add(nodeId);
     const data = { id: nodeId, label: label(n.data.label || ""), color: color(n.data.color), shape: SHAPES.has(n.data.shape) ? n.data.shape : "round-rectangle", stepIndex: index + 1 };
     if (n.data.imageUrl) { check(imageUri(n.data.imageUrl), "Bilder müssen in der HTML-Datei eingebettet sein (PNG/JPEG/WebP/GIF/BMP)."); data.imageUrl = n.data.imageUrl; }
+    // How many of the screenshot's areas imageUrl already contains (shared/exported files).
+    if (data.imageUrl && Number.isInteger(n.data.redactionsBaked) && n.data.redactionsBaked > 0) data.redactionsBaked = Math.min(n.data.redactionsBaked, 500);
     return { data, position: { x: finite(n.position?.x), y: finite(n.position?.y) } };
   });
   check(renderedIds.size === textIds.size, "Die Diagrammansicht enthält nicht alle Textknoten.");

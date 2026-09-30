@@ -84,6 +84,9 @@ public sealed class CanvasFlowWriter
     private double _nextColumnX;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _base64Cache = new();
 
+    // Screenshot + areas → the redacted image as data URI (see BakedImageSrc).
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _bakedCache = new();
+
     public CanvasFlowWriter(AppConfig config)
     {
         _config = config;
@@ -141,6 +144,7 @@ public sealed class CanvasFlowWriter
         if (_canvasPath != fullPath)
         {
             _base64Cache.Clear();
+            _bakedCache.Clear();
         }
 
         _canvasPath = fullPath;
@@ -1539,8 +1543,9 @@ public sealed class CanvasFlowWriter
     private string BuildLiveHtml(bool embedImages = true)
     {
         _doc.SaveToken ??= CanvasDocumentIo.NewSaveToken();
+        StoreRedactedOriginals();
         var dataJson = JsonSerializer.Serialize(_doc, _jsonOptions);
-        var (nodeSpecs, edgeSpecs) = BuildSpecs(embedImages ? ResolveImageSrc : LinkImageSrc);
+        var (nodeSpecs, edgeSpecs) = BuildSpecs(embedImages ? ResolveImageSrc : LinkImageSrc, bakeRedactions: embedImages);
         return HtmlViewerBuilder.BuildPage(_sessionName, nodeSpecs, edgeSpecs, dataJson);
     }
 
@@ -1559,7 +1564,12 @@ public sealed class CanvasFlowWriter
     }
 
     /// <summary>Rendered nodes/edges (colors, shapes, labels) shared by both file formats; <paramref name="image"/> maps a file node's value to the node's image.</summary>
-    private (List<HtmlViewerBuilder.NodeSpec> Nodes, List<HtmlViewerBuilder.EdgeSpec> Edges) BuildSpecs(Func<string, string?> image)
+    /// <param name="bakeRedactions">
+    /// Screenshots with areas (<see cref="CanvasNode.Redactions"/>) get them
+    /// burnt in (the .html file with embedded images, which is passed on);
+    /// otherwise the page draws them over the original itself.
+    /// </param>
+    private (List<HtmlViewerBuilder.NodeSpec> Nodes, List<HtmlViewerBuilder.EdgeSpec> Edges) BuildSpecs(Func<string, string?> image, bool bakeRedactions = false)
     {
 
         // Reuses GetPreview()'s own PathId tagging for column-based accent
@@ -1586,6 +1596,7 @@ public sealed class CanvasFlowWriter
             string shape = "round-rectangle";
             string label;
             string? imageSrc = null;
+            int? redactionsBaked = null;
 
             if (previewNode.IsDecisionPoint)
             {
@@ -1603,13 +1614,24 @@ public sealed class CanvasFlowWriter
                 color = !string.IsNullOrEmpty(canvasNode.Color) ? canvasNode.Color : accent;
                 shape = !string.IsNullOrEmpty(canvasNode.Shape) ? canvasNode.Shape : "round-rectangle";
                 label = BuildLabel(canvasNode.Text);
-                if (FindImageSibling(canvasNode, imageIndex)?.File is { } relativeToOutput)
+                var sibling = FindImageSibling(canvasNode, imageIndex);
+                if (sibling?.File is { } relativeToOutput)
                 {
-                    imageSrc = image(relativeToOutput);
+                    if (bakeRedactions && sibling.Redactions is { Count: > 0 } areas)
+                    {
+                        // Never the original's bytes: if it can't be redacted, only a link to it.
+                        imageSrc = BakedImageSrc(relativeToOutput, areas);
+                        redactionsBaked = imageSrc is null ? null : areas.Count;
+                        imageSrc ??= LinkImageSrc(relativeToOutput);
+                    }
+                    else
+                    {
+                        imageSrc = image(relativeToOutput);
+                    }
                 }
             }
 
-            nodeSpecs.Add(new HtmlViewerBuilder.NodeSpec(previewNode.Id, label, canvasNode.X, canvasNode.Y, color, shape, imageSrc));
+            nodeSpecs.Add(new HtmlViewerBuilder.NodeSpec(previewNode.Id, label, canvasNode.X, canvasNode.Y, color, shape, imageSrc, redactionsBaked));
         }
 
         var edgeSpecs = new List<HtmlViewerBuilder.EdgeSpec>();
@@ -1682,6 +1704,78 @@ public sealed class CanvasFlowWriter
         }
 
         return ToRelativeUrl(sessionDir, fullImagePath);
+    }
+
+    /// <summary>The screenshot with its areas burnt in (<see cref="ImageRedactor"/>) as data URI; null if it can't be read.</summary>
+    private string? BakedImageSrc(string relativeToOutput, List<ImageRedaction> areas)
+    {
+        var key = $"{relativeToOutput}|{JsonSerializer.Serialize(areas)}";
+        if (_bakedCache.TryGetValue(key, out var cached))
+        {
+            return cached;
+        }
+
+        var bytes = ReadImageBytes(relativeToOutput);
+        var redacted = bytes is null ? null : ImageRedactor.Apply(bytes, areas);
+        if (redacted is null)
+        {
+            LogService.Log($"Screenshot \"{relativeToOutput}\" konnte nicht geschwärzt werden; die HTML-Datei verweist nur darauf.");
+            return null;
+        }
+
+        return _bakedCache[key] = ImageData.DataUri(redacted);
+    }
+
+    /// <summary>A screenshot's bytes: from its data URI or its file next to the Ablauf; null if unreadable.</summary>
+    private byte[]? ReadImageBytes(string relativeToOutput)
+    {
+        try
+        {
+            if (relativeToOutput.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            {
+                var comma = relativeToOutput.IndexOf(',');
+                return comma < 0 ? null : Convert.FromBase64String(relativeToOutput[(comma + 1)..]);
+            }
+
+            var path = Path.Combine(Path.GetDirectoryName(_canvasPath!) ?? "", relativeToOutput);
+            return File.Exists(path) ? File.ReadAllBytes(path) : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// An embedded screenshot (data URI) with areas would carry its original
+    /// inside the .html file's data: store the original as a file in the
+    /// Attachments folder instead (named by content, so saving again reuses
+    /// it) and reference that — the areas stay changeable, the file passed on
+    /// contains only the redacted image.
+    /// </summary>
+    private void StoreRedactedOriginals()
+    {
+        foreach (var node in _doc.Nodes.Where(n => n.Type == "file" && n.Redactions is { Count: > 0 }
+            && n.File?.StartsWith("data:", StringComparison.OrdinalIgnoreCase) == true))
+        {
+            if (ReadImageBytes(node.File!) is not { } bytes)
+            {
+                node.File = null;
+                continue;
+            }
+
+            var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes))[..24].ToLowerInvariant();
+            var extension = ImageData.MimeType(bytes)["image/".Length..].Replace("jpeg", "jpg");
+            var relative = $"{_config.AttachmentsFolder}/Originale/{hash}.{extension}";
+            var path = Path.Combine(Path.GetDirectoryName(_canvasPath!) ?? "", relative);
+            if (!File.Exists(path))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllBytes(path, bytes);
+            }
+
+            node.File = relative;
+        }
     }
 
     /// <summary>Screenshot as a link relative to the page (data URIs stay as they are) — for the quick saves while recording.</summary>

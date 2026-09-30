@@ -149,25 +149,68 @@ let browser, socket;
   await inFrame("tryConnect(snapshot().flow.nodes[0].data.id, imageId)");
   await until("JSON.parse(testHost.files.get('Test.docuclick').text).canvas.edges.length === 1");
   assert.equal(await evaluate("testHost.files.get('Test.docuclick').text.split('data:image/png').length - 1"), 1, "screenshot stored more than once");
-  // Redaction replaces the pixels of the stored screenshot (not an overlay) and saves.
-  await inFrame("window.beforeRedact = cy.getElementById(imageId).data('imageUrl'); docuclickRedactImage(imageId, {x: 0, y: 0, width: 1, height: 1})");
-  await until("JSON.parse(testHost.files.get('Test.docuclick').text).flow.nodes.find(n => n.data.id === JSON.parse(testHost.files.get('Test.docuclick').text).flow.nodes[1].data.id).data.imageUrl?.startsWith('data:image/webp')");
-  assert.notEqual(await inFrame("cy.getElementById(imageId).data('imageUrl')"), await inFrame("beforeRedact"));
-  assert.equal(await inFrame("(() => { const c = document.createElement('canvas'); c.width = c.height = 1; const i = new Image(); i.src = cy.getElementById(imageId).data('imageUrl'); return i.decode().then(() => { const x = c.getContext('2d'); x.drawImage(i, 0, 0); return Array.from(x.getImageData(0, 0, 1, 1).data.slice(0, 3)).join(); }); })()"), "0,0,0");
-  // The same through the image view: button, then drag a rectangle over the image.
-  await inFrame(`(async () => {
-    const big = document.createElement('canvas'); big.width = 400; big.height = 200; big.getContext('2d').fillStyle = '#fff'; big.getContext('2d').fillRect(0, 0, 400, 200);
-    const bigUrl = big.toDataURL('image/png');
+  // Redaction: areas are stored on the screenshot (the original stays, so
+  // they can be changed later) and every view shows the redacted version.
+  const savedDoc = "JSON.parse(testHost.files.get('Test.docuclick').text)";
+  const pixel = (src) => `(async () => { const c = document.createElement('canvas'); const i = new Image(); i.src = await (${src}); return i.decode().then(() => { c.width = i.naturalWidth; c.height = i.naturalHeight; const x = c.getContext('2d'); x.drawImage(i, 0, 0); return Array.from(x.getImageData(2, 2, 1, 1).data.slice(0, 3)).join(); }); })()`;
+  await inFrame(`(() => {
+    const big = document.createElement('canvas'); big.width = 400; big.height = 200; const g = big.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 400, 200);
+    for (let x = 0; x < 400; x += 4) { g.fillStyle = x % 8 ? '#000' : '#fff'; g.fillRect(x, 0, 4, 200); }
+    window.bigUrl = big.toDataURL('image/png');
     cy.getElementById(imageId).data('imageUrl', bigUrl); imageNodes.find(n => n.data.id === imageId).data.imageUrl = bigUrl;
-    window.beforeDrag = bigUrl;
-    openLightboxByNodeId(imageId); await lightboxImg.decode();
-    document.getElementById('lightbox-redact-btn').click();
-    const box = lightboxImg.getBoundingClientRect(), at = (type, x, y, target) => target.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
-    at('mousedown', box.left + 1, box.top + 1, lightboxImg); at('mousemove', box.right - 1, box.bottom - 1, window); at('mouseup', box.right - 1, box.bottom - 1, window);
+    docuclickSetRedactions(imageId, [{ x: 0, y: 0, w: 1, h: 1, mode: 'black' }]);
   })()`);
-  await until(`(() => { try { return cy.getElementById(imageId).data('imageUrl') !== beforeDrag; } catch { return false; } })()`, frameContext);
-  assert.equal(await inFrame("lightbox.classList.contains('redacting') + ':' + !!document.getElementById('redact-rect')"), "false:false");
-  await inFrame("closeLightbox()");
+  await until(`${savedDoc}.canvas.nodes.find(n => n.type === 'file').docuClickRedactions?.length === 1`);
+  assert.equal(await evaluate(`${savedDoc}.flow.nodes.find(n => n.data.imageUrl).data.imageUrl`), await inFrame("bigUrl"), "original must be kept in the file");
+  assert.equal(await inFrame(pixel("bigUrl")), "255,255,255");
+  await until("overlayImgs.get(imageId).src.startsWith('blob:')", frameContext);
+  assert.equal(await inFrame(pixel("overlayImgs.get(imageId).src")), "0,0,0", "overview shows the original");
+  assert.equal(await inFrame("cy.getElementById(imageId).data('imageUrl') === bigUrl"), true, "original must stay");
+  // The editor in the image view: preview, add, select, change, delete.
+  await inFrame("docuclickSetRedactions(imageId, []); openLightboxByNodeId(imageId); lightboxImg.decode()");
+  await inFrame("document.getElementById('lightbox-redact-btn').click()");
+  await until("!document.getElementById('redact-stage').hidden && document.getElementById('redact-canvas').width === 400", frameContext);
+  const drag = (from, to) => inFrame(`(() => {
+    const layer = document.getElementById('redact-boxes'), box = layer.getBoundingClientRect();
+    const at = (type, fx, fy) => (type === 'pointerdown' ? document.elementFromPoint(box.left + fx * box.width, box.top + fy * box.height) : layer)
+      .dispatchEvent(new PointerEvent(type, { clientX: box.left + fx * box.width, clientY: box.top + fy * box.height, bubbles: true, button: 0, pointerId: 1 }));
+    at('pointerdown', ${from}); at('pointermove', ${to}); at('pointerup', ${to});
+  })()`);
+  await inFrame("document.getElementById('redact-tool-blur').click()");
+  await drag("0.1, 0.1", "0.6, 0.9");
+  await delay(100);
+  assert.equal(await inFrame("document.querySelectorAll('.redact-box.selected .redact-handle').length"), 4);
+  // Live preview: the blurred stripes turn grey before anything is saved.
+  assert.notEqual(await inFrame("Array.from(document.getElementById('redact-canvas').getContext('2d').getImageData(100, 100, 1, 1).data.slice(0, 3)).join()"), "0,0,0");
+  assert.equal(await evaluate(`${savedDoc}.canvas.nodes.find(n => n.type === 'file').docuClickRedactions`), undefined);
+  // Move it, resize it from a corner, switch it to black.
+  await drag("0.3, 0.5", "0.4, 0.5");
+  await delay(50);
+  await inFrame("(() => { const h = document.querySelector('.redact-handle.se'), r = h.getBoundingClientRect(), layer = document.getElementById('redact-boxes'), box = layer.getBoundingClientRect(); h.dispatchEvent(new PointerEvent('pointerdown', { clientX: r.left + 6, clientY: r.top + 6, bubbles: true, button: 0, pointerId: 1 })); for (const t of ['pointermove', 'pointerup']) layer.dispatchEvent(new PointerEvent(t, { clientX: box.left + box.width, clientY: box.top + box.height, bubbles: true, pointerId: 1 })); })()");
+  await inFrame("document.getElementById('redact-tool-black').click(); document.getElementById('redact-done-btn').click()");
+  await until(`${savedDoc}.canvas.nodes.find(n => n.type === 'file').docuClickRedactions?.length === 1`);
+  const area = JSON.parse(await evaluate(`JSON.stringify(${savedDoc}.canvas.nodes.find(n => n.type === 'file').docuClickRedactions[0])`));
+  assert.equal(area.mode, "black");
+  assert.ok(Math.abs(area.x - 0.2) < 0.02 && Math.abs(area.y - 0.1) < 0.02 && area.x + area.w > 0.99 && area.y + area.h > 0.99, JSON.stringify(area));
+  // Later: open again, select the area and remove it; Esc discards, "Fertig" stores.
+  await inFrame("document.getElementById('lightbox-redact-btn').click()");
+  await until("!document.getElementById('redact-stage').hidden", frameContext);
+  await drag("0.5, 0.5", "0.5, 0.5");
+  await inFrame("document.getElementById('redact-delete-btn').click(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
+  assert.equal(await inFrame("lightbox.hidden + ':' + document.getElementById('redact-stage').hidden + ':' + redactionsOf(imageId).length"), "false:true:1");
+  await inFrame("document.getElementById('lightbox-redact-btn').click()");
+  await until("!document.getElementById('redact-stage').hidden", frameContext);
+  await drag("0.5, 0.5", "0.5, 0.5");
+  await inFrame("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true })); document.getElementById('redact-done-btn').click()");
+  await until(`!${savedDoc}.canvas.nodes.find(n => n.type === 'file').docuClickRedactions`);
+  // Undo brings the area back.
+  await inFrame("restoreHistory(-1)");
+  assert.equal(await inFrame("redactionsOf(imageId).length"), 1);
+  await inFrame("closeLightbox(); docuclickSetRedactions(imageId, [{ x: 0, y: 0, w: 1, h: 1, mode: 'blur' }])");
+  // Files that leave the editor carry the areas burnt in, never the original.
+  assert.equal(await inFrame("docuclickBakedSnapshot().then(s => { const n = s.flow.nodes.find(n => n.data.id === imageId); return (n.data.imageUrl !== bigUrl) + ':' + n.data.redactionsBaked + ':' + !JSON.stringify(s).includes(bigUrl); })"), "true:1:true");
+  const blurred = (await inFrame(pixel("docuclickBakedSnapshot().then(s => s.flow.nodes.find(n => n.data.id === imageId).data.imageUrl)"))).split(",").map(Number);
+  assert.ok(blurred.every(v => v > 60 && v < 200), `blurred stripes should be grey: ${blurred}`);
   await inFrame("deleteNode(imageId)");
   await inFrame("restoreHistory(-1)");
   assert.equal(await inFrame("snapshot().flow.nodes.length"), 2);
@@ -200,6 +243,9 @@ let browser, socket;
   await inFrame("document.getElementById('export-readonly-btn').click()");
   await until("testHost.files.has('Test – Ansicht.html')");
   assert.equal(await evaluate("DocuClickDocument.importHtml(testHost.files.get('Test – Ansicht.html').text).flow.nodes.length"), 2);
+  // The export has the blurred screenshot burnt in, not the original.
+  assert.equal(await evaluate("DocuClickDocument.importHtml(testHost.files.get('Test – Ansicht.html').text).flow.nodes.find(n => n.data.imageUrl).data.redactionsBaked"), 1);
+  assert.equal(await evaluate(`testHost.files.get('Test – Ansicht.html').text.includes(${JSON.stringify(await inFrame("bigUrl"))})`), false, "export contains the unredacted screenshot");
   assert.ok(await evaluate("testHost.files.get('Test – Ansicht.html').text.includes('--accent: #e11d48;')"), "Viewer export ignores the colour settings");
   await evaluate("window.viewerFrame = document.body.createEl('iframe', {attr:{sandbox:'allow-scripts'}}); viewerFrame.srcdoc = testHost.files.get('Test – Ansicht.html').text");
   let viewerContext;
@@ -214,6 +260,7 @@ let browser, socket;
   assert.equal(await inViewer("typeof addManualElement + ':' + typeof scheduleSave"), "undefined:undefined");
   assert.equal(await inViewer("document.querySelectorAll('#add-element-btn, #export-readonly-btn, #download-btn, #rename-modal, #element-modal, #node-handles').length"), 0);
   assert.equal(await inViewer("cy.nodes().every(n => !n.grabbable())"), true);
+  assert.equal(await inViewer("[...document.querySelectorAll('.node-image-overlay')].every(i => i.src.startsWith('data:image/'))"), true, "viewer must show the baked image as is");
   const before = await inViewer("JSON.stringify(cy.elements().jsons())");
   await inViewer("cy.nodes().first().emit('cxttap'); document.dispatchEvent(new KeyboardEvent('keydown', {key:'Delete'})); document.dispatchEvent(new KeyboardEvent('keydown', {key:'z',ctrlKey:true})); document.dispatchEvent(new Event('paste')); document.dispatchEvent(new Event('drop'))");
   assert.equal(await inViewer("JSON.stringify(cy.elements().jsons())"), before);

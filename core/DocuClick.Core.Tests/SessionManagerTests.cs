@@ -169,6 +169,95 @@ public sealed class SessionManagerTests : IDisposable
         Assert.Contains(CanvasDocumentIo.Load(path).Nodes, n => n.Text == "Im Browser umbenannt");
     }
 
+    [Fact]
+    public async Task Redacted_areas_are_burnt_into_the_html_but_the_original_file_stays()
+    {
+        var path = _folder.File("Test.html");
+        using (var session = CreateSession(_config))
+        {
+            session.Start(path);
+            _capture.NextFrame = () => new CapturedFrame(White(40, 40), new ScreenRect(0, 0, 40, 40), 1.0);
+            WaitForCapture(session, () => _input.Click(new ScreenPoint(5, 5)));
+
+            var edited = CanvasDocumentIo.Load(path);
+            var image = edited.Nodes.First(n => n.Type == "file");
+            image.Redactions = new List<ImageRedaction> { new() { X = 0, Y = 0, W = 1, H = 1, Mode = "black" } };
+            await session.ApplyExternalEdit(path, edited);
+            session.Stop();
+        }
+
+        var html = File.ReadAllText(path);
+        var doc = CanvasDocumentIo.Load(path);
+        var file = doc.Nodes.Single(n => n.Type == "file");
+        Assert.Equal("black", Assert.Single(file.Redactions!).Mode);
+        var original = File.ReadAllBytes(Path.Combine(_folder.Path, file.File!));
+        Assert.InRange(SKBitmap.Decode(original).GetPixel(20, 20).Red, 235, 255);
+        Assert.DoesNotContain(Convert.ToBase64String(original), html);
+
+        var flow = System.Text.Json.Nodes.JsonNode.Parse(System.Text.RegularExpressions.Regex.Match(html, @"const flowData = (\{.*?\});\r?\n").Groups[1].Value)!;
+        var shown = flow["nodes"]!.AsArray().Select(n => n!["data"]!).Single(d => d["imageUrl"] is not null);
+        Assert.Equal(1, (int)shown["redactionsBaked"]!);
+        var src = (string)shown["imageUrl"]!;
+        Assert.InRange(SKBitmap.Decode(Convert.FromBase64String(src[(src.IndexOf(',') + 1)..])).GetPixel(20, 20).Red, 0, 10);
+    }
+
+    [Fact]
+    public async Task An_embedded_image_with_areas_keeps_its_original_as_file_not_in_the_html()
+    {
+        var path = _folder.File("Test.html");
+        using var white = White(30, 30);
+        using var png = SKImage.FromBitmap(white).Encode(SKEncodedImageFormat.Png, 100);
+        var dataUri = ImageData.DataUri(png.ToArray());
+        using (var session = CreateSession(_config))
+        {
+            session.Start(path);
+            _capture.NextFrame = () => new CapturedFrame(White(20, 20), new ScreenRect(0, 0, 20, 20), 1.0);
+            WaitForCapture(session, () => _input.Click(new ScreenPoint(5, 5)));
+
+            var edited = CanvasDocumentIo.Load(path);
+            var image = edited.Nodes.First(n => n.Type == "file");
+            image.File = dataUri;
+            image.Redactions = new List<ImageRedaction> { new() { X = 0.5, Y = 0.5, W = 0.5, H = 0.5, Mode = "blur" } };
+            await session.ApplyExternalEdit(path, edited);
+            await session.ApplyExternalEdit(path, CanvasDocumentIo.Load(path)); // saving again reuses the stored original
+            session.Stop();
+        }
+
+        var html = File.ReadAllText(path);
+        Assert.DoesNotContain(dataUri[(dataUri.IndexOf(',') + 1)..], html);
+        var file = CanvasDocumentIo.Load(path).Nodes.Single(n => n.Type == "file");
+        Assert.StartsWith("Attachments/Originale/", file.File);
+        Assert.Single(Directory.GetFiles(Path.Combine(_folder.Path, "Attachments", "Originale")));
+        Assert.Equal(png.ToArray(), File.ReadAllBytes(Path.Combine(_folder.Path, file.File!)));
+    }
+
+    [Fact]
+    public void Blurred_areas_make_fine_detail_unreadable()
+    {
+        using var stripes = new SKBitmap(240, 120);
+        using (var canvas = new SKCanvas(stripes))
+        {
+            canvas.Clear(SKColors.White);
+            using var black = new SKPaint { Color = SKColors.Black };
+            for (var x = 0; x < 240; x += 4)
+            {
+                if (x % 8 != 0) canvas.DrawRect(x, 0, 4, 120, black);
+            }
+        }
+
+        using var png = SKImage.FromBitmap(stripes).Encode(SKEncodedImageFormat.Png, 100);
+        var result = ImageRedactor.Apply(png.ToArray(), new List<ImageRedaction>
+        {
+            new() { X = 0, Y = 0, W = 0.5, H = 1, Mode = "blur" },
+            new() { X = 2, Y = double.NaN, W = 1, H = 1, Mode = "evil" }, // ignored
+        });
+
+        using var redacted = SKBitmap.Decode(result);
+        var blurred = redacted.GetPixel(50, 60);
+        Assert.InRange(blurred.Red, 60, 200);
+        Assert.InRange(redacted.GetPixel(201, 60).Red, 235, 255); // outside the area: unchanged
+    }
+
     private static SKBitmap White(int width, int height)
     {
         var bitmap = new SKBitmap(width, height);

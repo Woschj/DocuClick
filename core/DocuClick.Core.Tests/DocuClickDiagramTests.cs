@@ -247,6 +247,23 @@ public sealed class DocuClickDiagramTests : IDisposable
     }
 
     [Fact]
+    public void Redacted_areas_stay_on_the_screenshot_in_a_diagram_note()
+    {
+        var writer = StartNote();
+        Click(writer, "Eins");
+        var doc = DocuClickDiagramIo.Load(Note);
+        doc.Nodes.First(n => n.Type == "file").Redactions = new List<ImageRedaction> { new() { X = 0.1, Y = 0.2, W = 0.3, H = 0.4, Mode = "blur" } };
+        writer.ReplaceDocument(doc);
+        Click(writer, "Zwei");
+        writer.Stop();
+
+        // In the vault the note is the working copy: original image file, areas kept for later changes.
+        var area = Assert.Single(DocuClickDiagramIo.Load(Note).Nodes, n => n.Redactions is not null).Redactions!.Single();
+        Assert.Equal((0.1, 0.2, 0.3, 0.4, "blur"), (area.X, area.Y, area.W, area.H, area.Mode));
+        Assert.Contains("\"docuClickRedactions\"", File.ReadAllText(Note));
+    }
+
+    [Fact]
     public void Own_text_in_the_note_is_kept_while_recording()
     {
         var writer = StartNote();

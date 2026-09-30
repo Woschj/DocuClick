@@ -113,6 +113,12 @@ public static class CanvasDocumentIo
     {
         foreach (var node in doc.Nodes)
         {
+            if (node.Redactions is not null)
+            {
+                var areas = node.Type == "file" ? ImageRedactor.Clean(node.Redactions) : new List<ImageRedaction>();
+                node.Redactions = areas.Count > 0 ? areas : null;
+            }
+
             if (node.File is not { Length: > 0 } file)
             {
                 continue;

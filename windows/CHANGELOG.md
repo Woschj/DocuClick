@@ -19,6 +19,14 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
   zurück, „Wiederholen“ holt sie wieder. Eine
   Änderung in der Übersicht, die sich mit einem gerade aufgenommenen Klick
   überschneidet, wird abgelehnt statt den Klick zu verlieren.
+- **Schwärzen mit Vorschau, nachträglich änderbar, auch Weichzeichnen** (im
+  Editor: Ablauf im Browser, neue Ablauf-Übersicht, Obsidian-Plugin): Flächen
+  werden live gezeigt, lassen sich verschieben, in der Größe ändern, zwischen
+  Schwärzen und Weichzeichnen umschalten und wieder entfernen. Das Original
+  bleibt im Attachments-Ordner, deshalb geht das auch später noch; die
+  .html-Datei enthält nur das bearbeitete Bild. Ein nur eingebettetes Bild
+  (z. B. per „Bild ersetzen“ eingefügt) wird dafür als Original unter
+  `Attachments/Originale/` abgelegt.
 
 ## [1.16.0] - 2026-09-30
 

@@ -15,6 +15,8 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
   Obsidian-Plugin – mit Rückgängig/Wiederholen, Schwärzen und deutlich
   markiertem aktuellem Schritt. Seite und Screenshots liefert der lokale
   Dienst der App (nur 127.0.0.1, mit Zufallsschlüssel pro Start).
+- Schwärzen mit Vorschau, nachträglich änderbar, auch Weichzeichnen (wie
+  Windows, siehe [Windows-Changelog](../windows/CHANGELOG.md)).
 
 ## [0.3.0] - 2026-09-30
 

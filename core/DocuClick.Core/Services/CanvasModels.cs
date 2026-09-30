@@ -23,6 +23,25 @@ public sealed class CanvasNode
     // border. Left null (Canvas then omits any title bar at all) since the
     // content text node sitting right below already names the card.
     [JsonPropertyName("label")] public string? Label { get; set; }
+
+    // type="file" only: blacked-out / blurred areas of the screenshot (see
+    // ImageRedactor). The file itself stays the original, so the areas can
+    // still be changed; files that leave DocuClick get them burnt in.
+    [JsonPropertyName("docuClickRedactions")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<ImageRedaction>? Redactions { get; set; }
+}
+
+/// <summary>An area of a screenshot, in fractions (0–1) of its width/height.</summary>
+public sealed class ImageRedaction
+{
+    [JsonPropertyName("x")] public double X { get; set; }
+    [JsonPropertyName("y")] public double Y { get; set; }
+    [JsonPropertyName("w")] public double W { get; set; }
+    [JsonPropertyName("h")] public double H { get; set; }
+
+    /// <summary>"black" or "blur".</summary>
+    [JsonPropertyName("mode")] public string Mode { get; set; } = "black";
 }
 
 public sealed class CanvasEdge
