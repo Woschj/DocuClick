@@ -5,7 +5,8 @@ name: Release
 # <version>` (sets the versions, dates the changelogs), merge to main, then
 # push the tag v<version> (e.g. v1.18.0). This workflow builds and tests the
 # three parts with their own workflows and publishes one GitHub release with
-# all downloads and the three changelog sections as notes.
+# exactly three downloads (Windows app, macOS app, Obsidian plugin) and the
+# changelog sections as notes.
 on:
   push:
     tags: [ 'v*' ]
@@ -56,13 +57,7 @@ jobs:
           body_path: notes.md
           # The macOS app only exists with the signing secrets set.
           fail_on_unmatched_files: false
-          # main.js/manifest.json/styles.css also as single assets, the
-          # usual layout of Obsidian plugin releases.
           files: |
             publish/DocuClick-win-x64/DocuClick-win-x64.zip
-            publish/OutputTemplate/OutputTemplate.zip
             publish/DocuClick-macos-arm64/DocuClick-macos-arm64.zip
             publish/docuclick-diagrams/docuclick-diagrams.zip
-            publish/docuclick-diagrams/docuclick-diagrams/main.js
-            publish/docuclick-diagrams/docuclick-diagrams/manifest.json
-            publish/docuclick-diagrams/docuclick-diagrams/styles.css

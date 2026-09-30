@@ -1,0 +1,71 @@
+name: Releases aufräumen
+
+# Manual, one-off: deletes every GitHub release and every tag except the one
+# to keep, removes all files from that release except the three downloads
+# (Windows app, macOS app, Obsidian plugin) and rewrites its notes with
+# tools/release.py. The commits stay; only releases and tags go.
+# Cannot be undone - start it only with "LÖSCHEN" as confirmation.
+on:
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: Release, das bleibt (Tag)
+        required: true
+        default: v1.18.0
+      confirm:
+        description: Zur Bestätigung LÖSCHEN eingeben
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      KEEP: ${{ inputs.keep }}
+    steps:
+      - name: Confirmation
+        if: inputs.confirm != 'LÖSCHEN'
+        run: |
+          echo "Abgebrochen: zur Bestätigung LÖSCHEN eingeben."
+          exit 1
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: The release to keep exists
+        run: gh release view "$KEEP" --repo "$GITHUB_REPOSITORY" --json tagName
+
+      - name: Delete the other releases
+        run: |
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName --jq '.[].tagName' |
+          while read -r tag; do
+            [ "$tag" = "$KEEP" ] && continue
+            echo "Release $tag"
+            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes
+          done
+
+      - name: Delete the other tags
+        run: |
+          git ls-remote --tags origin | grep -v '\^{}$' | sed 's#.*refs/tags/##' |
+          while read -r tag; do
+            [ "$tag" = "$KEEP" ] && continue
+            echo "Tag $tag"
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag"
+          done
+
+      - name: Only the three downloads in the kept release
+        run: |
+          gh release view "$KEEP" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' |
+          while read -r name; do
+            case "$name" in
+              DocuClick-win-x64.zip|DocuClick-macos-arm64.zip|docuclick-diagrams.zip) ;;
+              *) echo "Datei $name"; gh release delete-asset "$KEEP" "$name" --repo "$GITHUB_REPOSITORY" --yes ;;
+            esac
+          done
+
+      - name: Release notes
+        run: |
+          python3 tools/release.py "${KEEP#v}" --notes > notes.md
+          gh release edit "$KEEP" --repo "$GITHUB_REPOSITORY" --title "DocuClick $KEEP" --notes-file notes.md --latest

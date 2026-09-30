@@ -334,5 +334,5 @@ Release: Änderungen unter `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md)
 eintragen. Das Plugin erscheint zusammen mit der Windows- und der macOS-App
 in einem Release mit derselben Version: `python3 tools/release.py 1.18.0`,
 nach dem Merge auf `main` das Tag `v1.18.0` pushen (siehe
-[Entwicklung](../README.md#entwicklung)). Das Release enthält das ZIP sowie
-`main.js`, `manifest.json` und `styles.css`.
+[Entwicklung](../README.md#entwicklung)). Das Release enthält das Plugin als
+`docuclick-diagrams.zip`.

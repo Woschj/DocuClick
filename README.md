@@ -95,8 +95,13 @@ git push origin v1.18.0
 
 Das Tag startet [release.yml](.github/workflows/release.yml): Es prüft, dass
 die Versionen zum Tag passen, baut und testet alle drei Teile und
-veröffentlicht ein Release mit allen Downloads und den drei
-Changelog-Abschnitten als Beschreibung.
+veröffentlicht ein Release mit genau drei Downloads (Windows-App, macOS-App,
+Obsidian-Plugin) und den Changelog-Abschnitten als Beschreibung.
+
+Aufräumen: Der Workflow [Releases aufräumen](.github/workflows/cleanup-releases.yml)
+(Actions → „Releases aufräumen“ → „Run workflow“, zur Bestätigung `LÖSCHEN`
+eingeben) löscht alle Releases und Tags außer dem angegebenen und entfernt
+aus diesem alle Dateien außer den drei Downloads. Nicht rückgängig zu machen.
 
 Messung langer Aufnahmen: `DOCUCLICK_BENCH=ergebnis.txt dotnet test --project
 core/DocuClick.Core.Tests -- --filter-class "*RecordingBenchmark"` (100 Klicks
