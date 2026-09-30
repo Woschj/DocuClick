@@ -2839,7 +2839,12 @@ if (dataScriptEl) {
     const index = historyIndex + direction;
     if (index < 0 || index >= history.length) return;
     historyIndex = index;
-    const state = JSON.parse(history[index]);
+    applyState(JSON.parse(history[index]));
+    updateHistoryButtons(); scheduleSave();
+  }
+  // Shows another document in place (undo/redo, or a newer file from the
+  // host) without reloading the page, so zoom and position stay.
+  function applyState(state) {
     Object.keys(canvasDoc).forEach(key => delete canvasDoc[key]);
     Object.assign(canvasDoc, state.canvas);
     textNodesById.clear();
@@ -2859,7 +2864,14 @@ if (dataScriptEl) {
       }
       createHandlesForNode(node);
     });
-    buildGuideList(); scheduleViewerRaf(); updateHistoryButtons(); scheduleSave();
+    buildGuideList(); scheduleViewerRaf();
+  }
+  // The file changed outside the editor (e.g. the DocuClick app recorded a
+  // step): show it and start a fresh history; nothing to save.
+  function replaceDocument(state) {
+    applyState(state);
+    history = [JSON.stringify(snapshot())]; historyIndex = 0;
+    updateHistoryButtons();
   }
   document.addEventListener("keydown", e => {
     if (!(e.ctrlKey || e.metaKey) || e.altKey || e.target.closest("input, textarea, [contenteditable]")) return;
@@ -2869,7 +2881,7 @@ if (dataScriptEl) {
     if (e.key.toLowerCase() === "s") { e.preventDefault(); saveNow(); }
   });
   updateHistoryButtons();
-  if (editorHost) editorHost.ready?.({ snapshot, undo: () => restoreHistory(-1), redo: () => restoreHistory(1) });
+  if (editorHost) editorHost.ready?.({ snapshot, undo: () => restoreHistory(-1), redo: () => restoreHistory(1), replace: replaceDocument });
 
   function tryConnect(fromId, toId) {
     if (fromId === toId) return;

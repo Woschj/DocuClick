@@ -44,6 +44,7 @@ const vault = {
   getAbstractFileByPath: path => files.get(path)?.file || folders.get(path),
   createFolder: async path => { if (files.has(path) || folders.has(path)) throw Error('exists'); const folder = new TFolder(path); folders.set(path, folder); return folder; },
   getAllLoadedFiles: () => [...folders.values()],
+  getFiles: () => [...files.values()].map(entry => entry.file),
   getMarkdownFiles: () => [...files.values()].map(entry => entry.file).filter(file => file.extension === 'md')
 };
 // Frontmatter of notes, parsed on demand (enough for a "docuclick" property).
@@ -241,8 +242,13 @@ let browser, socket;
   await evaluate("window.firstState = reloadView.state; emitModify(reloadFile); new Promise(r => setTimeout(r, 100))");
   assert.equal(await evaluate("reloadView.state === firstState"), true, "own/unchanged file must not reload");
   const external = JSON.stringify({format:'docuclick-diagram', version:1, canvas:{nodes:[{id:'x',type:'text',text:'Extern',x:0,y:0,width:100,height:50}],edges:[]}, flow:{nodes:[{data:{id:'x',label:'Extern'},position:{x:0,y:0}}],edges:[]}});
-  await evaluate(`testHost.files.get('Reload.docuclick').text = ${JSON.stringify(external)}; emitModify(reloadFile)`);
-  await until("reloadView.state && reloadView.state !== firstState && reloadView.state.doc.canvas.nodes.length === 1");
+  await evaluate(`window.firstFrame = reloadView.frame; testHost.files.get('Reload.docuclick').text = ${JSON.stringify(external)}; emitModify(reloadFile)`);
+  await until("reloadView.state && reloadView.state.doc.canvas.nodes.length === 1");
+  // Shown in the running editor (same frame: zoom and position stay), which now holds the new document.
+  assert.equal(await evaluate("reloadView.frame === firstFrame"), true, "external change reloaded the editor");
+  await evaluate("reloadView.flush()");
+  assert.equal(await evaluate("reloadView.state.doc.flow.nodes.map(n => n.data.label).join()"), "Extern");
+  assert.equal(await evaluate("testHost.files.get('Reload.docuclick').text"), external, "showing an external change must not rewrite the file");
   // With local changes at risk: a banner with a reload button instead of a silent reload.
   await evaluate("reloadView.state.blocked = true; window.blockedState = reloadView.state; testHost.files.get('Reload.docuclick').text = " + JSON.stringify(empty) + "; emitModify(reloadFile)");
   await until("!!reloadView.contentEl.querySelector('.docuclick-banner')");
@@ -308,11 +314,11 @@ let browser, socket;
   assert.equal(saved.includes("data:image"), false, "recorded screenshots were embedded into the note");
   assert.deepEqual(JSON.parse(D.noteData(saved)).images, JSON.parse(D.noteData(recording)).images);
   assert.equal(saved.split(D.DATA_START).length, 2);
-  // The app records another step (diagram data changes): the open tab reloads.
+  // The app records another step (diagram data changes): the open tab shows it.
   const nextData = JSON.parse(D.noteData(saved)); nextData.canvas.nodes.find(n => n.type === "text").text = "Nächster Klick";
   const nextNote = D.composeNote(saved, D.noteJson(nextData), D.stepsMarkdown(nextData));
   await evaluate(`window.appState = appView.state; testHost.files.get('Prozesse/Ablauf.md').text = ${JSON.stringify(nextNote)}; emitModify(appFile)`);
-  await until("appView.state && appView.state !== appState && appView.state.doc.canvas.nodes.some(n => n.text === 'Nächster Klick')");
+  await until("appView.state && appView.state.doc.canvas.nodes.some(n => n.text === 'Nächster Klick')");
   // Opening a diagram note shows the full diagram tab; a tab switched to text stays text.
   await evaluate(`(async () => {
     const leaf = view => ({ view, setViewState: async state => { leaf.last = state; } });
@@ -350,6 +356,13 @@ let browser, socket;
   await evaluate("testHost.plugin.app.fileManager = { trashFile: async file => testHost.files.delete(file.path) }; testHost.plugin.convertToNote(testHost.vault.getAbstractFileByPath('Reload.docuclick'))");
   assert.equal(await evaluate("testHost.files.has('Reload.docuclick')"), false);
   assert.equal(await evaluate("DocuClickDocument.isDiagramNote(testHost.files.get('Reload.md').text) && JSON.parse(DocuClickDocument.noteData(testHost.files.get('Reload.md').text)).images.b.startsWith('Bilder/DocuClick/')"), true);
+  // Screenshots of deleted steps: found (only in DocuClick's folders), linked images are kept.
+  await evaluate(`(async () => {
+    const bytes = new Uint8Array([137, 80, 78, 71]).buffer;
+    for (const path of ['Prozesse/Attachments/Ablauf/999999_000.png', 'Fotos/Urlaub.png', 'Prozesse/Attachments/Ablauf/verlinkt.png']) await testHost.vault.createBinary(path, bytes);
+    testHost.plugin.app.metadataCache.resolvedLinks = { 'Notiz.md': { 'Prozesse/Attachments/Ablauf/verlinkt.png': 1 } };
+  })()`);
+  assert.equal(await evaluate("testHost.plugin.findUnusedImages().then(list => list.map(f => f.path).join())"), "Prozesse/Attachments/Ablauf/999999_000.png");
   assert.deepEqual(errors, [], "Uncaught browser errors");
   console.log("PASS: sandbox, palette, default folder, colour themes, rename, undo/redo, image move, connect/delete/restore, Vault save, read-only HTML export/search/guide/lightbox, forged message rejection, conflict recovery, close flush, app recording in the vault, diagram notes (open as tab, own text kept, embed, convert)");
 })().catch(error => { console.error(error); process.exitCode=1; }).finally(async () => {

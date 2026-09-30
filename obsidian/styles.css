@@ -9,3 +9,4 @@
 .docuclick-embed-header span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .docuclick-embed-frame { display: block; width: 100%; border: 0; background: #090d16; }
 .docuclick-embed .docuclick-error { padding: 12px; }
+.docuclick-confirm-list { max-height: 240px; overflow: auto; font-size: var(--font-ui-small); font-family: var(--font-monospace); }
