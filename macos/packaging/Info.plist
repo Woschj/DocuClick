@@ -19,5 +19,9 @@
   <key>NSAccessibilityUsageDescription</key>
   <string>DocuClick liest die Bezeichnung des angeklickten Elements für den Beschreibungstext.</string>
   <key>NSHumanReadableCopyright</key><string>DocuClick</string>
+  <!-- The new Ablauf-Übersicht loads its page and screenshots from the app's
+       own service on 127.0.0.1 (see LocalSaveService.EditorPage). -->
+  <key>NSAppTransportSecurity</key>
+  <dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict>
 </plist>

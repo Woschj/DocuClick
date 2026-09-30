@@ -8,6 +8,14 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [Unreleased]
+
+- Testschalter „Neue Ablauf-Übersicht testen“ (Einstellungen): Die
+  Ablauf-Übersicht nutzt denselben Editor wie die .html-Datei und das
+  Obsidian-Plugin – mit Rückgängig/Wiederholen, Schwärzen und deutlich
+  markiertem aktuellem Schritt. Seite und Screenshots liefert der lokale
+  Dienst der App (nur 127.0.0.1, mit Zufallsschlüssel pro Start).
+
 ## [0.3.0] - 2026-09-30
 
 - Wie Windows (siehe [Windows-Changelog](../windows/CHANGELOG.md)): WebP-

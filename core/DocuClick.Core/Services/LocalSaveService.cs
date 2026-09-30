@@ -50,6 +50,26 @@ public sealed class LocalSaveService : IDisposable
     /// </summary>
     public Func<RemoteCommand, Task<RemoteStatus>>? RemoteControl { get; set; }
 
+    /// <summary>
+    /// The app's Ablauf-Übersicht page on the shared template (macOS: its web
+    /// view cannot read the session folder directly): GET /editor/page and
+    /// GET /editor/image?p=… serve it and its screenshots, both only with
+    /// <see cref="EditorToken"/> (random per app start) in the query.
+    /// </summary>
+    public Func<string?>? EditorPage { get; set; }
+
+    /// <summary>Folder the editor page's screenshots are served from (vault root or session folder); null: none.</summary>
+    public Func<string?>? EditorImageRoot { get; set; }
+
+    /// <summary>Secret in the editor page's URLs (see <see cref="EditorPage"/>).</summary>
+    public string EditorToken { get; } = Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant();
+
+    /// <summary>URL of the editor page (with the token and a changing version to force a reload).</summary>
+    public string EditorPageUrl(int version) => $"http://127.0.0.1:{_port}/editor/page?t={EditorToken}&v={version}";
+
+    /// <summary>Page-relative URL of a screenshot (path relative to <see cref="EditorImageRoot"/>, forward slashes).</summary>
+    public string EditorImageUrl(string relativePath) => $"/editor/image?t={EditorToken}&p={Uri.EscapeDataString(relativePath)}";
+
     /// <summary>The token the plugin must send (AppConfig.RemoteControlToken, written into the vault by ObsidianAppLink).</summary>
     public string? RemoteToken { get; set; }
 
@@ -104,7 +124,14 @@ public sealed class LocalSaveService : IDisposable
             {
                 client.ReceiveTimeout = client.SendTimeout = 10_000;
                 var stream = client.GetStream();
-                var (method, path, headers, body) = await ReadRequestAsync(stream);
+                var (method, target, headers, body) = await ReadRequestAsync(stream);
+                var path = target.Split('?')[0];
+
+                if (method == "GET" && path.StartsWith("/editor/", StringComparison.Ordinal))
+                {
+                    await HandleEditorAsync(stream, path, target);
+                    return;
+                }
 
                 if (method == "POST" && path == "/control")
                 {
@@ -185,6 +212,52 @@ public sealed class LocalSaveService : IDisposable
         }
 
         return (200, await control(command));
+    }
+
+    /// <summary>The editor page and its screenshots (see <see cref="EditorPage"/>). Only with the token; images only below the image root.</summary>
+    private async Task HandleEditorAsync(NetworkStream stream, string path, string target)
+    {
+        var query = target.Contains('?') ? ParseForm(target[(target.IndexOf('?') + 1)..]) : new Dictionary<string, string>();
+        if (!query.TryGetValue("t", out var token) || !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(token), Encoding.UTF8.GetBytes(EditorToken)))
+        {
+            await WriteBytesAsync(stream, 403, "text/plain; charset=utf-8", Encoding.UTF8.GetBytes("Nicht erlaubt."));
+            return;
+        }
+
+        if (path == "/editor/page")
+        {
+            var html = EditorPage?.Invoke()
+                ?? "<!doctype html><meta charset=\"utf-8\"><body style=\"background:#0b0f19;color:#94a3b8;font:13px system-ui;padding:24px\">Noch kein Ablauf geladen.</body>";
+            await WriteBytesAsync(stream, 200, "text/html; charset=utf-8", Encoding.UTF8.GetBytes(html));
+            return;
+        }
+
+        if (path == "/editor/image" && EditorImageRoot?.Invoke() is { } root && query.TryGetValue("p", out var relative)
+            && !Path.IsPathRooted(relative) && !relative.Split('/', '\\').Any(segment => segment == ".."))
+        {
+            var full = Path.GetFullPath(Path.Combine(root, relative));
+            var inside = full.StartsWith(Path.TrimEndingDirectorySeparator(Path.GetFullPath(root)) + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+            var isImage = Path.GetExtension(full).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg" or ".webp" or ".gif" or ".bmp";
+            if (inside && isImage && File.Exists(full))
+            {
+                var bytes = await File.ReadAllBytesAsync(full);
+                await WriteBytesAsync(stream, 200, ImageData.MimeType(bytes), bytes);
+                return;
+            }
+        }
+
+        await WriteBytesAsync(stream, 404, "text/plain; charset=utf-8", Encoding.UTF8.GetBytes("Nicht gefunden."));
+    }
+
+    private static async Task WriteBytesAsync(NetworkStream stream, int status, string contentType, byte[] bodyBytes)
+    {
+        var header = $"HTTP/1.1 {status} {(status == 200 ? "OK" : "Error")}\r\n" +
+                     $"Content-Type: {contentType}\r\n" +
+                     $"Content-Length: {bodyBytes.Length}\r\n" +
+                     "Cache-Control: no-store\r\n" +
+                     "Connection: close\r\n\r\n";
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(header));
+        await stream.WriteAsync(bodyBytes);
     }
 
     private static async Task WriteJsonAsync(NetworkStream stream, int status, RemoteStatus result)
@@ -307,7 +380,7 @@ public sealed class LocalSaveService : IDisposable
             body.Write(chunk, 0, read);
         }
 
-        return (requestLine[0], requestLine.Length > 1 ? requestLine[1].Split('?')[0] : "/", headers, Encoding.UTF8.GetString(body.ToArray()));
+        return (requestLine[0], requestLine.Length > 1 ? requestLine[1] : "/", headers, Encoding.UTF8.GetString(body.ToArray()));
     }
 
     private static int IndexOfHeaderEnd(MemoryStream buffer)

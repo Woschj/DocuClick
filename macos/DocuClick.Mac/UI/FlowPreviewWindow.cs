@@ -35,6 +35,19 @@ internal sealed class FlowPreviewWindow : Window, IFlowEditorHost
 
     public FlowEditorBridge Bridge { get; }
 
+    /// <summary>
+    /// Set (before the window opens) to use the shared editor template instead
+    /// of flow.js (AppConfig.UseTemplateOverview). The page and its
+    /// screenshots come from the app's local service (<see cref="PageUrl"/>),
+    /// since WebKit cannot read the session folder from a page loaded as text.
+    /// </summary>
+    public EditorPageHost? PageHost { get; set; }
+
+    /// <summary>Template mode: URL of the editor page for a given version (a new version forces a reload).</summary>
+    public Func<int, string>? PageUrl { get; set; }
+
+    private int _pageVersion;
+
     /// <summary>The header's "Schließen": the app hides the window instead of destroying it.</summary>
     public event Action? CloseRequested;
 
@@ -76,7 +89,14 @@ internal sealed class FlowPreviewWindow : Window, IFlowEditorHost
         fit.PointerPressed += (_, e) =>
         {
             e.Handled = true;
-            PostToWeb(FlowEditorBridge.FitViewMessage);
+            if (PageHost is not null)
+            {
+                _ = _webView.InvokeScript("typeof ensureViewFit === 'function' && ensureViewFit()");
+            }
+            else
+            {
+                PostToWeb(FlowEditorBridge.FitViewMessage);
+            }
         };
         var collapse = HeaderIcon(_collapseGlyph, "Ein-/Ausklappen");
         collapse.PointerPressed += (_, e) =>
@@ -149,9 +169,24 @@ internal sealed class FlowPreviewWindow : Window, IFlowEditorHost
             if (!navigated)
             {
                 navigated = true;
-                _webView.NavigateToString(BuildPage(), new Uri(WebAssetsDir + "/"));
+                if (PageHost is not null && PageUrl is not null)
+                {
+                    LoadTemplatePage();
+                }
+                else
+                {
+                    _webView.NavigateToString(BuildPage(), new Uri(WebAssetsDir + "/"));
+                }
             }
         };
+    }
+
+    /// <summary>Template mode: (re)loads the editor page — at start and when another file is loaded.</summary>
+    private void LoadTemplatePage()
+    {
+        _pageReady = false;
+        _pending.Clear();
+        _webView.Navigate(new Uri(PageUrl!(++_pageVersion)));
     }
 
     private static string WebAssetsDir => Path.Combine(AppContext.BaseDirectory, "WebAssets");
@@ -279,6 +314,12 @@ internal sealed class FlowPreviewWindow : Window, IFlowEditorHost
     {
         try
         {
+            if (PageHost is not null)
+            {
+                await PageHost.HandleMessageAsync(json);
+                return;
+            }
+
             await Bridge.HandleMessageAsync(json);
         }
         catch (Exception ex)
@@ -287,8 +328,27 @@ internal sealed class FlowPreviewWindow : Window, IFlowEditorHost
         }
     }
 
-    public void UpdatePreview(FlowPreview preview, bool isRecordedClick = false) =>
+    public void UpdatePreview(FlowPreview preview, bool isRecordedClick = false)
+    {
+        if (PageHost is not null)
+        {
+            if (PageHost.NeedsNewPage)
+            {
+                if (IsVisible || _pageVersion > 0)
+                {
+                    LoadTemplatePage();
+                }
+            }
+            else
+            {
+                PageHost.OnSessionChanged();
+            }
+
+            return;
+        }
+
         PostToWeb(Bridge.BuildPreviewMessage(preview, isRecordedClick));
+    }
 
     // --- IFlowEditorHost --------------------------------------------------------
 

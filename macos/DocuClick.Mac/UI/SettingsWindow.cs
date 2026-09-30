@@ -37,6 +37,7 @@ internal sealed class SettingsWindow : DialogWindow<bool>
     };
     private readonly ComboBox _screenshotFormat = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly CheckBox _autoInstallPlugin = new() { Content = "Obsidian-Plugin beim Aufnehmen in einen Vault automatisch installieren und aktualisieren" };
+    private readonly CheckBox _templateOverview = new() { Content = "Neue Ablauf-Übersicht testen (gleicher Editor wie Browser und Obsidian, mit Schwärzen und Drucken; wirkt beim nächsten Start)" };
     private readonly Dictionary<HotkeyTarget, TextBox> _hotkeyBoxes = new();
     private readonly Dictionary<HotkeyTarget, (string Modifiers, string Key)> _hotkeys = new();
     private readonly WrapPanel _swatchPanel = new();
@@ -67,6 +68,7 @@ internal sealed class SettingsWindow : DialogWindow<bool>
         _screenshotFormat.ItemsSource = ScreenshotFormats.Select(f => f.Text).ToList();
         _screenshotFormat.SelectedIndex = Math.Max(0, Array.FindIndex(ScreenshotFormats, f => string.Equals(f.Tag, config.ScreenshotFormat, StringComparison.OrdinalIgnoreCase)));
         _autoInstallPlugin.IsChecked = config.AutoInstallObsidianPlugin;
+        _templateOverview.IsChecked = config.UseTemplateOverview;
 
         _hotkeys[HotkeyTarget.StartStop] = (config.StartStopModifiers, config.StartStopKey);
         _hotkeys[HotkeyTarget.BranchMark] = (config.BranchMarkModifiers, config.BranchMarkKey);
@@ -111,7 +113,7 @@ internal sealed class SettingsWindow : DialogWindow<bool>
                 Ui.Card(Ui.Section("Aufnahme-Verhalten"), _useAccessibility, _clickSound, _captureEnter, _captureRightClick,
                     Ui.Label("Klicks überspringen bei gedrückter Taste"), _skipModifier,
                     _beforeClick, _downscale,
-                    Ui.Label("Screenshot-Format"), _screenshotFormat, _autoInstallPlugin,
+                    Ui.Label("Screenshot-Format"), _screenshotFormat, _autoInstallPlugin, _templateOverview,
                     Ui.Hint("Die Zieldatei wird bei jedem Start einer neuen Session abgefragt. Passwortfelder werden nie aufgezeichnet.")),
                 Ui.Card(Ui.Section("Tastenkürzel"),
                     HotkeyRow(HotkeyTarget.StartStop, "Aufnahme starten/stoppen"),
@@ -243,6 +245,7 @@ internal sealed class SettingsWindow : DialogWindow<bool>
         _config.DownscaleHiDpiScreenshots = _downscale.IsChecked == true;
         _config.ScreenshotFormat = ScreenshotFormats[Math.Max(0, _screenshotFormat.SelectedIndex)].Tag;
         _config.AutoInstallObsidianPlugin = _autoInstallPlugin.IsChecked == true;
+        _config.UseTemplateOverview = _templateOverview.IsChecked == true;
         (_config.StartStopModifiers, _config.StartStopKey) = _hotkeys[HotkeyTarget.StartStop];
         (_config.BranchMarkModifiers, _config.BranchMarkKey) = _hotkeys[HotkeyTarget.BranchMark];
         (_config.ZoomToCursorModifiers, _config.ZoomToCursorKey) = _hotkeys[HotkeyTarget.ZoomToCursor];
