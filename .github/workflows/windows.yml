@@ -1,16 +1,15 @@
 name: Windows
 
-# Windows app (windows/) with the shared core (core/). Releases: tags v*
-# (e.g. v1.14.0) — the historic tag scheme of the Windows app. Pull
-# requests only run it when they touch these areas (a path filter on push
-# would also swallow tag pushes).
+# Windows app (windows/) with the shared core (core/). Pull requests only
+# run it when they touch these areas. Releases: release.yml calls this
+# workflow for a tag v* (one release, one version for all parts).
 on:
   push:
     branches: [ main ]
-    tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
     paths: [ 'windows/**', 'core/**', 'obsidian/src/**', 'obsidian/manifest.json', 'obsidian/styles.css', 'OutputTemplate/**', 'global.json', '.github/workflows/windows.yml' ]
+  workflow_call:
 
 jobs:
   build:
@@ -63,28 +62,3 @@ jobs:
           name: OutputTemplate
           path: OutputTemplate.zip
 
-  release:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
-        with:
-          name: DocuClick-win-x64
-          path: publish
-
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
-        with:
-          name: OutputTemplate
-          path: publish
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
-        with:
-          name: DocuClick für Windows ${{ github.ref_name }}
-          files: |
-            publish/DocuClick-win-x64.zip
-            publish/OutputTemplate.zip
-          generate_release_notes: true

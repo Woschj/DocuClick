@@ -41,14 +41,14 @@ jeder Teil hat eigene Releases (am Tag erkennbar).
 „Weitere Informationen → Trotzdem ausführen“. DocuClick läuft danach als
 Tray-Icon. → [Anleitung](windows/README.md)
 
-**macOS** (Release `macos-v…`, Apple Silicon, ab macOS 14):
+**macOS** (Apple Silicon, ab macOS 14):
 `DocuClick-macos-arm64.zip` entpacken, `DocuClick.app` nach **Programme**
 ziehen, öffnen und einmalig unter **Systemeinstellungen → Datenschutz &
 Sicherheit → „Trotzdem öffnen“** freigeben. Danach Bedienungshilfen,
 Eingabeüberwachung und Bildschirmaufnahme erlauben. DocuClick läuft als
 Symbol in der Menüleiste. → [Anleitung](macos/README.md)
 
-**Obsidian** (Release `obsidian-v…`, Desktop): `docuclick-diagrams.zip`
+**Obsidian** (Desktop): `docuclick-diagrams.zip`
 entpacken, den Ordner `docuclick-diagrams` nach
 `<Vault>/.obsidian/plugins/` kopieren, Obsidian neu laden und unter
 **Einstellungen → Community-Plugins** „DocuClick Diagrams“ aktivieren.
@@ -83,9 +83,20 @@ dotnet build macos/DocuClick.Mac.slnx                    # macOS-App (nur auf de
 python3 obsidian/build.py                                # Obsidian-Plugin
 ```
 
-Releases: `python3 tools/release.py windows 1.16.0 obsidian 0.7.0` setzt
-Versionen und Changelog-Datum; nach dem Merge auf `main` mit `--tag` die Tags
-anlegen und pushen (`git push origin v1.16.0 obsidian-v0.7.0`).
+Releases: Windows-App, macOS-App und Obsidian-Plugin erscheinen zusammen in
+einem Release mit derselben Version. `python3 tools/release.py 1.18.0` setzt
+die Version aller drei Teile und datiert ihre Changelogs; nach dem Merge auf
+`main` das Tag anlegen und pushen:
+
+```bash
+git tag -a v1.18.0 -m v1.18.0
+git push origin v1.18.0
+```
+
+Das Tag startet [release.yml](.github/workflows/release.yml): Es prüft, dass
+die Versionen zum Tag passen, baut und testet alle drei Teile und
+veröffentlicht ein Release mit allen Downloads und den drei
+Changelog-Abschnitten als Beschreibung.
 
 Messung langer Aufnahmen: `DOCUCLICK_BENCH=ergebnis.txt dotnet test --project
 core/DocuClick.Core.Tests -- --filter-class "*RecordingBenchmark"` (100 Klicks

@@ -5,6 +5,12 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [Unreleased]
+
+- **Ein Release für alles**: Windows-App, macOS-App und Obsidian-Plugin
+  erscheinen ab jetzt zusammen in einem Release mit derselben Versionsnummer
+  (Tag `v…`).
+
 ## [0.8.0] - 2026-09-30
 
 - **Schwärzen mit Vorschau, nachträglich änderbar, auch Weichzeichnen**: Die

@@ -8,14 +8,15 @@ Klick erzeugt einen Screenshot mit Klick-Markierung und einen Schritt im
 **Ablauf** (eine eigenständige, interaktive `.html`-Datei). Speicherformat,
 Ablauf-Editor und Session-Logik kommen aus dem gemeinsamen Kern
 ([core/](../core/README.md)), daher sind Abläufe zwischen Mac und Windows
-austauschbar. Eigene Version und eigene Releases (`macos-v*`).
+austauschbar. Erscheint zusammen mit der Windows-App und dem Obsidian-Plugin
+in einem Release mit derselben Version.
 
 Voraussetzungen: Apple Silicon, macOS 14 oder neuer.
 
 ## Installation
 
 1. `DocuClick-macos-arm64.zip` von den
-   [Releases](https://github.com/Woschj/DocuClick/releases) (Tags `macos-v…`)
+   [Releases](https://github.com/Woschj/DocuClick/releases)
    herunterladen, entpacken und `DocuClick.app` nach **Programme** ziehen.
 2. Beim ersten Öffnen meldet macOS, dass die App nicht überprüft werden kann.
    DocuClick ist nur selbst signiert (kein kostenpflichtiges Apple-Developer-
@@ -150,12 +151,13 @@ App bauen (Ergebnis: `dist/DocuClick.app` und `dist/DocuClick-macos-arm64.zip`):
 macos/packaging/build-app.sh
 ```
 
-Die Version steht in `DocuClick.Mac/DocuClick.Mac.csproj` (`<Version>`).
-Release: Version und [CHANGELOG.md](CHANGELOG.md) anheben, dann
+Die Version steht in `DocuClick.Mac/DocuClick.Mac.csproj` (`<Version>`) und
+ist dieselbe wie die der Windows-App und des Obsidian-Plugins. Release für
+alle drei: `python3 tools/release.py 1.18.0`, nach dem Merge auf `main`
 
 ```bash
-git tag macos-v0.1.0
-git push origin macos-v0.1.0
+git tag -a v1.18.0 -m v1.18.0
+git push origin v1.18.0
 ```
 
 Die CI ([.github/workflows/macos.yml](../.github/workflows/macos.yml)) baut

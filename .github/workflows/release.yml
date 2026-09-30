@@ -1,0 +1,68 @@
+name: Release
+
+# One release for all of DocuClick: Windows app, macOS app and Obsidian
+# plugin share one version. Prepare it with `python3 tools/release.py
+# <version>` (sets the versions, dates the changelogs), merge to main, then
+# push the tag v<version> (e.g. v1.18.0). This workflow builds and tests the
+# three parts with their own workflows and publishes one GitHub release with
+# all downloads and the three changelog sections as notes.
+on:
+  push:
+    tags: [ 'v*' ]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      # A tag that doesn't match the versions in the repository fails before anything is built.
+      - name: Versions match the tag
+        run: python3 tools/release.py "${GITHUB_REF_NAME#v}" --check
+
+  windows:
+    needs: check
+    uses: ./.github/workflows/windows.yml
+
+  macos:
+    needs: check
+    uses: ./.github/workflows/macos.yml
+    # Signing identity (MAC_SIGN_P12, MAC_SIGN_P12_PASSWORD); without it no app is built.
+    secrets: inherit
+
+  obsidian:
+    needs: check
+    uses: ./.github/workflows/obsidian.yml
+
+  release:
+    needs: [ windows, macos, obsidian ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      # Each artifact into publish/<artifact name>/.
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          path: publish
+
+      - name: Release notes
+        run: python3 tools/release.py "${GITHUB_REF_NAME#v}" --notes > notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+        with:
+          name: DocuClick ${{ github.ref_name }}
+          body_path: notes.md
+          # The macOS app only exists with the signing secrets set.
+          fail_on_unmatched_files: false
+          # main.js/manifest.json/styles.css also as single assets, the
+          # usual layout of Obsidian plugin releases.
+          files: |
+            publish/DocuClick-win-x64/DocuClick-win-x64.zip
+            publish/OutputTemplate/OutputTemplate.zip
+            publish/DocuClick-macos-arm64/DocuClick-macos-arm64.zip
+            publish/docuclick-diagrams/docuclick-diagrams.zip
+            publish/docuclick-diagrams/docuclick-diagrams/main.js
+            publish/docuclick-diagrams/docuclick-diagrams/manifest.json
+            publish/docuclick-diagrams/docuclick-diagrams/styles.css

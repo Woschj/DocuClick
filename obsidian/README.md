@@ -22,8 +22,7 @@ Das Plugin ist (noch) nicht im Community-Plugin-Verzeichnis von Obsidian;
 es wird von Hand installiert:
 
 1. Von der [Release-Seite](https://github.com/Woschj/DocuClick/releases) das
-   neueste Release **`obsidian-v…`** öffnen und `docuclick-diagrams.zip`
-   herunterladen.
+   neueste Release öffnen und `docuclick-diagrams.zip` herunterladen.
 2. Entpacken und den Ordner `docuclick-diagrams` in den Plugin-Ordner des
    Vaults kopieren: `<Vault>/.obsidian/plugins/docuclick-diagrams/`. Darin
    müssen `main.js`, `manifest.json` und `styles.css` liegen. (`.obsidian`
@@ -332,7 +331,8 @@ API-Grundlage: [Obsidian API](https://github.com/obsidianmd/obsidian-api),
 Cytoscapes MIT-Lizenz liegt im gebauten Paket als `THIRD-PARTY-NOTICES.txt` bei.
 
 Release: Änderungen unter `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md)
-eintragen, `python3 tools/release.py obsidian 0.7.0` (setzt Version und Datum),
-nach dem Merge auf `main` dasselbe mit `--tag` und die Tags pushen. Die CI
-([.github/workflows/obsidian.yml](../.github/workflows/obsidian.yml)) hängt
-ZIP sowie `main.js`, `manifest.json` und `styles.css` an das Release.
+eintragen. Das Plugin erscheint zusammen mit der Windows- und der macOS-App
+in einem Release mit derselben Version: `python3 tools/release.py 1.18.0`,
+nach dem Merge auf `main` das Tag `v1.18.0` pushen (siehe
+[Entwicklung](../README.md#entwicklung)). Das Release enthält das ZIP sowie
+`main.js`, `manifest.json` und `styles.css`.
