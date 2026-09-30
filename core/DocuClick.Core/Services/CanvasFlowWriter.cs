@@ -1223,7 +1223,38 @@ public sealed class CanvasFlowWriter
 
         document.SaveToken = _doc.SaveToken ?? document.SaveToken;
         AdoptDocument(document);
-        Save();
+        if (ObsidianVault.IsDiagramFile(_canvasPath))
+        {
+            Save();
+            return;
+        }
+
+        // Edits come one by one from an editor page: link the screenshots now,
+        // embed them once the edits calm down (as while recording).
+        WriteFile(embedImages: false);
+        ScheduleBackgroundSave(EmbedDelayMs);
+    }
+
+    /// <summary>
+    /// The loaded flow for an editor page the app hosts (EditorPageHost):
+    /// the page's HTML (shared editor template), the stored document and the
+    /// rendered graph as JSON, the step the next click attaches to.
+    /// <paramref name="image"/> turns a file node's value (path relative to
+    /// the session folder, or data URI) into what the page loads.
+    /// </summary>
+    public EditorDocument BuildEditorDocument(Func<string, string?> image)
+    {
+        if (_canvasPath is null)
+        {
+            throw new InvalidOperationException("Kein Ablauf geladen.");
+        }
+
+        var canvasJson = JsonSerializer.Serialize(_doc, _jsonOptions);
+        var (nodeSpecs, edgeSpecs) = BuildSpecs(image);
+        var flowJson = JsonSerializer.Serialize(HtmlViewerBuilder.FlowData(nodeSpecs, edgeSpecs),
+            new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
+        return new EditorDocument(_canvasPath, _sessionName, canvasJson, flowJson, _cursorNodeId,
+            () => HtmlViewerBuilder.BuildPage(_sessionName, nodeSpecs, edgeSpecs, canvasJson));
     }
 
     /// <summary>Makes <paramref name="document"/> the loaded one; keeps the cursor if its node still exists, else moves it to the main flow's tip.</summary>

@@ -1695,7 +1695,7 @@ if (dataScriptEl) {
   }
 
   if (editorHost) {
-    setStatus("Im Vault gespeichert");
+    setStatus("Änderungen werden automatisch gespeichert");
     saveStatus.title = "Automatisch im Obsidian-Vault gespeichert";
     document.getElementById("download-btn").hidden = true;
     if (editorHost.exportReadOnly) {
@@ -1788,7 +1788,7 @@ if (dataScriptEl) {
       try {
         await editorHost.save(snapshot());
         dirty = editRevision !== revision;
-        setStatus("✓ Im Vault gespeichert");
+        setStatus("✓ Gespeichert");
       } catch (error) {
         dirty = true;
         setStatus("Nicht gespeichert: " + error.message);
@@ -2615,6 +2615,17 @@ if (dataScriptEl) {
       const items = [];
       items.push({ header: nodeLabel.length > 28 ? nodeLabel.slice(0, 28) + "…" : nodeLabel });
 
+      // Recording host (the DocuClick app's Ablauf-Übersicht): where the next
+      // click lands, and new paths from a decision point.
+      const recordingHost = editorHost?.recording;
+      if (recordingHost) {
+        items.push({ icon: "▶", primary: true, label: "Hier weiter aufnehmen", action: () => recordingHost.jumpTo(nodeId) });
+        if (node.data("shape") === "diamond" || nodeLabel.includes("Abzweigung")) {
+          items.push({ icon: "＋", label: "Neuer Pfad ab hier …", action: () => recordingHost.newPath(nodeId) });
+        }
+        items.push({ separator: true });
+      }
+
       if (hasImage) {
         const idx = imageNodes.findIndex((n) => n.data.id === nodeId);
         if (idx >= 0) {
@@ -2946,7 +2957,13 @@ if (dataScriptEl) {
     if (e.key.toLowerCase() === "s") { e.preventDefault(); saveNow(); }
   });
   updateHistoryButtons();
-  if (editorHost) editorHost.ready?.({ snapshot, undo: () => restoreHistory(-1), redo: () => restoreHistory(1), replace: replaceDocument });
+  // Recording host: marks the step the next recorded click attaches to.
+  cy.style().selector("node.recording-current").style({ "border-width": 4, "border-color": "#22c55e", "border-style": "solid" }).update();
+  function setCurrentNode(nodeId) {
+    cy.nodes(".recording-current").removeClass("recording-current");
+    if (nodeId) cy.getElementById(nodeId).addClass("recording-current");
+  }
+  if (editorHost) editorHost.ready?.({ snapshot, undo: () => restoreHistory(-1), redo: () => restoreHistory(1), replace: replaceDocument, setCurrent: setCurrentNode });
 
   function tryConnect(fromId, toId) {
     if (fromId === toId) return;

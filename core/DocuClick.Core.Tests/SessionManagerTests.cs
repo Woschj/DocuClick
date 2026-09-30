@@ -178,6 +178,79 @@ public sealed class SessionManagerTests : IDisposable
 
     public void Dispose() => _folder.Dispose();
 
+    private sealed class PageHost : IFlowEditorHost
+    {
+        public Queue<string?> Answers { get; } = new();
+        public List<System.Text.Json.JsonElement> Posted { get; } = new();
+        public Task<string?> PromptTextAsync(string? title = null, string? label = null, string? initialValue = null) => Task.FromResult(Answers.Count > 0 ? Answers.Dequeue() : null);
+        public Task<string?> PickImageFileAsync() => Task.FromResult<string?>(null);
+        public Task<bool> ConfirmAsync(string message) => Task.FromResult(false);
+        public void PostToWeb(string json) => Posted.Add(System.Text.Json.JsonDocument.Parse(json).RootElement.Clone());
+    }
+
+    private static string Save(int request, string canvasJson) =>
+        $$"""{ "kind": "save", "request": {{request}}, "canvas": {{canvasJson}} }""";
+
+    [Fact]
+    public async Task The_template_overview_saves_page_edits_and_receives_new_clicks()
+    {
+        using var session = CreateSession(_config);
+        session.Start(_folder.File("Test.html"));
+        _capture.NextFrame = () => new CapturedFrame(White(40, 20), new ScreenRect(0, 0, 40, 20), 1.0);
+        WaitForCapture(session, () => _input.Click(new ScreenPoint(5, 5)));
+
+        var web = new PageHost();
+        var host = new EditorPageHost(session, web, (folder, file) => "https://docuclick.session/" + file);
+        var page = host.BuildPage()!;
+        Assert.Contains("window.docuclickEditorHost", page);
+        Assert.Contains("https://docuclick.session/Attachments/Test/", page); // screenshots by URL, not embedded
+
+        // An edit in the page (rename) is saved into the file; the resulting update is not echoed back as a replace.
+        var canvas = session.GetEditorDocument(f => f)!.CanvasJson;
+        await host.HandleMessageAsync(Save(1, canvas.Replace("Linksklick", "Umbenannt")));
+        Assert.Null(web.Posted.Last().GetProperty("error").GetString());
+        Assert.Contains("Umbenannt", File.ReadAllText(_folder.File("Test.html")));
+        host.OnSessionChanged();
+        Assert.Equal("setCurrent", web.Posted.Last().GetProperty("kind").GetString());
+
+        // A new click reaches the page as a replace with the new step marked as current.
+        WaitForCapture(session, () => _input.Click(new ScreenPoint(6, 6)));
+        host.OnSessionChanged();
+        var replace = web.Posted.Last();
+        Assert.Equal("replace", replace.GetProperty("kind").GetString());
+        Assert.Equal(2, replace.GetProperty("flow").GetProperty("nodes").GetArrayLength());
+        var newest = replace.GetProperty("flow").GetProperty("nodes")[1].GetProperty("data").GetProperty("id").GetString();
+        Assert.Equal(newest, replace.GetProperty("currentId").GetString());
+
+        // "Hier weiter aufnehmen" goes through the session (which resumes at the end
+        // of that step's path) and only moves the marker in the page.
+        var first = replace.GetProperty("flow").GetProperty("nodes")[0].GetProperty("data").GetProperty("id").GetString();
+        await host.HandleMessageAsync($$"""{ "kind": "jumpTo", "nodeId": "{{first}}" }""");
+        host.OnSessionChanged();
+        Assert.Equal("setCurrent", web.Posted.Last().GetProperty("kind").GetString());
+        Assert.Equal(newest, web.Posted.Last().GetProperty("nodeId").GetString());
+    }
+
+    [Fact]
+    public async Task A_page_save_based_on_an_older_state_never_drops_a_recorded_click()
+    {
+        using var session = CreateSession(_config);
+        session.Start(_folder.File("Test.html"));
+        _capture.NextFrame = () => new CapturedFrame(White(40, 20), new ScreenRect(0, 0, 40, 20), 1.0);
+        WaitForCapture(session, () => _input.Click(new ScreenPoint(5, 5)));
+        var web = new PageHost();
+        var host = new EditorPageHost(session, web, (folder, file) => file);
+        host.BuildPage();
+        var stale = session.GetEditorDocument(f => f)!.CanvasJson;
+
+        WaitForCapture(session, () => _input.Click(new ScreenPoint(6, 6))); // recorded, page not updated yet
+        await host.HandleMessageAsync(Save(7, stale.Replace("Linksklick", "Umbenannt")));
+
+        Assert.Equal("replace", web.Posted[^2].GetProperty("kind").GetString()); // page gets the newer state
+        Assert.Contains("weiter aufgenommen", web.Posted[^1].GetProperty("error").GetString());
+        Assert.Equal(2, session.GetPreview()!.Nodes.Count); // the second click is still there
+    }
+
     private sealed class FakeInput : IInputMonitor
     {
         public event EventHandler<MouseClickEventArgs>? LeftButtonDown;
