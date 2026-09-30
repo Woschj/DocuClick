@@ -24,6 +24,12 @@ public sealed class EditorPageHost
     private readonly IFlowEditorHost _host;
     private readonly Func<string, string, string?> _imageUrl;
 
+    /// <summary>The file the current page was built for.</summary>
+    public string? PageFile { get; private set; }
+
+    /// <summary>True when another file (or none) is loaded than the page shows: build a new page instead of updating it.</summary>
+    public bool NeedsNewPage => !string.Equals(PageFile, _session.CurrentTargetFileName, StringComparison.OrdinalIgnoreCase);
+
     // The stored document the page currently shows. A save based on anything
     // else (a click was recorded meanwhile) is refused, not applied over it.
     private string? _pageCanvas;
@@ -61,9 +67,11 @@ public sealed class EditorPageHost
     {
         if (Current() is not { } doc)
         {
+            PageFile = null;
             return null;
         }
 
+        PageFile = doc.FilePath;
         _pageCanvas = doc.CanvasJson;
         var bridge = $"<script>{BridgeScript}</script>";
         return doc.BuildPage().Replace("<head>", "<head>" + bridge, StringComparison.Ordinal);

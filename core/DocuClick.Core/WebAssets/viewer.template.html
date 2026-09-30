@@ -3033,8 +3033,12 @@ if (dataScriptEl) {
   async function redactImage(nodeId, rect) {
     const node = cy.getElementById(nodeId);
     const source = new Image();
+    // Screenshots served from another origin (the app's overview) must allow
+    // reading their pixels; data URIs are unaffected.
+    if (!/^data:/i.test(node.data("imageUrl"))) source.crossOrigin = "anonymous";
     source.src = node.data("imageUrl");
-    await source.decode();
+    try { await source.decode(); }
+    catch { setStatus("Schwärzen hier nicht möglich (Bild nicht lesbar). Bitte nach der Aufnahme erneut versuchen."); return; }
     const canvas = document.createElement("canvas");
     canvas.width = source.naturalWidth; canvas.height = source.naturalHeight;
     const context = canvas.getContext("2d");

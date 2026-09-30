@@ -7,6 +7,17 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [Unreleased]
+
+- **Neue Ablauf-Übersicht zum Testen** (Einstellungen → „Neue Ablauf-Übersicht
+  testen“, wirkt beim nächsten Start): das Übersichtsfenster nutzt denselben
+  Editor wie der Ablauf im Browser und das Obsidian-Plugin – mit Schwärzen,
+  Drucken/PDF, Suche und Anleitung. Rechtsklick auf einen Schritt: „Hier
+  weiter aufnehmen“, auf eine Abzweigung: „Neuer Pfad ab hier“; der
+  Schritt, an den der nächste Klick anschließt, ist grün umrandet. Eine
+  Änderung in der Übersicht, die sich mit einem gerade aufgenommenen Klick
+  überschneidet, wird abgelehnt statt den Klick zu verlieren.
+
 ## [1.16.0] - 2026-09-30
 
 - **Screenshots als WebP** (Standard; JPEG und PNG wählbar in den
