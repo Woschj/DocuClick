@@ -137,6 +137,12 @@ public sealed class CanvasFlowWriter
         // previously open untouched rather than half-switching to a
         // now-unusable target file.
         var loadedDoc = LoadOrCreate(fullPath);
+        // Screenshots of the previous file are no longer needed in memory.
+        if (_canvasPath != fullPath)
+        {
+            _base64Cache.Clear();
+        }
+
         _canvasPath = fullPath;
         _sessionName = Path.GetFileNameWithoutExtension(canvasFilePath);
         _doc = loadedDoc;
@@ -1127,20 +1133,34 @@ public sealed class CanvasFlowWriter
     /// </summary>
     private (string Id, double X, double Y, int Steps) FindBranchTip(CanvasNode start)
     {
+        // Indexed once per walk: a lookup per step made long paths quadratic.
+        var nextOf = new Dictionary<string, string>();
+        foreach (var edge in _doc.Edges)
+        {
+            if (!edge.Manual)
+            {
+                nextOf.TryAdd(edge.FromNode, edge.ToNode); // first structural edge, as before
+            }
+        }
+
+        var nodesById = new Dictionary<string, CanvasNode>();
+        foreach (var node in _doc.Nodes)
+        {
+            nodesById.TryAdd(node.Id, node);
+        }
+
         var current = start;
         var steps = 0;
-        while (true)
+        var visited = new HashSet<string> { start.Id };
+        while (nextOf.TryGetValue(current.Id, out var nextId)
+            && nodesById.TryGetValue(nextId, out var nextNode)
+            && visited.Add(nextNode.Id))
         {
-            var nextEdge = _doc.Edges.FirstOrDefault(e => e.FromNode == current.Id && !e.Manual);
-            var nextNode = nextEdge is null ? null : _doc.Nodes.FirstOrDefault(n => n.Id == nextEdge.ToNode);
-            if (nextNode is null)
-            {
-                return (current.Id, current.X, current.Y, steps);
-            }
-
             current = nextNode;
             steps++;
         }
+
+        return (current.Id, current.X, current.Y, steps);
     }
 
     private string? GetNodeLabel(string nodeId) =>
@@ -1306,9 +1326,53 @@ public sealed class CanvasFlowWriter
     private void WriteFile()
     {
         var path = _canvasPath!;
-        var text = ObsidianVault.IsDiagramFile(path) ? BuildDiagramText() : BuildLiveHtml();
+        var isDiagram = ObsidianVault.IsDiagramFile(path);
+        if (isDiagram)
+        {
+            KeepExternalEditBeforeWrite(path);
+        }
+
+        var text = isDiagram ? BuildDiagramText() : BuildLiveHtml();
         FileSaveRetry.Save(path, () => File.WriteAllText(path, text));
         RememberDiskState(text);
+    }
+
+    /// <summary>
+    /// Last line of defence for the moment between reading a diagram
+    /// (<see cref="SyncWithDisk"/>) and writing it: if the Obsidian plugin
+    /// changed the diagram data in exactly that window, its version is kept
+    /// as a copy next to the file instead of being lost. A change of the
+    /// note's own text only is fine — <see cref="BuildDiagramText"/> composes
+    /// over the note as it is on disk.
+    /// </summary>
+    private void KeepExternalEditBeforeWrite(string path)
+    {
+        if (_diskText is null || ReadStamp(path) == _diskStamp || !File.Exists(path))
+        {
+            return;
+        }
+
+        string current;
+        try
+        {
+            current = File.ReadAllText(path);
+        }
+        catch (IOException)
+        {
+            return;
+        }
+
+        string? DataOf(string text) => ObsidianVault.IsNote(path) ? DiagramNote.ExtractData(text) : text;
+        if (DataOf(current) == DataOf(_diskText))
+        {
+            return;
+        }
+
+        var folder = Path.GetDirectoryName(path)!;
+        var stem = Path.GetFileNameWithoutExtension(path);
+        var copy = Path.Combine(folder, $"{stem} (Stand aus Obsidian {DateTime.Now:yyyy-MM-dd HH-mm-ss}){Path.GetExtension(path)}");
+        File.WriteAllText(copy, current);
+        LogService.Log($"Diagramm wurde unmittelbar vor dem Speichern extern geändert; dieser Stand liegt in {copy}.");
     }
 
     // What this writer last wrote to (or read from) a .docuclick file, to

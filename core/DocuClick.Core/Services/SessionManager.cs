@@ -896,6 +896,9 @@ public sealed class SessionManager : IDisposable
 
     private void ProcessClick(ScreenPoint point, DateTime timestamp, string targetFileName, bool isRightClick, PreClickFrame? preClick)
     {
+        // Released right after the capture (not only after the whole click is
+        // written), so a full-screen pre-click frame never outlives its use.
+        var frame = preClick;
         try
         {
             // Accessibility first: a password field must be skipped before
@@ -908,19 +911,20 @@ public sealed class SessionManager : IDisposable
             var description = DescriptionGenerator.Describe(element, fallbackWindowTitle, timestamp, action);
 
             Func<CapturedFrame> capture = _zoomToCursorActive
-                ? () => _platform.Capture.CaptureAroundPoint(point, _config.ZoomToCursorRadius, preClick)
-                : () => _platform.Capture.CaptureWindowAt(point, preClick);
+                ? () => _platform.Capture.CaptureAroundPoint(point, _config.ZoomToCursorRadius, frame)
+                : () => _platform.Capture.CaptureWindowAt(point, frame);
 
-            FinalizeCapture(description, timestamp, capture, element, point, targetFileName);
+            FinalizeCapture(description, timestamp, () => CaptureThenRelease(capture, ref frame), element, point, targetFileName);
         }
         finally
         {
-            preClick?.Dispose();
+            frame?.Dispose();
         }
     }
 
     private void ProcessEnterPress(DateTime timestamp, string targetFileName, PreClickFrame? preClick)
     {
+        var frame = preClick;
         try
         {
             var element = _config.UseUiAutomation ? _platform.Elements.GetFocusedElement() : null;
@@ -931,11 +935,11 @@ public sealed class SessionManager : IDisposable
 
             // No click point exists for a key press; the highlight (if any)
             // comes purely from the focused element's bounding rect.
-            FinalizeCapture(description, timestamp, () => _platform.Capture.CaptureForegroundWindow(preClick), element, null, targetFileName);
+            FinalizeCapture(description, timestamp, () => CaptureThenRelease(() => _platform.Capture.CaptureForegroundWindow(frame), ref frame), element, null, targetFileName);
         }
         finally
         {
-            preClick?.Dispose();
+            frame?.Dispose();
         }
     }
 
@@ -961,6 +965,19 @@ public sealed class SessionManager : IDisposable
         }
 
         return true;
+    }
+
+    private static CapturedFrame CaptureThenRelease(Func<CapturedFrame> capture, ref PreClickFrame? frame)
+    {
+        try
+        {
+            return capture();
+        }
+        finally
+        {
+            frame?.Dispose();
+            frame = null;
+        }
     }
 
     private void FinalizeCapture(

@@ -271,6 +271,25 @@ public sealed class DocuClickDiagramTests : IDisposable
     }
 
     [Fact]
+    public void A_diagram_change_right_before_saving_is_kept_as_a_copy()
+    {
+        var writer = StartNote();
+        Click(writer, "Eins");
+        writer.FlushPendingSave();
+
+        // The plugin saves a renamed step between the app's last read and its next write.
+        var changed = File.ReadAllText(Note).Replace("\"text\": \"Eins\"", "\"text\": \"Eins (Obsidian)\"");
+        File.WriteAllText(Note, changed);
+        File.SetLastWriteTimeUtc(Note, DateTime.UtcNow.AddSeconds(5));
+        var node = writer.GetPreview().Nodes.Single();
+        writer.MoveNode(node.Id, node.X + 10, node.Y); // writer-level: no SyncWithDisk before this save
+        writer.FlushPendingSave();
+
+        var copy = Assert.Single(Directory.GetFiles(Path.GetDirectoryName(Note)!, "Ablauf (Stand aus Obsidian *).md"));
+        Assert.Contains("Eins (Obsidian)", File.ReadAllText(copy));
+    }
+
+    [Fact]
     public void An_ordinary_note_is_not_turned_into_a_diagram()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Note)!);
