@@ -118,4 +118,26 @@ public sealed class FlowEditorBridgeTests
         Assert.True(nodes["d"].GetProperty("hasChildren").GetBoolean());
         Assert.Equal(3, root.GetProperty("edges").GetArrayLength());
     }
+
+    [Fact]
+    public async Task A_screenshot_is_sent_once_and_again_only_when_the_page_asks()
+    {
+        using var folder = new TempFolder();
+        Directory.CreateDirectory(folder.File("Attachments"));
+        File.WriteAllBytes(folder.File("Attachments/x.png"), TestImages.Png(4, 4).Data);
+        var host = new FakeHost();
+        var bridge = new FlowEditorBridge(host) { CurrentSessionFolder = folder.Path };
+        string? ImageOf(string json) => JsonDocument.Parse(json).RootElement.GetProperty("nodes")[0].TryGetProperty("imageUrl", out var url) ? url.GetString() : null;
+        string KeyOf(string json) => JsonDocument.Parse(json).RootElement.GetProperty("nodes")[0].GetProperty("imageKey").GetString()!;
+
+        var first = bridge.BuildPreviewMessage(Fork);
+        var second = bridge.BuildPreviewMessage(Fork);
+
+        Assert.StartsWith("data:image/png;base64,", ImageOf(first));
+        Assert.Null(ImageOf(second)); // the page keeps it by key
+        Assert.Equal(KeyOf(first), KeyOf(second));
+
+        await bridge.HandleMessageAsync(Message(new { type = "needImages", keys = new[] { KeyOf(first) } }));
+        Assert.StartsWith("data:image/png;base64,", ImageOf(Assert.Single(host.Posted)));
+    }
 }

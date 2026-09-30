@@ -44,6 +44,21 @@ public sealed class CanvasFlowWriterTests : IDisposable
     }
 
     [Fact]
+    public void While_clicking_the_page_links_its_screenshots_and_embeds_them_once_it_is_quiet()
+    {
+        var writer = StartWriter();
+        Click(writer, "Eins");
+        Click(writer, "Zwei");
+
+        var quick = File.ReadAllText(Ablauf);
+        Assert.DoesNotContain(";base64,", quick);        // no re-embedding of every image per click
+        Assert.Contains("Attachments/Ablauf/", quick);    // images still shown, via the folder next to it
+
+        writer.FlushPendingSave();                        // pause, stop, app exit, or 3 s without clicks
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(File.ReadAllText(Ablauf), "\"imageUrl\":\"data:image/").Count);
+    }
+
+    [Fact]
     public void A_flow_survives_a_reload_from_disk()
     {
         var writer = StartWriter();

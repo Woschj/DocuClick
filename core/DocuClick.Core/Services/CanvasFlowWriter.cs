@@ -390,8 +390,23 @@ public sealed class CanvasFlowWriter
         _cursorNodeId = textNode.Id;
         _cursorY = newY;
 
-        Save();
+        if (ObsidianVault.IsDiagramFile(_canvasPath))
+        {
+            Save();
+            return;
+        }
+
+        // An .html Ablauf with every screenshot embedded costs the whole
+        // file per click (quadratic over a session: 100 clicks wrote ~2 GB).
+        // While clicks come in, write it with image links (the Attachments
+        // folder sits next to it, so it still shows everything), and embed
+        // once things calm down — or at Pause/Stop/app exit (FlushPendingSave).
+        WriteFile(embedImages: false);
+        ScheduleBackgroundSave(EmbedDelayMs);
     }
+
+    /// <summary>Quiet time after the last click before an .html Ablauf is rewritten fully self-contained.</summary>
+    internal const int EmbedDelayMs = 3000;
 
     /// <summary>
     /// Adds a small "◆ Abzweigung" diamond connected from the current node
@@ -1248,7 +1263,7 @@ public sealed class CanvasFlowWriter
         }
     }
 
-    private void ScheduleBackgroundSave()
+    private void ScheduleBackgroundSave(int delayMs = 150)
     {
         lock (_saveLock)
         {
@@ -1292,7 +1307,7 @@ public sealed class CanvasFlowWriter
             // own doc comment) so it never races a mutation happening
             // concurrently on that same thread — Task.Delay here is purely
             // the debounce timer, not where the write itself runs.
-            Task.Delay(150, token).ContinueWith(t =>
+            Task.Delay(delayMs, token).ContinueWith(t =>
             {
                 if (t.IsCanceled)
                 {
@@ -1323,7 +1338,7 @@ public sealed class CanvasFlowWriter
     }
 
     /// <summary>Writes the loaded document in its file's format: a .docuclick diagram or an .html Ablauf.</summary>
-    private void WriteFile()
+    private void WriteFile(bool embedImages = true)
     {
         var path = _canvasPath!;
         var isDiagram = ObsidianVault.IsDiagramFile(path);
@@ -1332,7 +1347,7 @@ public sealed class CanvasFlowWriter
             KeepExternalEditBeforeWrite(path);
         }
 
-        var text = isDiagram ? BuildDiagramText() : BuildLiveHtml();
+        var text = isDiagram ? BuildDiagramText() : BuildLiveHtml(embedImages);
         FileSaveRetry.Save(path, () => File.WriteAllText(path, text));
         RememberDiskState(text);
     }
@@ -1490,11 +1505,11 @@ public sealed class CanvasFlowWriter
     /// of those clicks re-serializes and rewrites *all* of them to disk, not
     /// just the newest one.
     /// </summary>
-    private string BuildLiveHtml()
+    private string BuildLiveHtml(bool embedImages = true)
     {
         _doc.SaveToken ??= CanvasDocumentIo.NewSaveToken();
         var dataJson = JsonSerializer.Serialize(_doc, _jsonOptions);
-        var (nodeSpecs, edgeSpecs) = BuildSpecs(ResolveImageSrc);
+        var (nodeSpecs, edgeSpecs) = BuildSpecs(embedImages ? ResolveImageSrc : LinkImageSrc);
         return HtmlViewerBuilder.BuildPage(_sessionName, nodeSpecs, edgeSpecs, dataJson);
     }
 
@@ -1636,6 +1651,18 @@ public sealed class CanvasFlowWriter
         }
 
         return ToRelativeUrl(sessionDir, fullImagePath);
+    }
+
+    /// <summary>Screenshot as a link relative to the page (data URIs stay as they are) — for the quick saves while recording.</summary>
+    private string? LinkImageSrc(string relativeToOutput)
+    {
+        if (string.IsNullOrWhiteSpace(relativeToOutput) || relativeToOutput.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.IsNullOrWhiteSpace(relativeToOutput) ? null : relativeToOutput;
+        }
+
+        var sessionDir = Path.GetDirectoryName(_canvasPath!) ?? "";
+        return ToRelativeUrl(sessionDir, Path.Combine(sessionDir, relativeToOutput));
     }
 
     /// <summary>

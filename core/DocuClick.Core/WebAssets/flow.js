@@ -209,6 +209,7 @@
       return;
     }
 
+    requestMissingImages(nodes);
     const newNodeIds = new Set(nodes.map((n) => n.id));
     const newEdgeIds = new Set(edges.map((e) => `${e.source}->${e.target}`));
 
@@ -300,6 +301,26 @@
     }
   }
 
+  // Screenshots arrive once per image (key = full path) and are kept here;
+  // later previews only carry the key. Missing ones (after a reload of this
+  // page) are requested again from the host.
+  const imageCache = new Map();
+  const requestedImages = new Set();
+  function imageFor(n) {
+    if (n.imageUrl && n.imageKey) {
+      imageCache.set(n.imageKey, n.imageUrl);
+      requestedImages.delete(n.imageKey);
+    }
+    return n.imageUrl || (n.imageKey ? imageCache.get(n.imageKey) : undefined);
+  }
+  function requestMissingImages(nodes) {
+    nodes.forEach(imageFor); // register the images this message brings first
+    const missing = nodes.map((n) => n.imageKey).filter((key) => key && !imageCache.has(key) && !requestedImages.has(key));
+    if (!missing.length) return;
+    missing.forEach((key) => requestedImages.add(key));
+    sendToHost({ type: "needImages", keys: missing });
+  }
+
   function buildNodeData(n, large) {
     return {
       id: n.id,
@@ -319,7 +340,7 @@
       isCurrent: n.isCurrent,
       pathName: n.pathName || undefined,
       tooltip: n.pathName ? `${n.label} · Pfad: ${n.pathName}` : n.label,
-      imageUrl: n.imageUrl || undefined,
+      imageUrl: imageFor(n),
     };
   }
 

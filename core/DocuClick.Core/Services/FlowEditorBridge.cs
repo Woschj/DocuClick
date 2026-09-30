@@ -52,12 +52,30 @@ public sealed class FlowEditorBridge
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
     private readonly IFlowEditorHost _host;
-    private readonly Dictionary<string, string> _imageDataUriCache = new();
+    // Screenshots the page already has (by full path): each is sent once and
+    // cached there — resending every image with every preview was ~19 MB per
+    // click after 100 clicks. The page asks again ("needImages") if it lost
+    // them (reload).
+    private readonly HashSet<string> _sentImages = new(StringComparer.Ordinal);
 
     public FlowEditorBridge(IFlowEditorHost host) => _host = host;
 
     /// <summary>The loaded session's folder — screenshots are resolved relative to it.</summary>
-    public string? CurrentSessionFolder { get; set; }
+    public string? CurrentSessionFolder
+    {
+        get => _currentSessionFolder;
+        set
+        {
+            if (_currentSessionFolder != value)
+            {
+                _sentImages.Clear();
+            }
+
+            _currentSessionFolder = value;
+        }
+    }
+
+    private string? _currentSessionFolder;
 
     /// <summary>The preview most recently rendered, for prompts that need a node's current label.</summary>
     public FlowPreview LastPreview { get; private set; } = new(new List<PreviewNode>(), new List<PreviewEdge>());
@@ -92,6 +110,16 @@ public sealed class FlowEditorBridge
 
         switch (root.GetProperty("type").GetString())
         {
+            case "needImages":
+                // The page lost its image cache (reload) or missed a message.
+                foreach (var key in root.GetProperty("keys").EnumerateArray())
+                {
+                    _sentImages.Remove(key.GetString() ?? "");
+                }
+
+                _host.PostToWeb(BuildPreviewMessage(LastPreview));
+                break;
+
             case "nodeClick":
                 NodeClicked?.Invoke(root.GetProperty("nodeId").GetString()!);
                 break;
@@ -307,7 +335,7 @@ public sealed class FlowEditorBridge
             return new NodePayload(
                 n.Id, n.Label, permLabel, displayLabel, n.X, n.Y, width, height, NodeColorCss(n),
                 isMarker, n.IsDecisionPoint, n.IsPathStart, n.IsCurrent, forward.ContainsKey(n.Id), n.PathName,
-                BuildImageDataUri(n.ImagePath), n.Shape);
+                ImageOnce(n.ImagePath), n.Shape, ImageKey(n.ImagePath));
         }).ToList();
 
         var nodeColors = nodes.ToDictionary(n => n.Id, n => n.Color);
@@ -319,38 +347,31 @@ public sealed class FlowEditorBridge
         return new PreviewPayload("preview", true, nodes, edges, isRecordedClick);
     }
 
+    /// <summary>The page's cache key for a screenshot: its full path (unique across sessions).</summary>
+    private string? ImageKey(string? outputRelativePath) =>
+        outputRelativePath is null || CurrentSessionFolder is null ? null : Path.GetFullPath(Path.Combine(CurrentSessionFolder, outputRelativePath));
+
     /// <summary>
-    /// Screenshots are embedded as data: URIs (read once, then cached) —
-    /// the page is loaded from the app's own WebAssets folder and has no
-    /// file access to wherever the session happens to live.
+    /// The screenshot as data: URI the first time the page needs it, null
+    /// afterwards (the page keeps it by <see cref="ImageKey"/>). Data URIs,
+    /// because the page is loaded from the app's own WebAssets folder and has
+    /// no file access to wherever the session happens to live.
     /// </summary>
-    private string? BuildImageDataUri(string? outputRelativePath)
+    private string? ImageOnce(string? outputRelativePath)
     {
-        if (outputRelativePath is null)
+        if (ImageKey(outputRelativePath) is not { } key || !_sentImages.Add(key))
         {
             return null;
         }
 
-        if (_imageDataUriCache.TryGetValue(outputRelativePath, out var cached))
-        {
-            return cached;
-        }
-
-        if (CurrentSessionFolder is null)
-        {
-            return null;
-        }
-
-        var fullPath = Path.Combine(CurrentSessionFolder, outputRelativePath);
         try
         {
-            var result = ImageData.DataUri(File.ReadAllBytes(fullPath));
-            _imageDataUriCache[outputRelativePath] = result;
-            return result;
+            return ImageData.DataUri(File.ReadAllBytes(key));
         }
         catch (Exception ex)
         {
-            LogService.Log($"Ablauf-Übersicht: Screenshot konnte nicht eingebettet werden ({fullPath}): {ex.Message}");
+            _sentImages.Remove(key);
+            LogService.Log($"Ablauf-Übersicht: Screenshot konnte nicht eingebettet werden ({key}): {ex.Message}");
             return null;
         }
     }
@@ -394,7 +415,7 @@ public sealed class FlowEditorBridge
     private sealed record NodePayload(
         string Id, string Label, string PermLabel, string DisplayLabel, double X, double Y, double Width, double Height, string Color,
         bool IsMarker, bool IsDecisionPoint, bool IsPathStart, bool IsCurrent, bool HasChildren, string? PathName,
-        string? ImageUrl, string? Shape);
+        string? ImageUrl, string? Shape, string? ImageKey);
 
     private sealed record EdgePayload(string Source, string Target, bool Manual, string? Color = null, string? LineStyle = "solid");
 
