@@ -8,7 +8,7 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
-## [Unreleased]
+## [0.3.0] - 2026-09-30
 
 - Wie Windows (siehe [Windows-Changelog](../windows/CHANGELOG.md)): WebP-
   Screenshots, deutlich schnellere lange Aufnahmen, Steuerung aus Obsidian,

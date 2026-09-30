@@ -5,7 +5,7 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
-## [Unreleased]
+## [0.7.0] - 2026-09-30
 
 - **Aufnahme mit der DocuClick-App steuern**: Knopf „Mit DocuClick
   aufnehmen“ im Diagramm-Tab, Befehle für Start, Pause und Abzweigung,

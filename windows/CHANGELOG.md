@@ -7,7 +7,7 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
-## [Unreleased]
+## [1.16.0] - 2026-09-30
 
 - **Screenshots als WebP** (Standard; JPEG und PNG wählbar in den
   Einstellungen): etwa viermal kleiner (typisches Fenster: 38 KB statt 162 KB).

@@ -22,7 +22,7 @@
          not both configure DPI awareness). -->
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>1.15.0</Version>
+    <Version>1.16.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
