@@ -514,15 +514,14 @@ nach `main` automatisch auf einem Windows-Runner (Artefakt im jeweiligen
 Self-Extract-Mechanismus ist bei unsignierten Binaries ein häufiger
 Auslöser für Windows-Defender-ML-Fehlalarme.
 
-Neues Release erstellen (baut automatisch und hängt das Zip an ein neues
-GitHub Release). Die Windows-App behält das Tag-Schema `v*`; macOS
-(`macos-v*`) und das Obsidian-Plugin (`obsidian-v*`) haben eigene Versionen.
-Version vorher in `windows/DocuClick/DocuClick.csproj` und
-[CHANGELOG.md](CHANGELOG.md) anheben:
+Neues Release: Windows-App, macOS-App und Obsidian-Plugin erscheinen
+zusammen in einem Release mit derselben Version (siehe
+[Entwicklung](../README.md#entwicklung)): `python3 tools/release.py 1.18.0`,
+nach dem Merge auf `main`:
 
 ```bash
-git tag v1.14.0
-git push origin v1.14.0
+git tag -a v1.18.0 -m v1.18.0
+git push origin v1.18.0
 ```
 
 Offene Punkte: Feinschliff bei Multi-Monitor/DPI-Kantenfällen, robustere
