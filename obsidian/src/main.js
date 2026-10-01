@@ -778,43 +778,52 @@ module.exports = class DocuClickPlugin extends Plugin {
     return this.renameQueue;
   }
   async remapImages(remap, oldPath) {
+    const { vault } = this.app;
     let changed = 0;
+    const rewrite = async file => {
+      let written = null;
+      await vault.process(file, current => {
+        written = this.remapImageText(file, current, remap);
+        return written ?? current;
+      });
+      return written;
+    };
     const open = new Set();
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
       const view = leaf.view, state = view?.state;
-      if (!state?.file) continue;
+      if (!state?.file || open.has(state.file.path)) continue;
       open.add(state.file.path);
+      // In the view's own save queue: no save of the editor runs meanwhile,
+      // and the view knows the new text as its own (no conflict, no reload).
+      state.queue = state.queue.then(async () => {
+        if (state !== view.state) return;
+        const written = await rewrite(state.file);
+        if (!written) return;
+        state.base = written;
+        for (const entry of state.imagePaths?.values() ?? []) entry.path = remap(entry.path) ?? entry.path;
+        changed++;
+      }).catch(report);
       await state.queue;
-      if (state !== view.state) continue;
-      let hit = false;
-      for (const entry of state.imagePaths?.values() ?? []) {
-        const next = remap(entry.path);
-        if (next) { entry.path = next; hit = true; }
-      }
-      if (hit) { await view.enqueueSave(state, D.compactForStorage(state.doc)); changed++; }
     }
-    const { vault } = this.app;
     for (const file of vault.getFiles?.() ?? []) {
       if (open.has(file.path) || !["md", "docuclick"].includes(file.extension)) continue;
       const text = await vault.cachedRead(file);
       if (!text.includes(oldPath) || (file.extension === "md" && !D.isDiagramNote(text))) continue;
-      let updated = false;
-      await vault.process(file, current => {
-        try {
-          const raw = JSON.parse(file.extension === "md" ? D.noteData(current) : current);
-          let hit = false;
-          for (const [id, path] of Object.entries(raw?.images ?? {})) {
-            const next = remap(path);
-            if (next) { raw.images[id] = next; hit = true; }
-          }
-          if (!hit) return current;
-          updated = true;
-          return this.fileText(file, current, raw);
-        } catch { return current; } // not a readable diagram: leave it untouched
-      });
-      if (updated) changed++;
+      if (await rewrite(file)) changed++;
     }
     if (changed) new Notice(`DocuClick: Bildpfade in ${changed} Diagramm${changed === 1 ? "" : "en"} angepasst.`);
+  }
+  /** The diagram text with remapped image paths, or null if nothing changes (or it is not a readable diagram). */
+  remapImageText(file, text, remap) {
+    try {
+      const raw = JSON.parse(file.extension === "md" ? D.noteData(text) : text);
+      let hit = false;
+      for (const [id, path] of Object.entries(raw?.images ?? {})) {
+        const next = remap(path);
+        if (next) { raw.images[id] = next; hit = true; }
+      }
+      return hit ? this.fileText(file, text, raw) : null;
+    } catch { return null; }
   }
   /** Default target folder: the configured one, else the active file's folder (vault root without one). */
   targetFolder() {
