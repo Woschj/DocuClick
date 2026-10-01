@@ -68,7 +68,9 @@ public sealed class DocuClickDiagramTests : IDisposable
         foreach (var (_, value) in images)
         {
             var vaultPath = (string)value!;
-            Assert.StartsWith("Prozesse/Attachments/Ablauf/", vaultPath); // relative to the vault root, as the plugin expects
+            // Relative to the vault root, as the plugin expects; without an own
+            // setting Obsidian keeps attachments in the vault root folder.
+            Assert.StartsWith("Ablauf/", vaultPath);
             Assert.True(File.Exists(Path.Combine(_vault.Path, vaultPath)));
         }
     }
@@ -356,6 +358,65 @@ public sealed class DocuClickDiagramTests : IDisposable
         }
 
         throw new InvalidOperationException("Repository-Wurzel nicht gefunden.");
+    }
+
+    private void SetObsidianAttachmentFolder(string value) =>
+        File.WriteAllText(_vault.File(".obsidian/app.json"), new JsonObject { ["attachmentFolderPath"] = value }.ToJsonString());
+
+    [Fact]
+    public void Screenshots_go_where_Obsidian_puts_attachments()
+    {
+        var root = Path.GetFullPath(_vault.Path);
+        var note = Path.Combine(root, "Prozesse", "IT");
+        Directory.CreateDirectory(note);
+
+        Assert.Equal(root, ObsidianVault.AttachmentFolder(root, note)); // no setting: Obsidian's default, the vault root
+        foreach (var (setting, expected) in new[]
+        {
+            ("/", root),
+            ("./", note),
+            ("./Attachments", Path.Combine(note, "Attachments")),
+            ("Anhänge/DocuClick", Path.Combine(root, "Anhänge", "DocuClick")),
+            ("../Außerhalb", root), // never outside the vault
+        })
+        {
+            SetObsidianAttachmentFolder(setting);
+            Assert.Equal(expected, ObsidianVault.AttachmentFolder(root, note));
+        }
+
+        File.WriteAllText(_vault.File(".obsidian/app.json"), "{ kaputt");
+        Assert.Equal(root, ObsidianVault.AttachmentFolder(root, note));
+    }
+
+    [Fact]
+    public void A_recording_follows_the_vaults_attachment_setting_and_continues_after_a_reload()
+    {
+        SetObsidianAttachmentFolder("Anhänge");
+        var writer = StartWriter();
+        Click(writer, "Eins");
+        Click(writer, "Zwei");
+        writer.Stop();
+
+        // Continue later: screenshots outside the note's folder are found again.
+        writer = StartWriter();
+        Click(writer, "Drei");
+        writer.Stop();
+
+        var images = ReadJson()["images"]!.AsObject().Select(p => (string)p.Value!).ToList();
+        Assert.Equal(3, images.Count);
+        Assert.All(images, path =>
+        {
+            Assert.StartsWith("Anhänge/Ablauf/", path);
+            Assert.True(File.Exists(Path.Combine(_vault.Path, path)));
+        });
+
+        SetObsidianAttachmentFolder("./Attachments");
+        writer = StartWriter();
+        Click(writer, "Vier");
+        writer.Stop();
+        var all = ReadJson()["images"]!.AsObject().Select(p => (string)p.Value!).ToList();
+        Assert.Equal(4, all.Count);
+        Assert.Single(all, path => path.StartsWith("Prozesse/Attachments/Ablauf/", StringComparison.Ordinal));
     }
 
     public void Dispose() => _vault.Dispose();

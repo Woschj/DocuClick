@@ -6,53 +6,47 @@ namespace DocuClick.Services;
 public static class AttachmentSaver
 {
     /// <summary>
-    /// Saves a screenshot under &lt;sessionFolder&gt;/&lt;attachmentsFolderName&gt;/&lt;sessionName&gt;/
+    /// Saves a screenshot under &lt;attachmentsDir&gt;/&lt;sessionName&gt;/
     /// instead of directly in the attachments folder, so screenshots from
     /// different sessions sharing one folder don't all pile up flat
-    /// together. <paramref name="sessionName"/> is normally the target
-    /// file's name without extension.
+    /// together. <paramref name="attachmentsDir"/> is the folder images go to
+    /// (see CanvasFlowWriter.AttachmentsDirectory); <paramref name="sessionName"/>
+    /// is normally the target file's name without extension.
     /// </summary>
-    /// <returns>A tuple of the saved file's path relative to the attachments folder and the raw PNG bytes.</returns>
-    public static (string RelativePath, byte[] PngBytes) SaveScreenshot(string sessionFolder, string attachmentsFolderName, ScreenshotImage screenshot, DateTime timestamp, string sessionName)
+    /// <returns>The saved file's full path and the raw image bytes.</returns>
+    public static (string FullPath, byte[] PngBytes) SaveScreenshot(string attachmentsDir, ScreenshotImage screenshot, DateTime timestamp, string sessionName)
     {
-        var subfolder = SanitizeSessionName(sessionName);
-        var attachmentsDir = Path.Combine(sessionFolder, attachmentsFolderName, subfolder);
-        Directory.CreateDirectory(attachmentsDir);
+        var folder = Path.Combine(attachmentsDir, SanitizeSessionName(sessionName));
+        Directory.CreateDirectory(folder);
 
         // No "screenshot_" prefix and no date: the enclosing session
         // subfolder already carries both (it's named after the session,
         // which itself is dated) — repeating either in every single
         // filename was pure redundancy. Time-of-day + milliseconds is still
         // enough to stay unique within one session's folder.
-        var imageFileName = $"{timestamp:HHmmss_fff}.{screenshot.Extension}";
-        var fullPath = Path.Combine(attachmentsDir, imageFileName);
-
+        var fullPath = Path.Combine(folder, $"{timestamp:HHmmss_fff}.{screenshot.Extension}");
         var bytes = screenshot.Data;
         File.WriteAllBytes(fullPath, bytes);
-
-        return (Path.Combine(subfolder, imageFileName), bytes);
+        return (fullPath, bytes);
     }
 
     /// <summary>
-    /// Copies an external image file into &lt;sessionFolder&gt;/&lt;attachmentsFolderName&gt;/&lt;sessionName&gt;/
-    /// and returns its relative path and bytes.
+    /// Copies an external image file into &lt;attachmentsDir&gt;/&lt;sessionName&gt;/
+    /// and returns its full path and bytes.
     /// </summary>
-    public static (string RelativePath, byte[] ImageBytes) SaveImage(string sessionFolder, string attachmentsFolderName, string sourceFilePath, string sessionName)
+    public static (string FullPath, byte[] ImageBytes) SaveImage(string attachmentsDir, string sourceFilePath, string sessionName)
     {
-        var subfolder = SanitizeSessionName(sessionName);
-        var attachmentsDir = Path.Combine(sessionFolder, attachmentsFolderName, subfolder);
-        Directory.CreateDirectory(attachmentsDir);
+        var folder = Path.Combine(attachmentsDir, SanitizeSessionName(sessionName));
+        Directory.CreateDirectory(folder);
 
         var ext = Path.GetExtension(sourceFilePath);
         if (string.IsNullOrEmpty(ext)) ext = ".png";
         var fileNameWithoutExt = Path.GetFileNameWithoutExtension(sourceFilePath);
-        var imageFileName = $"{DateTime.Now:HHmmss_fff}_{SanitizeSessionName(fileNameWithoutExt)}{ext}";
-        var fullPath = Path.Combine(attachmentsDir, imageFileName);
+        var fullPath = Path.Combine(folder, $"{DateTime.Now:HHmmss_fff}_{SanitizeSessionName(fileNameWithoutExt)}{ext}");
 
         var bytes = File.ReadAllBytes(sourceFilePath);
         File.WriteAllBytes(fullPath, bytes);
-
-        return (Path.Combine(subfolder, imageFileName), bytes);
+        return (fullPath, bytes);
     }
 
     // Beyond filesystem-invalid characters, this subfolder name ends up

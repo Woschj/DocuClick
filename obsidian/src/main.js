@@ -2,7 +2,8 @@
 const { Plugin, PluginSettingTab, FileView, Modal, Setting, Notice, TFile, TFolder, AbstractInputSuggest, MarkdownRenderChild, WorkspaceLeaf, normalizePath, requestUrl } = require("obsidian");
 const VIEW_TYPE = "docuclick-diagram";
 const D = DocuClickDocument;
-const DEFAULT_SETTINGS = { themeMode: "docuclick", background: "#1e1e1e", accent: "#7c3aed", themeExport: true, defaultFolder: "", askFolder: true, imageStorage: "embedded", imageFolder: "DocuClick-Bilder" };
+const LEGACY_IMAGE_FOLDER = "DocuClick-Bilder";
+const DEFAULT_SETTINGS = { themeMode: "docuclick", background: "#1e1e1e", accent: "#7c3aed", themeExport: true, defaultFolder: "", askFolder: true, imageStorage: "embedded", imageFolder: "" };
 
 // Runs only inside a sandboxed, opaque-origin iframe. There is no Obsidian
 // API, require(), filesystem access, or parent DOM access in this context.
@@ -244,13 +245,13 @@ class DocuClickSettingTab extends PluginSettingTab {
     if (settings.imageStorage === "attachments") {
       new Setting(containerEl)
         .setName("Bildordner")
-        .setDesc("Hier werden Screenshots abgelegt (Dateiname = Prüfsumme, gleiche Bilder werden nur einmal gespeichert). Nicht mehr verwendete Bilder werden nicht automatisch gelöscht.")
+        .setDesc("Leer = wie in Obsidian eingestellt (Einstellungen → Dateien und Links → Standardordner für neue Anhänge), mit einem Unterordner pro Diagramm – dort legt auch die DocuClick-App ihre Screenshots ab. Oder ein fester Ordner. Dateiname = Prüfsumme, gleiche Bilder werden nur einmal gespeichert.")
         .addText(text => {
-          text.setPlaceholder("DocuClick-Bilder").setValue(settings.imageFolder)
+          text.setPlaceholder("Wie in Obsidian eingestellt").setValue(settings.imageFolder)
             .onChange(value => {
               const folder = cleanFolder(value);
-              text.inputEl.toggleClass?.("docuclick-invalid", folder === null || folder === "");
-              if (!folder) return;
+              text.inputEl.toggleClass?.("docuclick-invalid", folder === null);
+              if (folder === null) return;
               settings.imageFolder = folder;
               clearTimeout(this.saveTimer);
               this.saveTimer = setTimeout(() => this.plugin.saveData(settings).catch(report), 400);
@@ -506,8 +507,13 @@ class DiagramView extends FileView {
 module.exports = class DocuClickPlugin extends Plugin {
   async onload() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    // Until 1.19 the image folder defaulted to "DocuClick-Bilder" and was saved
+    // with every settings change: treat that old default as "follow Obsidian".
+    if (this.settings.imageFolder === LEGACY_IMAGE_FOLDER) this.settings.imageFolder = "";
     this.addSettingTab(new DocuClickSettingTab(this.app, this));
     this.registerView(VIEW_TYPE, leaf => new DiagramView(leaf, this));
+    // Screenshots or their folders moved/renamed in Obsidian: keep diagrams' image paths valid.
+    this.registerEvent(this.app.vault.on("rename", (file, oldPath) => { this.followRename(file, oldPath); }));
     // Follow Obsidian theme switches (light/dark, other theme, accent colour).
     this.registerEvent(this.app.workspace.on("css-change", () => { if (this.settings.themeMode === "obsidian") this.refreshThemes(); }));
     this.embeds = new Set();
@@ -604,13 +610,15 @@ module.exports = class DocuClickPlugin extends Plugin {
    */
   async findUnusedImages() {
     const { vault, metadataCache } = this.app;
-    const used = new Set(), folders = new Set([cleanFolder(this.settings.imageFolder) || DEFAULT_SETTINGS.imageFolder]);
+    const used = new Set(), folders = new Set([LEGACY_IMAGE_FOLDER]);
+    if (cleanFolder(this.settings.imageFolder)) folders.add(cleanFolder(this.settings.imageFolder));
     const files = vault.getFiles ? vault.getFiles() : [...(vault.getMarkdownFiles?.() ?? [])];
     for (const file of files) {
       const isDiagram = file.extension === "docuclick" || (file.extension === "md" && await this.isDiagramNote(file));
       if (!isDiagram) continue;
       const parent = file.parent?.path && file.parent.path !== "/" ? `${file.parent.path}/` : "";
-      folders.add(`${parent}Attachments/${file.basename}`);
+      folders.add(`${parent}Attachments/${file.basename}`); // where older versions put them
+      folders.add(this.attachmentFolderFor(file));
       let raw;
       try { const text = await vault.cachedRead(file); raw = JSON.parse(file.extension === "md" ? D.noteData(text) : text); } catch { continue; }
       for (const path of Object.values(raw?.images ?? {})) {
@@ -739,6 +747,75 @@ module.exports = class DocuClickPlugin extends Plugin {
     await this.app.fileManager.trashFile(file);
     new Notice(`In Diagramm-Notiz umgewandelt: ${note.path}`);
   }
+  /**
+   * Folder for a diagram's screenshots: Obsidian's own "Standardordner für
+   * neue Anhänge" for that note plus a subfolder named after the diagram —
+   * the same rule as the DocuClick apps (ObsidianVault.AttachmentFolder), so
+   * recorded and added screenshots end up together.
+   */
+  attachmentFolderFor(file) {
+    const setting = String(this.app.vault.getConfig?.("attachmentFolderPath") ?? "").trim().replace(/\\/g, "/");
+    const parent = file?.parent?.path && file.parent.path !== "/" ? file.parent.path : "";
+    let base = "";
+    if (setting === "." || setting.startsWith("./")) base = [parent, setting.slice(2)].filter(Boolean).join("/");
+    else if (setting && setting !== "/") base = setting.replace(/^\/+/, "");
+    base = cleanFolder(base) ?? ""; // never outside the vault
+    const sub = (file?.basename || "Ablauf").replace(/[\\/:*?"<>|#^]/g, "_");
+    return base ? `${base}/${sub}` : sub;
+  }
+  /**
+   * An image or folder was moved or renamed in Obsidian: diagrams keep their
+   * screenshots' vault paths in their data (invisible to Obsidian's own link
+   * updating), so update them here. Open diagrams go through their own save
+   * queue; renames are handled one after another.
+   */
+  followRename(file, oldPath) {
+    const isFolder = file instanceof TFolder;
+    if (!isFolder && !IMAGE_TYPES[file?.extension?.toLowerCase()]) return Promise.resolve();
+    const remap = path => typeof path === "string" && (isFolder ? path.startsWith(`${oldPath}/`) : path === oldPath)
+      ? file.path + path.slice(oldPath.length) : null;
+    this.renameQueue = (this.renameQueue ?? Promise.resolve()).then(() => this.remapImages(remap, oldPath)).catch(report);
+    return this.renameQueue;
+  }
+  async remapImages(remap, oldPath) {
+    let changed = 0;
+    const open = new Set();
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
+      const view = leaf.view, state = view?.state;
+      if (!state?.file) continue;
+      open.add(state.file.path);
+      await state.queue;
+      if (state !== view.state) continue;
+      let hit = false;
+      for (const entry of state.imagePaths?.values() ?? []) {
+        const next = remap(entry.path);
+        if (next) { entry.path = next; hit = true; }
+      }
+      if (hit) { await view.enqueueSave(state, D.compactForStorage(state.doc)); changed++; }
+    }
+    const { vault } = this.app;
+    for (const file of vault.getFiles?.() ?? []) {
+      if (open.has(file.path) || !["md", "docuclick"].includes(file.extension)) continue;
+      const text = await vault.cachedRead(file);
+      if (!text.includes(oldPath) || (file.extension === "md" && !D.isDiagramNote(text))) continue;
+      let updated = false;
+      await vault.process(file, current => {
+        try {
+          const raw = JSON.parse(file.extension === "md" ? D.noteData(current) : current);
+          let hit = false;
+          for (const [id, path] of Object.entries(raw?.images ?? {})) {
+            const next = remap(path);
+            if (next) { raw.images[id] = next; hit = true; }
+          }
+          if (!hit) return current;
+          updated = true;
+          return this.fileText(file, current, raw);
+        } catch { return current; } // not a readable diagram: leave it untouched
+      });
+      if (updated) changed++;
+    }
+    if (changed) new Notice(`DocuClick: Bildpfade in ${changed} Diagramm${changed === 1 ? "" : "en"} angepasst.`);
+  }
   /** Default target folder: the configured one, else the active file's folder (vault root without one). */
   targetFolder() {
     const configured = cleanFolder(this.settings.defaultFolder);
@@ -774,7 +851,7 @@ module.exports = class DocuClickPlugin extends Plugin {
     const attach = this.settings.imageStorage === "attachments";
     const known = state?.imagePaths ?? new Map();
     if (!attach && !known.size) return doc;
-    const folder = cleanFolder(this.settings.imageFolder) || DEFAULT_SETTINGS.imageFolder;
+    const folder = cleanFolder(this.settings.imageFolder) || this.attachmentFolderFor(state?.file);
     const used = new Map(), images = {};
     const nodes = [];
     for (const n of doc.flow.nodes) {

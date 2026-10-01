@@ -5,6 +5,18 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [Unreleased]
+
+- **Bildpfade folgen Verschiebungen**: Werden Screenshots oder ganze
+  Bildordner in Obsidian verschoben oder umbenannt, passt das Plugin die
+  Pfade in allen betroffenen Diagrammen automatisch an, auch in geöffneten.
+- **Bildordner wie in Obsidian**: Ohne eigenen Bildordner speichert das
+  Plugin Bilder dort, wo Obsidian Anhänge ablegt (Einstellungen → Dateien und
+  Links), in einem Unterordner pro Diagramm – derselbe Ort, an dem die
+  DocuClick-Apps ihre Screenshots ablegen. Ein fest eingetragener Bildordner
+  gilt weiter; der frühere Standard `DocuClick-Bilder` wird dabei zu „wie in
+  Obsidian“ (dort gespeicherte Bilder bleiben und werden weiter gefunden).
+
 ## [1.19.1] - 2026-10-01
 
 - Keine eigenen Änderungen; Version an die anderen Teile angeglichen.

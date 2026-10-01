@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.Json;
 
 namespace DocuClick.Services;
 
@@ -48,6 +49,65 @@ public static class ObsidianVault
         return null;
     }
 
+    /// <summary>
+    /// The folder Obsidian puts new attachments in for a note in
+    /// <paramref name="noteFolder"/> — the vault's setting "Dateien und Links →
+    /// Standardordner für neue Anhänge" (<c>attachmentFolderPath</c> in
+    /// <c>.obsidian/app.json</c>):
+    /// <list type="bullet">
+    /// <item>not set or "/": the vault's root folder (Obsidian's default),</item>
+    /// <item>"./": the note's own folder; "./Name": a subfolder there,</item>
+    /// <item>"Ordner/Pfad": that folder in the vault.</item>
+    /// </list>
+    /// A value that would lead outside the vault falls back to the vault root.
+    /// </summary>
+    public static string AttachmentFolder(string vaultRoot, string noteFolder)
+    {
+        var root = Path.GetFullPath(vaultRoot);
+        var setting = ReadAttachmentSetting(root)?.Trim().Replace('\\', '/') ?? "";
+        string folder;
+        if (setting is "" or "/")
+        {
+            folder = root;
+        }
+        else if (setting == "." || setting.StartsWith("./", StringComparison.Ordinal))
+        {
+            folder = Path.Combine(Path.GetFullPath(noteFolder), setting.Length > 2 ? setting[2..] : "");
+        }
+        else
+        {
+            folder = Path.Combine(root, setting.TrimStart('/'));
+        }
+
+        folder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
+        var comparison = OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        var inside = string.Equals(folder, Path.TrimEndingDirectorySeparator(root), comparison)
+            || folder.StartsWith(Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar, comparison);
+        return inside ? folder : root;
+    }
+
+    private static string? ReadAttachmentSetting(string vaultRoot)
+    {
+        try
+        {
+            var path = Path.Combine(vaultRoot, ".obsidian", "app.json");
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            using var json = JsonDocument.Parse(File.ReadAllText(path));
+            return json.RootElement.TryGetProperty("attachmentFolderPath", out var value) && value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            LogService.Log($"Obsidian-Einstellung für Anhänge nicht lesbar ({ex.Message}) – Vault-Hauptordner wird verwendet.");
+            return null;
+        }
+    }
+
     /// <summary>File extension for a new session in <paramref name="folder"/>: <c>.md</c> (diagram note) in a vault, else <c>.html</c>.</summary>
     public static string OutputExtensionFor(string? folder) =>
         FindRoot(folder) is null ? SessionManager.OutputExtension : NoteExtension;
@@ -55,7 +115,7 @@ public static class ObsidianVault
     /// <summary>Line under the session-start dialog's folder field: what gets created there.</summary>
     public static string TargetHint(string? folder) => FindRoot(folder) is null
         ? "Die .html-Datei und ihr Attachments-Unterordner werden direkt in diesem Ordner angelegt."
-        : "Obsidian-Vault erkannt: Der Ablauf wird als Diagramm-Notiz (.md) angelegt und öffnet sich mit dem Plugin „DocuClick Diagrams“ als Diagramm (auch schon während der Aufnahme). Das Plugin wird dafür bei Bedarf automatisch im Vault installiert. Screenshots landen im Attachments-Unterordner.";
+        : "Obsidian-Vault erkannt: Der Ablauf wird als Diagramm-Notiz (.md) angelegt und öffnet sich mit dem Plugin „DocuClick Diagrams“ als Diagramm (auch schon während der Aufnahme). Das Plugin wird dafür bei Bedarf automatisch im Vault installiert. Screenshots landen dort, wo Obsidian Anhänge ablegt (Einstellungen → Dateien und Links), in einem Unterordner pro Ablauf.";
 
     /// <summary>True for a plugin file: a diagram note (any .md target) or a .docuclick diagram.</summary>
     public static bool IsDiagramFile(string? path) => IsNote(path)

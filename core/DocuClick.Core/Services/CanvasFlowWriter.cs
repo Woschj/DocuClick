@@ -318,11 +318,10 @@ public sealed class CanvasFlowWriter
 
         SyncWithDisk();
 
-        // Screenshots land in Attachments/<session>/ instead of flat in
-        // Attachments/, inside the session's own folder (wherever its .html
-        // file itself lives — there's no separate configured output root).
-        var (imageRelativeToAttachments, imageBytes) = AttachmentSaver.SaveScreenshot(Path.GetDirectoryName(_canvasPath)!, _config.AttachmentsFolder, screenshot, timestamp, _sessionName);
-        var imageOutputRelativePath = Path.Combine(_config.AttachmentsFolder, imageRelativeToAttachments).Replace('\\', '/');
+        // Screenshots land in <attachments folder>/<session>/ (see
+        // AttachmentsDirectory), stored relative to the session file.
+        var (imageFullPath, imageBytes) = AttachmentSaver.SaveScreenshot(AttachmentsDirectory(), screenshot, timestamp, _sessionName);
+        var imageOutputRelativePath = RelativeToSession(imageFullPath);
 
         // Immediately cache the screenshot in memory as base64 data URI (zero disk re-read cost later)
         try
@@ -1022,6 +1021,25 @@ public sealed class CanvasFlowWriter
         return new BranchActionResult(true);
     }
 
+    /// <summary>
+    /// Folder that receives this session's images (each session in its own
+    /// subfolder): for a diagram note in an Obsidian vault the vault's own
+    /// "Standardordner für neue Anhänge" (<see cref="ObsidianVault.AttachmentFolder"/>),
+    /// so DocuClick puts screenshots where Obsidian puts every other
+    /// attachment; otherwise the Attachments folder next to the file.
+    /// </summary>
+    private string AttachmentsDirectory()
+    {
+        var folder = Path.GetDirectoryName(_canvasPath!)!;
+        return ObsidianVault.IsDiagramFile(_canvasPath) && ObsidianVault.FindRoot(folder) is { } root
+            ? ObsidianVault.AttachmentFolder(root, folder)
+            : Path.Combine(folder, _config.AttachmentsFolder);
+    }
+
+    /// <summary>A file's path relative to the session file's folder (forward slashes; may start with "../" inside a vault).</summary>
+    private string RelativeToSession(string fullPath) =>
+        Path.GetRelativePath(Path.GetDirectoryName(_canvasPath!)!, fullPath).Replace('\\', '/');
+
     /// <summary>Creates a brand-new node with an attached external image at an explicit position.</summary>
     public BranchActionResult AddManualImageNode(string label, string imageSourcePath, double x, double y)
     {
@@ -1030,8 +1048,8 @@ public sealed class CanvasFlowWriter
             throw new InvalidOperationException("Canvas-Session wurde nicht gestartet.");
         }
 
-        var (imageRelativeToAttachments, imageBytes) = AttachmentSaver.SaveImage(Path.GetDirectoryName(_canvasPath)!, _config.AttachmentsFolder, imageSourcePath, _sessionName);
-        var imageOutputRelativePath = Path.Combine(_config.AttachmentsFolder, imageRelativeToAttachments).Replace('\\', '/');
+        var (imageFullPath, imageBytes) = AttachmentSaver.SaveImage(AttachmentsDirectory(), imageSourcePath, _sessionName);
+        var imageOutputRelativePath = RelativeToSession(imageFullPath);
 
         try
         {

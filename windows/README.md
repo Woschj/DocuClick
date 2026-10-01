@@ -68,8 +68,10 @@ normale Obsidian-Notiz mit Schrittliste als Text, die das Plugin
 [DocuClick Diagrams](../obsidian/README.md) als Diagramm öffnet. Der Hinweis
 unter dem Dateinamen im Session-Dialog zeigt das an. Das Diagramm lässt sich
 schon während der Aufnahme in Obsidian öffnen und bearbeiten; die Screenshots
-liegen als PNG-Dateien im `Attachments`-Unterordner und werden nicht bei
-jedem Klick neu eingebettet. Änderungen aus Obsidian übernimmt DocuClick vor
+liegen als PNG-Dateien dort, wo Obsidian Anhänge ablegt (Einstellungen →
+Dateien und Links → Standardordner für neue Anhänge, ein Unterordner pro
+Ablauf, Details in der [Plugin-Anleitung](../obsidian/README.md#wo-die-screenshots-liegen)),
+und werden nicht bei jedem Klick neu eingebettet. Änderungen aus Obsidian übernimmt DocuClick vor
 dem nächsten Klick, eigener Text in der Notiz bleibt erhalten. Das Plugin
 muss nicht von Hand installiert werden: Beim Start einer Aufnahme in einem
 Vault installiert (bzw. aktualisiert) DocuClick es dort selbst und meldet
