@@ -7,6 +7,15 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [Unreleased]
+
+- **Screenshots im Obsidian-Vault liegen dort, wo Obsidian Anhänge ablegt**
+  (Einstellungen → Dateien und Links → Standardordner für neue Anhänge), in
+  einem Unterordner pro Ablauf, statt fest in `Attachments/` neben der Notiz.
+  Ohne eigene Einstellung ist das Obsidians Standard, der Vault-Hauptordner;
+  die bisherige Ablage entspricht „Im Unterordner unter dem aktuellen Ordner:
+  Attachments“. Bestehende Abläufe behalten ihre Bilder, wo sie sind.
+
 ## [1.19.1] - 2026-10-01
 
 - DocuClicks lokaler Dienst (Speichern aus dem Browser, Steuerung aus

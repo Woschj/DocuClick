@@ -354,6 +354,37 @@ let browser, socket;
   // A live view saves through the same path.
   await evaluate("reloadView.state.pristineKey = null; reloadView.enqueueSave(reloadView.state, DocuClickDocument.compactForStorage(attachDoc))");
   assert.equal(await evaluate("JSON.parse(testHost.files.get('Reload.docuclick').text).images.b.startsWith('Bilder/DocuClick/')"), true);
+  // Without an own image folder, screenshots follow Obsidian's attachment setting (same rule as the apps).
+  await evaluate("testHost.vault.getConfig = key => key === 'attachmentFolderPath' ? window.attachSetting : undefined; window.noteFile = new (testHost.vault.getAbstractFileByPath('Test.docuclick').constructor)('Prozesse/IT/Ablauf X.md')");
+  for (const [setting, expected] of [[undefined, "Ablauf X"], ["/", "Ablauf X"], ["./", "Prozesse/IT/Ablauf X"], ["./Attachments", "Prozesse/IT/Attachments/Ablauf X"], ["Anhänge", "Anhänge/Ablauf X"], ["../raus", "Ablauf X"]]) {
+    assert.equal(await evaluate(`window.attachSetting = ${JSON.stringify(setting)}; testHost.plugin.attachmentFolderFor(noteFile)`), expected, `attachment setting ${setting}`);
+  }
+  // Moving/renaming screenshots in Obsidian updates every diagram that uses them (open ones via their save queue).
+  await evaluate(`(async () => {
+    testHost.files.set('Moved.docuclick', {file: new (testHost.vault.getAbstractFileByPath('Test.docuclick').constructor)('Moved.docuclick'), text: attachText});
+    window.untouched = testHost.files.get('Test.docuclick').text;
+    window.leavesOfType = testHost.plugin.app.workspace.getLeavesOfType;
+    testHost.plugin.app.workspace.getLeavesOfType = () => [{view: reloadView}];
+    testHost.notices.length = 0;
+    const { TFolder, TFile } = window.require('obsidian');
+    // Like Obsidian: the files really move, then the rename event arrives.
+    const move = (from, to) => { for (const key of [...testHost.files.keys()]) if (key === from || key.startsWith(from + '/')) { const entry = testHost.files.get(key), target = to + key.slice(from.length); entry.file = new TFile(target); testHost.files.delete(key); testHost.files.set(target, entry); } };
+    move('Bilder/DocuClick', 'Bilder/Screens');
+    await testHost.plugin.followRename(new TFolder('Bilder/Screens'), 'Bilder/DocuClick');
+    window.afterFolder = { closed: Object.values(JSON.parse(testHost.files.get('Moved.docuclick').text).images), open: Object.values(JSON.parse(testHost.files.get('Reload.docuclick').text).images ?? {}) };
+    window.openState = { base: reloadView.state.base === testHost.files.get('Reload.docuclick').text, paths: [...reloadView.state.imagePaths.values()].map(e => e.path) };
+    const old = afterFolder.closed[0];
+    move(old, 'Bilder/Screens/neu.png');
+    await testHost.plugin.followRename(new TFile('Bilder/Screens/neu.png'), old);
+    window.afterFile = Object.values(JSON.parse(testHost.files.get('Moved.docuclick').text).images);
+    testHost.plugin.app.workspace.getLeavesOfType = leavesOfType;
+  })()`);
+  assert.equal(await evaluate("afterFolder.closed.every(p => p.startsWith('Bilder/Screens/')) && afterFolder.closed.length === 2"), true, "closed diagram not updated");
+  assert.equal(await evaluate("afterFolder.open.length === 2 && afterFolder.open.every(p => p.startsWith('Bilder/Screens/'))"), true, "open diagram not updated");
+  assert.equal(await evaluate("openState.base && openState.paths.every(p => p.startsWith('Bilder/Screens/'))"), true, "open view out of sync with its file");
+  assert.equal(await evaluate("afterFile.every(p => p === 'Bilder/Screens/neu.png')"), true, "renamed image not followed");
+  assert.equal(await evaluate("testHost.files.get('Test.docuclick').text === untouched"), true, "unrelated diagram rewritten");
+  assert.ok(await evaluate("testHost.notices.some(n => n.includes('Bildpfade in 2 Diagrammen'))"));
   // Missing files and paths outside the image rules are dropped with a notice, never read.
   await evaluate("testHost.notices.length = 0; testHost.files.set('Geheim.txt', {file: new (testHost.vault.getAbstractFileByPath('Test.docuclick').constructor)('Geheim.txt'), text: 'x'})");
   const hostile = await evaluate(`(async () => { const raw = JSON.parse(attachText); raw.images.a = '../Geheim.txt'; raw.images.b = 'Geheim.txt'; return (await testHost.plugin.loadDocument(JSON.stringify(raw))).flow.nodes.map(n => !!n.data.imageUrl).join(); })()`);
@@ -431,7 +462,7 @@ let browser, socket;
   assert.equal(await evaluate("JSON.parse(DocuClickDocument.noteData(testHost.files.get('Import.md').text)).flow.nodes.length"), 2);
   await evaluate("testHost.plugin.app.fileManager = { trashFile: async file => testHost.files.delete(file.path) }; testHost.plugin.convertToNote(testHost.vault.getAbstractFileByPath('Reload.docuclick'))");
   assert.equal(await evaluate("testHost.files.has('Reload.docuclick')"), false);
-  assert.equal(await evaluate("DocuClickDocument.isDiagramNote(testHost.files.get('Reload.md').text) && JSON.parse(DocuClickDocument.noteData(testHost.files.get('Reload.md').text)).images.b.startsWith('Bilder/DocuClick/')"), true);
+  assert.equal(await evaluate("DocuClickDocument.isDiagramNote(testHost.files.get('Reload.md').text) && JSON.parse(DocuClickDocument.noteData(testHost.files.get('Reload.md').text)).images.b.startsWith('Bilder/Screens/')"), true); // moved by the rename test above
   // Screenshots of deleted steps: found (only in DocuClick's folders), linked images are kept.
   await evaluate(`(async () => {
     const bytes = new Uint8Array([137, 80, 78, 71]).buffer;
@@ -456,7 +487,7 @@ let browser, socket;
   assert.match(await evaluate("testHost.plugin.remote('status').then(() => 'ok', e => e.message)"), /läuft nicht/);
   assert.equal(await evaluate("statusBar.textContent"), "");
   assert.deepEqual(errors, [], "Uncaught browser errors");
-  console.log("PASS: sandbox, palette, default folder, colour themes, rename, undo/redo, image move, connect/delete/restore, Vault save, read-only HTML export/search/guide/lightbox, forged message rejection, conflict recovery, close flush, app recording in the vault, diagram notes (open as tab, own text kept, embed, convert)");
+  console.log("PASS: sandbox, palette, default folder, attachment folder + rename following, colour themes, rename, undo/redo, image move, connect/delete/restore, Vault save, read-only HTML export/search/guide/lightbox, forged message rejection, conflict recovery, close flush, app recording in the vault, diagram notes (open as tab, own text kept, embed, convert)");
 })().catch(error => { console.error(error); process.exitCode=1; }).finally(async () => {
   socket?.close(); browser?.kill(); server.close();
   await delay(300);

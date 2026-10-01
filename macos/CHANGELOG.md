@@ -8,6 +8,12 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [Unreleased]
+
+- **Screenshots im Obsidian-Vault liegen dort, wo Obsidian Anhänge ablegt**
+  (Einstellungen → Dateien und Links → Standardordner für neue Anhänge), in
+  einem Unterordner pro Ablauf. Details im Windows-Changelog.
+
 ## [1.19.1] - 2026-10-01
 
 - **Einfrieren behoben**: DocuClick konnte sich beim Öffnen oder Aktualisieren

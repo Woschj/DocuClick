@@ -132,10 +132,36 @@ Apps [DocuClick für Windows](../windows/README.md) und
    sie werden nicht überschrieben. Zum Weiteraufnehmen in der App
    „Bestehende Datei fortsetzen“ und die Notiz wählen.
 
-Screenshots legt die App als PNG-Dateien in `Attachments/<Ablaufname>/`
-neben der Notiz ab; das Diagramm verweist darauf (`images`), die Notiz bleibt
-klein. Diese Bilder bleiben auch bei der Einstellung „In der Datei“ Dateien.
-Zum Weitergeben dient wie immer die **HTML-Ansicht**.
+Screenshots legt die App als PNG-Dateien dort ab, wo Obsidian Anhänge
+speichert, in einem Unterordner pro Ablauf (siehe „Wo die Screenshots
+liegen“). Das Diagramm verweist darauf (`images`), die Notiz bleibt klein.
+Diese Bilder bleiben auch bei der Einstellung „In der Datei“ Dateien. Zum
+Weitergeben dient wie immer die **HTML-Ansicht**.
+
+### Wo die Screenshots liegen
+
+Screenshots landen dort, wo Obsidian alle Anhänge ablegt:
+**Einstellungen → Dateien und Links → Standardordner für neue Anhänge**,
+jeweils in einem Unterordner mit dem Namen des Ablaufs.
+
+| Einstellung in Obsidian | Screenshots von `Prozesse/Rechnung.md` |
+|---|---|
+| Vault-Hauptordner (Obsidian-Standard) | `Rechnung/` |
+| Im selben Ordner wie die aktuelle Datei | `Prozesse/Rechnung/` |
+| Im Unterordner unter dem aktuellen Ordner: `Attachments` | `Prozesse/Attachments/Rechnung/` (wie frühere DocuClick-Versionen) |
+| Im unten angegebenen Ordner: `Anhänge` | `Anhänge/Rechnung/` |
+
+Das gilt für die DocuClick-Apps und für Bilder, die das Plugin selbst
+speichert (Einstellung „Screenshots speichern: Als Dateien im Vault“, Feld
+**Bildordner** leer lassen; ein dort eingetragener fester Ordner geht vor).
+
+**Verschieben und Umbenennen:** Diagramme speichern die Bildpfade ab dem
+Hauptordner des Vaults. Notizen lassen sich daher frei verschieben und
+umbenennen. Verschiebst oder benennst du Screenshots oder ganze Bildordner
+**in Obsidian** um, passt das Plugin die Pfade in allen betroffenen
+Diagrammen automatisch an (auch in geöffneten). Im Finder bzw. Explorer
+verschobene Bilder erkennt Obsidian nicht als Verschiebung; dann meldet das
+Diagramm fehlende Bilder.
 
 Gleichzeitig in App und Diagramm-Tab dasselbe ändern sollte man vermeiden:
 Schreiben beide im selben Moment, sichert das Plugin seine Fassung als
@@ -163,8 +189,9 @@ Aufnahme auslösen.
 
 Gelöschte Schritte hinterlassen ihre Screenshot-Dateien. Befehl **Nicht mehr
 verwendete Bilder aufräumen** listet Bilder in den DocuClick-Ordnern
-(`Attachments/<Ablauf>/` neben einem Diagramm, Ordner verwendeter Bilder,
-Bildordner des Plugins), die kein Diagramm und keine Notiz mehr verwendet,
+(Anhang-Unterordner des Diagramms, `Attachments/<Ablauf>/` neben einem
+Diagramm aus früheren Versionen, Ordner verwendeter Bilder, Bildordner des
+Plugins), die kein Diagramm und keine Notiz mehr verwendet,
 und verschiebt sie nach Bestätigung in den Papierkorb.
 
 ### Schwärzen, Weichzeichnen und Drucken
