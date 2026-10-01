@@ -1,7 +1,7 @@
 {
   "id": "docuclick-diagrams",
   "name": "DocuClick Diagrams",
-  "version": "1.19.0",
+  "version": "1.19.1",
   "minAppVersion": "1.5.0",
   "description": "Klick-Abläufe als Diagramm-Notizen: bearbeiten, mit der DocuClick-App aufnehmen und steuern, als eigenständiges HTML teilen. Funktioniert auch ohne App.",
   "author": "DocuClick",

@@ -421,7 +421,10 @@ internal sealed class AppController : IDisposable
             });
             window.PageUrl = _saveService.EditorPageUrl;
             var pageHost = window.PageHost;
-            _saveService.EditorPage = () => Dispatcher.UIThread.InvokeAsync(() => pageHost.BuildPage()).GetTask().GetAwaiter().GetResult();
+            // Requests arrive on the thread pool; never block the UI thread on itself.
+            _saveService.EditorPage = () => Dispatcher.UIThread.CheckAccess()
+                ? pageHost.BuildPage()
+                : Dispatcher.UIThread.InvokeAsync(() => pageHost.BuildPage()).GetTask().GetAwaiter().GetResult();
             _saveService.EditorImageRoot = () => _session.CurrentSessionFolder is { } folder ? ObsidianVault.FindRoot(folder) ?? folder : null;
         }
 

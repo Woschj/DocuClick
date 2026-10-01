@@ -5,6 +5,10 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [1.19.1] - 2026-10-01
+
+- Keine eigenen Änderungen; Version an die anderen Teile angeglichen.
+
 ## [1.19.0] - 2026-09-30
 
 - Keine eigenen Änderungen; Version an die anderen Teile angeglichen.

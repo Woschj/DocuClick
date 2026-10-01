@@ -8,6 +8,13 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [1.19.1] - 2026-10-01
+
+- **Einfrieren behoben**: DocuClick konnte sich beim Öffnen oder Aktualisieren
+  der Ablauf-Übersicht komplett aufhängen (Fenster ließ sich nicht mehr
+  schließen, nur noch per „Sofort beenden“). Ursache: Anfragen an DocuClicks
+  lokalen Dienst liefen auf dem UI-Thread und warteten dort auf ihn selbst.
+
 ## [1.19.0] - 2026-09-30
 
 - **Die neue Ablauf-Übersicht ist jetzt die einzige**: der Schalter „Neue
