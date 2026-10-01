@@ -192,4 +192,32 @@ public sealed class LocalSaveServiceTests : IDisposable
         Assert.Equal(HttpStatusCode.NotFound, (await Http.GetAsync(origin + _service.EditorImageUrl("../x.png"))).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await Http.GetAsync(origin + _service.EditorImageUrl("/etc/passwd.png"))).StatusCode);
     }
+
+    [Fact]
+    public async Task Requests_are_never_handled_on_the_thread_that_started_the_service()
+    {
+        // The macOS app starts the service on its UI thread and builds the
+        // editor page there, synchronously, for the request. If request
+        // handling inherited the UI thread's context it would wait for itself
+        // (the v1.19.0 freeze).
+        using var ui = new SingleThreadContext();
+        var port = FreePort();
+        var service = await ui.InvokeAsync(() =>
+        {
+            var started = new LocalSaveService((_, _) => Task.CompletedTask, port);
+            Assert.True(started.Start());
+            return started;
+        });
+        try
+        {
+            service.EditorPage = () => ui.InvokeAsync(() => "<html>ok</html>").GetAwaiter().GetResult();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var page = await Http.GetAsync(service.EditorPageUrl(1), timeout.Token);
+            Assert.Equal("<html>ok</html>", await page.Content.ReadAsStringAsync(timeout.Token));
+        }
+        finally
+        {
+            service.Dispose();
+        }
+    }
 }

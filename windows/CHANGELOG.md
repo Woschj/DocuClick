@@ -7,6 +7,13 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 
 ---
 
+## [1.19.1] - 2026-10-01
+
+- DocuClicks lokaler Dienst (Speichern aus dem Browser, Steuerung aus
+  Obsidian) bearbeitet Anfragen nicht mehr auf dem UI-Thread, sondern im
+  Hintergrund. Behebt unter macOS ein vollständiges Einfrieren der App;
+  unter Windows blockiert ein Speichervorgang die Oberfläche nicht mehr.
+
 ## [1.19.0] - 2026-09-30
 
 - **Die neue Ablauf-Übersicht ist jetzt die einzige**: der Schalter „Neue

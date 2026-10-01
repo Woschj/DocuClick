@@ -29,3 +29,42 @@ public static class TestImages
         return new ScreenshotImage(data.ToArray(), width, height, scale);
     }
 }
+
+/// <summary>
+/// A stand-in for an app's UI thread: one thread with its own
+/// SynchronizationContext that runs posted work in order (like Avalonia's or
+/// WPF's dispatcher). Background thread, never joined — a test that
+/// deadlocks it must not hang the test run.
+/// </summary>
+internal sealed class SingleThreadContext : SynchronizationContext, IDisposable
+{
+    private readonly System.Collections.Concurrent.BlockingCollection<(SendOrPostCallback Callback, object? State)> _queue = new();
+
+    public SingleThreadContext()
+    {
+        var thread = new Thread(() =>
+        {
+            SetSynchronizationContext(this);
+            foreach (var (callback, state) in _queue.GetConsumingEnumerable())
+            {
+                callback(state);
+            }
+        }) { IsBackground = true, Name = "Test-UI" };
+        thread.Start();
+    }
+
+    public override void Post(SendOrPostCallback d, object? state) => _queue.Add((d, state));
+
+    public Task<T> InvokeAsync<T>(Func<T> work)
+    {
+        var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Post(_ =>
+        {
+            try { tcs.SetResult(work()); }
+            catch (Exception ex) { tcs.SetException(ex); }
+        }, null);
+        return tcs.Task;
+    }
+
+    public void Dispose() => _queue.CompleteAdding();
+}

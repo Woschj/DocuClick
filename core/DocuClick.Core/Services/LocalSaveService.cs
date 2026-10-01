@@ -88,7 +88,13 @@ public sealed class LocalSaveService : IDisposable
             return false;
         }
 
-        _ = AcceptLoopAsync(_listener, _stop.Token);
+        // On the thread pool, not on the caller's thread: the apps start the
+        // service on their UI thread, and an accept loop started there would
+        // carry the UI thread's SynchronizationContext into every request.
+        // A request that then waits for the UI thread (the macOS app builds
+        // the editor page there) would wait for itself — the whole app froze.
+        var listener = _listener;
+        _ = Task.Run(() => AcceptLoopAsync(listener, _stop.Token));
         LogService.Log($"Speicherdienst für Browser-Abläufe läuft auf 127.0.0.1:{_port}.");
         return true;
     }
