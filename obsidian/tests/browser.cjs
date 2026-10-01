@@ -367,10 +367,14 @@ let browser, socket;
     testHost.plugin.app.workspace.getLeavesOfType = () => [{view: reloadView}];
     testHost.notices.length = 0;
     const { TFolder, TFile } = window.require('obsidian');
+    // Like Obsidian: the files really move, then the rename event arrives.
+    const move = (from, to) => { for (const key of [...testHost.files.keys()]) if (key === from || key.startsWith(from + '/')) { const entry = testHost.files.get(key), target = to + key.slice(from.length); entry.file = new TFile(target); testHost.files.delete(key); testHost.files.set(target, entry); } };
+    move('Bilder/DocuClick', 'Bilder/Screens');
     await testHost.plugin.followRename(new TFolder('Bilder/Screens'), 'Bilder/DocuClick');
     window.afterFolder = { closed: Object.values(JSON.parse(testHost.files.get('Moved.docuclick').text).images), open: Object.values(JSON.parse(testHost.files.get('Reload.docuclick').text).images ?? {}) };
     window.openState = { base: reloadView.state.base === testHost.files.get('Reload.docuclick').text, paths: [...reloadView.state.imagePaths.values()].map(e => e.path) };
     const old = afterFolder.closed[0];
+    move(old, 'Bilder/Screens/neu.png');
     await testHost.plugin.followRename(new TFile('Bilder/Screens/neu.png'), old);
     window.afterFile = Object.values(JSON.parse(testHost.files.get('Moved.docuclick').text).images);
     testHost.plugin.app.workspace.getLeavesOfType = leavesOfType;
@@ -458,7 +462,7 @@ let browser, socket;
   assert.equal(await evaluate("JSON.parse(DocuClickDocument.noteData(testHost.files.get('Import.md').text)).flow.nodes.length"), 2);
   await evaluate("testHost.plugin.app.fileManager = { trashFile: async file => testHost.files.delete(file.path) }; testHost.plugin.convertToNote(testHost.vault.getAbstractFileByPath('Reload.docuclick'))");
   assert.equal(await evaluate("testHost.files.has('Reload.docuclick')"), false);
-  assert.equal(await evaluate("DocuClickDocument.isDiagramNote(testHost.files.get('Reload.md').text) && JSON.parse(DocuClickDocument.noteData(testHost.files.get('Reload.md').text)).images.b.startsWith('Bilder/DocuClick/')"), true);
+  assert.equal(await evaluate("DocuClickDocument.isDiagramNote(testHost.files.get('Reload.md').text) && JSON.parse(DocuClickDocument.noteData(testHost.files.get('Reload.md').text)).images.b.startsWith('Bilder/Screens/')"), true); // moved by the rename test above
   // Screenshots of deleted steps: found (only in DocuClick's folders), linked images are kept.
   await evaluate(`(async () => {
     const bytes = new Uint8Array([137, 80, 78, 71]).buffer;
